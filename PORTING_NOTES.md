@@ -88,6 +88,7 @@
   - now: strict parity test validates top-K logits when `BITNET_ENFORCE_PARITY=1`.
     - tolerance knobs: `BITNET_PARITY_LOGIT_ATOL`, `BITNET_PARITY_LOGIT_RTOL`
   - now: IQ/TQ/I2_S tensors can run end-to-end via decode-to-f32 path (smoke test gated by `BITNET_ENFORCE_IQ`).
+  - now: naive `i2_s` matvec kernel is wired for linear layers (still correctness-first; output/embeddings remain decode-to-f32).
 - next: confirm YaRN scaling vs upstream in parity traces.
   - update: using `testdata/YarnGPT2b.f16.gguf` with `yarn.prompt.txt`, Go parity failed at step 0 (got token 31447, want 49157). Likely mismatch in YaRN/RoPE scaling or prompt/tokenization path.
   - update: GGUF KV only exposes `llama.rope.freq_base=100000` and `llama.rope.dimension_count=64` (no `llama.rope.scaling.*` or `type` keys), so runtime uses default RoPE (scale=1, no YaRN adjustments).

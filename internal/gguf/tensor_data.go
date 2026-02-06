@@ -164,6 +164,47 @@ func ReadTensorAsF32(path string, info ModelInfo, name string) ([]float32, error
 	}
 }
 
+func ReadTensorI2SPacked(path string, info ModelInfo, name string) ([]byte, float32, uint64, error) {
+	t, ok := info.TensorByName(name)
+	if !ok {
+		return nil, 0, 0, fmt.Errorf("tensor not found: %s", name)
+	}
+	if t.Type != GGMLTypeI2_S {
+		return nil, 0, 0, fmt.Errorf("tensor %q type=%d is not i2_s", name, t.Type)
+	}
+	count, err := TensorElementCount(t)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	if count%4 != 0 {
+		return nil, 0, 0, fmt.Errorf("tensor %q i2_s element count=%d not divisible by 4", name, count)
+	}
+	if count > uint64(math.MaxInt) {
+		return nil, 0, 0, fmt.Errorf("tensor %q has too many i2_s elements", name)
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	defer f.Close()
+
+	start := info.TensorDataOffset + t.Offset
+	if _, err := f.Seek(int64(start), io.SeekStart); err != nil {
+		return nil, 0, 0, fmt.Errorf("seek tensor %q: %w", name, err)
+	}
+
+	packed := make([]byte, count/4)
+	if _, err := io.ReadFull(f, packed); err != nil {
+		return nil, 0, 0, fmt.Errorf("read tensor %q i2_s packed: %w", name, err)
+	}
+	var scale float32
+	if err := binary.Read(f, binary.LittleEndian, &scale); err != nil {
+		return nil, 0, 0, fmt.Errorf("read tensor %q i2_s scale: %w", name, err)
+	}
+	return packed, scale, count, nil
+}
+
 func readTensorTQ10AsF32(r io.Reader, name string, count uint64) ([]float32, error) {
 	const qk = 256
 	const qh = qk / 64

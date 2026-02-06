@@ -3,6 +3,8 @@ package runtime
 import (
 	"strconv"
 	"testing"
+
+	"bitnet-go/internal/gguf"
 )
 
 func BenchmarkRMSNormInto(b *testing.B) {
@@ -130,8 +132,9 @@ func BenchmarkLinearApplyInto(b *testing.B) {
 			b.ReportAllocs()
 			b.SetBytes(int64((len(data) + len(x) + len(dst)) * 4))
 			b.ResetTimer()
+			w := linearWeight{data: data, rows: c.rows, cols: c.cols, transposed: c.tr, qtype: gguf.GGMLTypeF32}
 			for i := 0; i < b.N; i++ {
-				linearApplyInto(dst, data, c.rows, c.cols, c.tr, x)
+				linearApplyIntoWeight(dst, w, x)
 			}
 		})
 	}
@@ -173,13 +176,13 @@ func BenchmarkLlamaLayerStep(b *testing.B) {
 			layer := llamaLayer{
 				attnNorm: make([]float32, c.hidden),
 				ffnNorm:  make([]float32, c.hidden),
-				attnQ:    linearWeight{data: make([]float32, c.hidden*c.hidden), rows: c.hidden, cols: c.hidden},
-				attnK:    linearWeight{data: make([]float32, c.hidden*c.hidden), rows: c.hidden, cols: c.hidden},
-				attnV:    linearWeight{data: make([]float32, c.hidden*c.hidden), rows: c.hidden, cols: c.hidden},
-				attnOut:  linearWeight{data: make([]float32, c.hidden*c.hidden), rows: c.hidden, cols: c.hidden},
-				ffnGate:  linearWeight{data: make([]float32, ffnLen), rows: c.ffn, cols: c.hidden},
-				ffnUp:    linearWeight{data: make([]float32, ffnLen), rows: c.ffn, cols: c.hidden},
-				ffnDown:  linearWeight{data: make([]float32, ffnLen), rows: c.hidden, cols: c.ffn},
+				attnQ:    linearWeight{data: make([]float32, c.hidden*c.hidden), rows: c.hidden, cols: c.hidden, qtype: gguf.GGMLTypeF32},
+				attnK:    linearWeight{data: make([]float32, c.hidden*c.hidden), rows: c.hidden, cols: c.hidden, qtype: gguf.GGMLTypeF32},
+				attnV:    linearWeight{data: make([]float32, c.hidden*c.hidden), rows: c.hidden, cols: c.hidden, qtype: gguf.GGMLTypeF32},
+				attnOut:  linearWeight{data: make([]float32, c.hidden*c.hidden), rows: c.hidden, cols: c.hidden, qtype: gguf.GGMLTypeF32},
+				ffnGate:  linearWeight{data: make([]float32, ffnLen), rows: c.ffn, cols: c.hidden, qtype: gguf.GGMLTypeF32},
+				ffnUp:    linearWeight{data: make([]float32, ffnLen), rows: c.ffn, cols: c.hidden, qtype: gguf.GGMLTypeF32},
+				ffnDown:  linearWeight{data: make([]float32, ffnLen), rows: c.hidden, cols: c.ffn, qtype: gguf.GGMLTypeF32},
 			}
 			block.layers = []llamaLayer{layer}
 

@@ -72,3 +72,75 @@ func MatVecT(dst, mat []float32, rows, cols int, vec []float32) {
 		dst[c] = sum
 	}
 }
+
+// MatVecI2S computes dst = mat * vec where mat is GGML column-major [rows][cols]
+// stored in packed i2_s format with 2-bit values and a global scale.
+func MatVecI2S(dst []float32, packed []byte, rows, cols int, vec []float32, scale float32) {
+	if rows <= 0 || cols <= 0 {
+		return
+	}
+	if len(dst) < rows || len(vec) < cols {
+		return
+	}
+	if rows*cols == 0 || len(packed) < (rows*cols+3)/4 {
+		return
+	}
+	for r := 0; r < rows; r++ {
+		var sum float32
+		for c := 0; c < cols; c++ {
+			idx := r + rows*c
+			b := packed[idx/4]
+			shift := uint(6 - 2*(idx%4))
+			q := (b >> shift) & 0x3
+			var w float32
+			switch q {
+			case 0:
+				w = -1
+			case 1:
+				w = 0
+			case 2:
+				w = 1
+			default:
+				w = 0
+			}
+			sum += w * scale * vec[c]
+		}
+		dst[r] = sum
+	}
+}
+
+// MatVecTI2S computes dst = transpose(mat) * vec where mat is GGML column-major [rows][cols]
+// stored in packed i2_s format with 2-bit values and a global scale.
+func MatVecTI2S(dst []float32, packed []byte, rows, cols int, vec []float32, scale float32) {
+	if rows <= 0 || cols <= 0 {
+		return
+	}
+	if len(dst) < cols || len(vec) < rows {
+		return
+	}
+	if rows*cols == 0 || len(packed) < (rows*cols+3)/4 {
+		return
+	}
+	for c := 0; c < cols; c++ {
+		var sum float32
+		for r := 0; r < rows; r++ {
+			idx := r + rows*c
+			b := packed[idx/4]
+			shift := uint(6 - 2*(idx%4))
+			q := (b >> shift) & 0x3
+			var w float32
+			switch q {
+			case 0:
+				w = -1
+			case 1:
+				w = 0
+			case 2:
+				w = 1
+			default:
+				w = 0
+			}
+			sum += w * scale * vec[r]
+		}
+		dst[c] = sum
+	}
+}

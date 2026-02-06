@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"bitnet-go/internal/gguf"
 )
 
 func TestRunForwardStubDeterministic(t *testing.T) {
@@ -124,6 +126,49 @@ func TestGenerateUsesLlamaEmbeddingOutputBlock(t *testing.T) {
 		Prompt:    "hello",
 		Seed:      5,
 		MaxTokens: 6,
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	for i := range a.TokenIDs {
+		if a.TokenIDs[i] != b.TokenIDs[i] {
+			t.Fatalf("token[%d] mismatch: %d vs %d", i, a.TokenIDs[i], b.TokenIDs[i])
+		}
+	}
+}
+
+func TestGenerateUsesLlamaEmbeddingOutputBlockI2S(t *testing.T) {
+	modelPath := buildLlamaEmbeddingOutputModelI2S(t)
+
+	rt, err := New(context.Background(), modelPath)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	if rt.block == nil {
+		t.Fatal("expected tensor block to be loaded")
+	}
+	if rt.block.mode != tensorBlockModeEmbeddingOutput {
+		t.Fatalf("block mode = %d, want embedding/output", rt.block.mode)
+	}
+	if rt.block.outputWeightType != gguf.GGMLTypeI2_S {
+		t.Fatalf("outputWeightType = %d, want i2_s", rt.block.outputWeightType)
+	}
+	if len(rt.block.outputWeightPacked) == 0 {
+		t.Fatal("expected packed i2_s output weights")
+	}
+
+	a, err := rt.Generate(context.Background(), GenerateRequest{
+		Prompt:    "hello",
+		Seed:      5,
+		MaxTokens: 4,
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	b, err := rt.Generate(context.Background(), GenerateRequest{
+		Prompt:    "hello",
+		Seed:      5,
+		MaxTokens: 4,
 	})
 	if err != nil {
 		t.Fatalf("Generate() error = %v", err)
@@ -332,6 +377,84 @@ func buildLlamaEmbeddingOutputModel(t *testing.T) string {
 	}
 
 	path := filepath.Join(t.TempDir(), "llama_embed_output.gguf")
+	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	return path
+}
+
+func buildLlamaEmbeddingOutputModelI2S(t *testing.T) string {
+	t.Helper()
+
+	const (
+		valueTypeUint32 = 4
+		alignBytes      = 32
+		hidden          = 2
+		vocab           = 4
+	)
+
+	buf := bytes.NewBuffer(nil)
+	rtWriteString(t, buf, "GGUF")
+	rtWriteU32(t, buf, 3) // version
+	rtWriteU64(t, buf, 2) // tensor count
+	rtWriteU64(t, buf, 1) // kv count
+
+	rtWriteGGUFString(t, buf, "general.alignment")
+	rtWriteU32(t, buf, valueTypeUint32)
+	rtWriteU32(t, buf, alignBytes)
+
+	rtWriteGGUFString(t, buf, "token_embd.weight")
+	rtWriteU32(t, buf, 2)
+	rtWriteU64(t, buf, hidden)
+	rtWriteU64(t, buf, vocab)
+	rtWriteU32(t, buf, gguf.GGMLTypeF32)
+	rtWriteU64(t, buf, 0)
+
+	rtWriteGGUFString(t, buf, "output.weight")
+	rtWriteU32(t, buf, 2)
+	rtWriteU64(t, buf, hidden)
+	rtWriteU64(t, buf, vocab)
+	rtWriteU32(t, buf, gguf.GGMLTypeI2_S)
+	rtWriteU64(t, buf, hidden*vocab*4)
+
+	rtPadTo(t, buf, alignBytes)
+
+	// token_embd in column-major: two hidden dims per token.
+	// token 0 -> [1, 0], token 1 -> [0, 1], token 2 -> [1, 0], token 3 -> [0, 1]
+	for c := 0; c < vocab; c++ {
+		for r := 0; r < hidden; r++ {
+			v := float32(0)
+			if c%2 == r {
+				v = 1
+			}
+			rtWriteF32(t, buf, v)
+		}
+	}
+
+	// output.weight in i2_s packed format (column-major):
+	// [ 1  0  1  0
+	//  0  1  0  1 ]
+	vals := []int{1, 0, 0, 1, 1, 0, 0, 1}
+	packed := make([]byte, (hidden*vocab+3)/4)
+	for i, v := range vals {
+		var q byte
+		switch v {
+		case -1:
+			q = 0
+		case 0:
+			q = 1
+		case 1:
+			q = 2
+		default:
+			q = 1
+		}
+		shift := uint(6 - 2*(i%4))
+		packed[i/4] |= q << shift
+	}
+	buf.Write(packed)
+	rtWriteF32(t, buf, 1.0) // scale
+
+	path := filepath.Join(t.TempDir(), "llama_embed_output_i2_s.gguf")
 	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
@@ -606,6 +729,44 @@ func TestRoPEScaledPosition(t *testing.T) {
 	}
 	if got := ropeScaledPosition(10, 2, "yarn"); got != 5 {
 		t.Fatalf("ropeScaledPosition yarn = %v, want 5", got)
+	}
+}
+
+func TestI2SLinearApplyUsesPacked(t *testing.T) {
+	rows, cols := 2, 3
+	vals := []int{1, -1, 0, 1, 1, 0}
+	packed := make([]byte, (rows*cols+3)/4)
+	for i, v := range vals {
+		var q byte
+		switch v {
+		case -1:
+			q = 0
+		case 0:
+			q = 1
+		case 1:
+			q = 2
+		default:
+			q = 1
+		}
+		shift := uint(6 - 2*(i%4))
+		packed[i/4] |= q << shift
+	}
+	w := linearWeight{
+		rows:       rows,
+		cols:       cols,
+		transposed: false,
+		qtype:      gguf.GGMLTypeI2_S,
+		i2sPacked:  packed,
+		i2sScale:   1.0,
+	}
+	vec := []float32{2, -1, 0.5}
+	dst := make([]float32, rows)
+	linearApplyIntoWeight(dst, w, vec)
+	if dst[0] != 2.5 {
+		t.Fatalf("dst[0] = %f, want 2.5", dst[0])
+	}
+	if dst[1] != -3.0 {
+		t.Fatalf("dst[1] = %f, want -3", dst[1])
 	}
 }
 

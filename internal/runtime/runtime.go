@@ -210,6 +210,9 @@ type tensorBlock struct {
 	outputRows           int
 	outputCols           int
 	outputTransposed     bool
+	outputWeightPacked   []byte
+	outputWeightScale    float32
+	outputWeightType     uint32
 	outputNorm           []float32
 	rmsEps               float32
 	layers               []llamaLayer
@@ -240,6 +243,9 @@ type linearWeight struct {
 	rows       int
 	cols       int
 	transposed bool
+	qtype      uint32
+	i2sPacked  []byte
+	i2sScale   float32
 }
 
 func loadTensorBlock(path string, info gguf.ModelInfo) (*tensorBlock, error) {
@@ -359,12 +365,28 @@ func loadEmbeddingOutputBlock(path string, info gguf.ModelInfo) (*tensorBlock, e
 	if err != nil {
 		return nil, err
 	}
-	outputWeight, err := gguf.ReadTensorAsF32(path, info, outputName)
-	if err != nil {
-		return nil, err
-	}
 	emb.tokenEmbd = tokenEmbd
+
+	var outputWeight []float32
+	var outputPacked []byte
+	var outputScale float32
+	if outInfo.Type == gguf.GGMLTypeI2_S {
+		packed, scale, _, err := gguf.ReadTensorI2SPacked(path, info, outputName)
+		if err != nil {
+			return nil, err
+		}
+		outputPacked = packed
+		outputScale = scale
+	} else {
+		outputWeight, err = gguf.ReadTensorAsF32(path, info, outputName)
+		if err != nil {
+			return nil, err
+		}
+	}
 	emb.outputWeight = outputWeight
+	emb.outputWeightPacked = outputPacked
+	emb.outputWeightScale = outputScale
+	emb.outputWeightType = outInfo.Type
 
 	emb.hiddenDim = emb.tokenEmbdRows
 	emb.vocabDim = emb.tokenEmbdCols
@@ -452,9 +474,18 @@ func loadLlamaStack(path string, info gguf.ModelInfo) (*tensorBlock, bool, error
 	if len(b.outputNorm) != hidden {
 		return nil, false, fmt.Errorf("output_norm.weight len=%d want=%d", len(b.outputNorm), hidden)
 	}
-	if _, ok := info.TensorByName("output.weight"); ok {
+	if outInfo, ok := info.TensorByName("output.weight"); ok {
 		if b.outputWeight, b.outputRows, b.outputCols, b.outputTransposed, err = loadLinearTensor(path, info, "output.weight", hidden); err != nil {
 			return nil, false, err
+		}
+		b.outputWeightType = outInfo.Type
+		if outInfo.Type == gguf.GGMLTypeI2_S {
+			packed, scale, _, err := gguf.ReadTensorI2SPacked(path, info, "output.weight")
+			if err != nil {
+				return nil, false, err
+			}
+			b.outputWeightPacked = packed
+			b.outputWeightScale = scale
 		}
 	} else {
 		// Some models tie output weights to token embeddings and omit output.weight.
@@ -611,11 +642,15 @@ func runForwardEmbeddingOutputBlock(block *tensorBlock, seed int64, promptTokens
 	}
 
 	for i := range out {
-		if block.outputTransposed {
-			kernels.MatVecT(logits, block.outputWeight, block.outputRows, block.outputCols, state)
-		} else {
-			kernels.MatVec(logits, block.outputWeight, block.outputRows, block.outputCols, state)
-		}
+		linearApplyIntoWeight(logits, linearWeight{
+			data:       block.outputWeight,
+			rows:       block.outputRows,
+			cols:       block.outputCols,
+			transposed: block.outputTransposed,
+			qtype:      block.outputWeightType,
+			i2sPacked:  block.outputWeightPacked,
+			i2sScale:   block.outputWeightScale,
+		}, state)
 		if topk != nil {
 			*topk = appendTopKStep(*topk, i, logits, 5)
 		}
@@ -741,9 +776,9 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 			debugVecStats("x.embed", x)
 			debugVecStats("attn_norm", n1)
 		}
-		linearApplyInto(st.q, layer.attnQ.data, layer.attnQ.rows, layer.attnQ.cols, layer.attnQ.transposed, n1)
-		linearApplyInto(st.k, layer.attnK.data, layer.attnK.rows, layer.attnK.cols, layer.attnK.transposed, n1)
-		linearApplyInto(st.v, layer.attnV.data, layer.attnV.rows, layer.attnV.cols, layer.attnV.transposed, n1)
+		linearApplyIntoWeight(st.q, layer.attnQ, n1)
+		linearApplyIntoWeight(st.k, layer.attnK, n1)
+		linearApplyIntoWeight(st.v, layer.attnV, n1)
 		if shouldDebug(pos) && i == 0 {
 			debugVecStats("q", st.q)
 			debugVecStats("k", st.k)
@@ -756,7 +791,7 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 		storeCacheVector(st.values, pos, st.v)
 		causalAttentionMultiHeadInto(st.attnAcc, st.scores, st.q, st.keys, st.values, pos+1, block.attnHeads, block.kvHeads, len(st.k), len(st.v))
 
-		linearApplyInto(st.attnOut, layer.attnOut.data, layer.attnOut.rows, layer.attnOut.cols, layer.attnOut.transposed, st.attnAcc)
+		linearApplyIntoWeight(st.attnOut, layer.attnOut, st.attnAcc)
 		kernels.AddScaled(x, st.attnOut, 1.0)
 		if shouldDebug(pos) && i == 0 {
 			debugVecStats("attn_acc", st.attnAcc)
@@ -766,8 +801,8 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 
 		if !disableFFN {
 			rmsNormInto(n2, x, layer.ffnNorm, block.rmsEps)
-			linearApplyInto(st.gate, layer.ffnGate.data, layer.ffnGate.rows, layer.ffnGate.cols, layer.ffnGate.transposed, n2)
-			linearApplyInto(st.up, layer.ffnUp.data, layer.ffnUp.rows, layer.ffnUp.cols, layer.ffnUp.transposed, n2)
+			linearApplyIntoWeight(st.gate, layer.ffnGate, n2)
+			linearApplyIntoWeight(st.up, layer.ffnUp, n2)
 			if shouldDebug(pos) && i == 0 {
 				debugVecStats("ffn_norm", n2)
 				debugVecStats("ffn_gate", st.gate)
@@ -781,7 +816,7 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 				gg := st.gate[j]
 				st.ffnAct[j] = (gg / (1 + float32(math.Exp(float64(-gg))))) * st.up[j]
 			}
-			linearApplyInto(st.ffnDown, layer.ffnDown.data, layer.ffnDown.rows, layer.ffnDown.cols, layer.ffnDown.transposed, st.ffnAct)
+			linearApplyIntoWeight(st.ffnDown, layer.ffnDown, st.ffnAct)
 			kernels.AddScaled(x, st.ffnDown, 1.0)
 			if shouldDebug(pos) && i == 0 {
 				debugVecStats("ffn_act", st.ffnAct)
@@ -794,7 +829,15 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 	}
 
 	rmsNormInto(n1, x, block.outputNorm, block.rmsEps)
-	linearApplyInto(logits, block.outputWeight, block.outputRows, block.outputCols, block.outputTransposed, n1)
+	linearApplyIntoWeight(logits, linearWeight{
+		data:       block.outputWeight,
+		rows:       block.outputRows,
+		cols:       block.outputCols,
+		transposed: block.outputTransposed,
+		qtype:      block.outputWeightType,
+		i2sPacked:  block.outputWeightPacked,
+		i2sScale:   block.outputWeightScale,
+	}, n1)
 	if shouldDebug(pos) {
 		debugVecStats("output_norm", n1)
 		debugVecStats("logits", logits)
@@ -1058,12 +1101,20 @@ func linearOutputLen(w linearWeight) int {
 	return w.rows
 }
 
-func linearApplyInto(dst, data []float32, rows, cols int, transposed bool, x []float32) {
-	if transposed {
-		kernels.MatVecT(dst, data, rows, cols, x)
+func linearApplyIntoWeight(dst []float32, w linearWeight, x []float32) {
+	if w.qtype == gguf.GGMLTypeI2_S && len(w.i2sPacked) > 0 {
+		if w.transposed {
+			kernels.MatVecTI2S(dst, w.i2sPacked, w.rows, w.cols, x, w.i2sScale)
+			return
+		}
+		kernels.MatVecI2S(dst, w.i2sPacked, w.rows, w.cols, x, w.i2sScale)
 		return
 	}
-	kernels.MatVec(dst, data, rows, cols, x)
+	if w.transposed {
+		kernels.MatVecT(dst, w.data, w.rows, w.cols, x)
+		return
+	}
+	kernels.MatVec(dst, w.data, w.rows, w.cols, x)
 }
 
 func loadLinearWeight(path string, info gguf.ModelInfo, name string, inDim int) (linearWeight, error) {
@@ -1071,12 +1122,23 @@ func loadLinearWeight(path string, info gguf.ModelInfo, name string, inDim int) 
 	if err != nil {
 		return linearWeight{}, err
 	}
-	return linearWeight{
+	ti, _ := info.TensorByName(name)
+	w := linearWeight{
 		data:       data,
 		rows:       rows,
 		cols:       cols,
 		transposed: transposed,
-	}, nil
+		qtype:      ti.Type,
+	}
+	if ti.Type == gguf.GGMLTypeI2_S {
+		packed, scale, _, err := gguf.ReadTensorI2SPacked(path, info, name)
+		if err != nil {
+			return linearWeight{}, err
+		}
+		w.i2sPacked = packed
+		w.i2sScale = scale
+	}
+	return w, nil
 }
 
 func loadLinearTensor(path string, info gguf.ModelInfo, name string, inDim int) ([]float32, int, int, bool, error) {
@@ -1091,6 +1153,9 @@ func loadLinearTensor(path string, info gguf.ModelInfo, name string, inDim int) 
 	cols := int(ti.Dimensions[1])
 	if rows <= 0 || cols <= 0 {
 		return nil, 0, 0, false, fmt.Errorf("%s: invalid dims %v", name, ti.Dimensions)
+	}
+	if ti.Type == gguf.GGMLTypeI2_S {
+		return nil, rows, cols, rows == inDim, nil
 	}
 	data, err := gguf.ReadTensorAsF32(path, info, name)
 	if err != nil {
