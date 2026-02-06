@@ -176,9 +176,6 @@ func ReadTensorI2SPacked(path string, info ModelInfo, name string) ([]byte, floa
 	if err != nil {
 		return nil, 0, 0, err
 	}
-	if count%4 != 0 {
-		return nil, 0, 0, fmt.Errorf("tensor %q i2_s element count=%d not divisible by 4", name, count)
-	}
 	if count > uint64(math.MaxInt) {
 		return nil, 0, 0, fmt.Errorf("tensor %q has too many i2_s elements", name)
 	}
@@ -194,7 +191,9 @@ func ReadTensorI2SPacked(path string, info ModelInfo, name string) ([]byte, floa
 		return nil, 0, 0, fmt.Errorf("seek tensor %q: %w", name, err)
 	}
 
-	packed := make([]byte, count/4)
+	const block = 128
+	const blockBytes = 32
+	packed := make([]byte, (count+block-1)/block*blockBytes)
 	if _, err := io.ReadFull(f, packed); err != nil {
 		return nil, 0, 0, fmt.Errorf("read tensor %q i2_s packed: %w", name, err)
 	}
@@ -304,13 +303,12 @@ func readTensorTQ20AsF32(r io.Reader, name string, count uint64) ([]float32, err
 }
 
 func readTensorI2SAsF32(r io.Reader, name string, count uint64) ([]float32, error) {
-	if count%4 != 0 {
-		return nil, fmt.Errorf("tensor %q i2_s element count=%d not divisible by 4", name, count)
-	}
 	if count > uint64(math.MaxInt) {
 		return nil, fmt.Errorf("tensor %q has too many i2_s elements", name)
 	}
-	packed := make([]byte, count/4)
+	const block = 128
+	const blockBytes = 32
+	packed := make([]byte, (count+block-1)/block*blockBytes)
 	if _, err := io.ReadFull(r, packed); err != nil {
 		return nil, fmt.Errorf("read tensor %q i2_s packed: %w", name, err)
 	}
@@ -326,58 +324,76 @@ func readTensorI2SAsF32(r io.Reader, name string, count uint64) ([]float32, erro
 		v2 = 1.0
 		v3 = 0.0
 	)
-	outIdx := 0
-	for _, b := range packed {
-		c0 := (b >> 6) & 0x3
-		c1 := (b >> 4) & 0x3
-		c2 := (b >> 2) & 0x3
-		c3 := b & 0x3
-		switch c0 {
-		case 0:
-			out[outIdx] = float32(v0) * scale
-		case 1:
-			out[outIdx] = float32(v1) * scale
-		case 2:
-			out[outIdx] = float32(v2) * scale
-		default:
-			out[outIdx] = float32(v3) * scale
+	var done uint64
+	for done < count {
+		blkE := uint64(block)
+		if count-done < blkE {
+			blkE = count - done
 		}
-		outIdx++
-		switch c1 {
-		case 0:
-			out[outIdx] = float32(v0) * scale
-		case 1:
-			out[outIdx] = float32(v1) * scale
-		case 2:
-			out[outIdx] = float32(v2) * scale
-		default:
-			out[outIdx] = float32(v3) * scale
+		cols0 := blkE
+		if cols0 > 32 {
+			cols0 = 32
 		}
-		outIdx++
-		switch c2 {
-		case 0:
-			out[outIdx] = float32(v0) * scale
-		case 1:
-			out[outIdx] = float32(v1) * scale
-		case 2:
-			out[outIdx] = float32(v2) * scale
-		default:
-			out[outIdx] = float32(v3) * scale
+		cols1 := blkE
+		if cols1 > 64 {
+			cols1 = 32
+		} else if cols1 > 32 {
+			cols1 -= 32
+		} else {
+			cols1 = 0
 		}
-		outIdx++
-		switch c3 {
-		case 0:
-			out[outIdx] = float32(v0) * scale
-		case 1:
-			out[outIdx] = float32(v1) * scale
-		case 2:
-			out[outIdx] = float32(v2) * scale
-		default:
-			out[outIdx] = float32(v3) * scale
+		cols2 := blkE
+		if cols2 > 96 {
+			cols2 = 32
+		} else if cols2 > 64 {
+			cols2 -= 64
+		} else {
+			cols2 = 0
 		}
-		outIdx++
+		cols3 := blkE
+		if cols3 > 128 {
+			cols3 = 32
+		} else if cols3 > 96 {
+			cols3 -= 96
+		} else {
+			cols3 = 0
+		}
+		base := int(done / block * blockBytes)
+		for gp := uint64(0); gp < 32; gp++ {
+			b := packed[base+int(gp)]
+			c0 := (b >> 6) & 0x3
+			c1 := (b >> 4) & 0x3
+			c2 := (b >> 2) & 0x3
+			c3 := b & 0x3
+			if gp < cols0 {
+				out[done+0*32+gp] = float32(mapI2S(c0, v0, v1, v2, v3)) * scale
+			}
+			if gp < cols1 {
+				out[done+1*32+gp] = float32(mapI2S(c1, v0, v1, v2, v3)) * scale
+			}
+			if gp < cols2 {
+				out[done+2*32+gp] = float32(mapI2S(c2, v0, v1, v2, v3)) * scale
+			}
+			if gp < cols3 {
+				out[done+3*32+gp] = float32(mapI2S(c3, v0, v1, v2, v3)) * scale
+			}
+		}
+		done += blkE
 	}
 	return out, nil
+}
+
+func mapI2S(v uint8, v0, v1, v2, v3 float32) float32 {
+	switch v {
+	case 0:
+		return v0
+	case 1:
+		return v1
+	case 2:
+		return v2
+	default:
+		return v3
+	}
 }
 
 func readTensorIQ2XXSAsF32(r io.Reader, name string, count uint64) ([]float32, error) {

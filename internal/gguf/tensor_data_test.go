@@ -243,7 +243,28 @@ func TestReadTensorI2S(t *testing.T) {
 	writeU64(t, buf, 0)
 
 	padTo(t, buf, 32)
-	buf.Write([]byte{0x1b, 0x85})
+	packed := make([]byte, 32)
+	vals := []int{-1, 0, 1, 0, 1, -1, 0, 0}
+	for i, v := range vals {
+		var q byte
+		switch v {
+		case -1:
+			q = 0
+		case 0:
+			q = 1
+		case 1:
+			q = 2
+		default:
+			q = 1
+		}
+		blk := i / 128
+		off := i % 128
+		gp := off % 32
+		group := off / 32
+		shift := uint(6 - 2*group)
+		packed[blk*32+gp] |= q << shift
+	}
+	buf.Write(packed)
 	writeF32(t, buf, 2.0)
 
 	path := filepath.Join(t.TempDir(), "tensor_i2_s.gguf")

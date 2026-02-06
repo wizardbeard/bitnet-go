@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -735,7 +736,31 @@ func TestRoPEScaledPosition(t *testing.T) {
 func TestI2SLinearApplyUsesPacked(t *testing.T) {
 	rows, cols := 2, 3
 	vals := []int{1, -1, 0, 1, 1, 0}
-	packed := make([]byte, (rows*cols+3)/4)
+	packed := rtPackI2S(vals)
+	w := linearWeight{
+		rows:       rows,
+		cols:       cols,
+		transposed: false,
+		qtype:      gguf.GGMLTypeI2_S,
+		i2sPacked:  packed,
+		i2sScale:   1.0,
+	}
+	vec := []float32{2, -1, 0.5}
+	dst := make([]float32, rows)
+	linearApplyIntoWeight(dst, w, vec)
+	if math.Abs(float64(dst[0]-2.503937)) > 1e-6 {
+		t.Fatalf("dst[0] = %f, want 2.503937", dst[0])
+	}
+	if math.Abs(float64(dst[1]+3.007874)) > 1e-6 {
+		t.Fatalf("dst[1] = %f, want -3.007874", dst[1])
+	}
+}
+
+func rtPackI2S(vals []int) []byte {
+	const block = 128
+	const blockBytes = 32
+	n := len(vals)
+	packed := make([]byte, (n+block-1)/block*blockBytes)
 	for i, v := range vals {
 		var q byte
 		switch v {
@@ -748,26 +773,14 @@ func TestI2SLinearApplyUsesPacked(t *testing.T) {
 		default:
 			q = 1
 		}
-		shift := uint(6 - 2*(i%4))
-		packed[i/4] |= q << shift
+		blk := i / block
+		off := i % block
+		gp := off % 32
+		group := off / 32
+		shift := uint(6 - 2*group)
+		packed[blk*blockBytes+gp] |= q << shift
 	}
-	w := linearWeight{
-		rows:       rows,
-		cols:       cols,
-		transposed: false,
-		qtype:      gguf.GGMLTypeI2_S,
-		i2sPacked:  packed,
-		i2sScale:   1.0,
-	}
-	vec := []float32{2, -1, 0.5}
-	dst := make([]float32, rows)
-	linearApplyIntoWeight(dst, w, vec)
-	if dst[0] != 2.5 {
-		t.Fatalf("dst[0] = %f, want 2.5", dst[0])
-	}
-	if dst[1] != -3.0 {
-		t.Fatalf("dst[1] = %f, want -3", dst[1])
-	}
+	return packed
 }
 
 func rtWriteGGUFString(t *testing.T, buf *bytes.Buffer, s string) {

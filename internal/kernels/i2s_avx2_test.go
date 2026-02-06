@@ -17,22 +17,11 @@ func TestMatVecI2SAVX2MatchesGeneric(t *testing.T) {
 			vals[i] = 1
 		}
 	}
-	packed := make([]byte, (len(vals)+3)/4)
+	intVals := make([]int, len(vals))
 	for i, v := range vals {
-		var q byte
-		switch v {
-		case -1:
-			q = 0
-		case 0:
-			q = 1
-		case 1:
-			q = 2
-		default:
-			q = 1
-		}
-		shift := uint(6 - 2*(i%4))
-		packed[i/4] |= q << shift
+		intVals[i] = int(v)
 	}
+	packed := packI2S(intVals)
 	vec := make([]float32, cols)
 	for i := range vec {
 		vec[i] = float32(i%5) * 0.1
@@ -61,22 +50,11 @@ func TestMatVecTI2SAVX2MatchesGeneric(t *testing.T) {
 			vals[i] = 1
 		}
 	}
-	packed := make([]byte, (len(vals)+3)/4)
+	intVals := make([]int, len(vals))
 	for i, v := range vals {
-		var q byte
-		switch v {
-		case -1:
-			q = 0
-		case 0:
-			q = 1
-		case 1:
-			q = 2
-		default:
-			q = 1
-		}
-		shift := uint(6 - 2*(i%4))
-		packed[i/4] |= q << shift
+		intVals[i] = int(v)
 	}
+	packed := packI2S(intVals)
 	vec := make([]float32, rows)
 	for i := range vec {
 		vec[i] = float32(i%5) * 0.1

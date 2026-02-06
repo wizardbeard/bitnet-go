@@ -47,6 +47,7 @@
 ## Phase 0 harness status
 - `scripts/fetch_ref_model.sh` downloads a small GGUF fixture into `testdata/` and updates `model_fixture.txt`.
 - `scripts/fetch_testdata_gguf.sh` can optionally download a YaRN GGUF fixture into `testdata/` and update `model_fixture_yarn.txt` (set `BITNET_FETCH_YARN=1`).
+- `scripts/fetch_testdata_gguf.sh` can optionally download an i2_s GGUF fixture into `testdata/` and update `model_fixture_i2s.txt` (set `BITNET_FETCH_I2S=1` with `BITNET_I2S_MODEL_URL`).
 - `scripts/build_ref.sh` builds upstream C++ reference with CMake and stores binary at `.ref/bin/ref-infer`.
 - `scripts/build_ref_tracer.sh` builds `.ref/bin/ref-trace` against upstream `libllama` for structured per-step traces.
 - `scripts/run_ref.sh` runs reference inference and materializes:
@@ -64,6 +65,11 @@
 - `scripts/run_ref_tokenizer_variants.sh` extends tokenizer tracing vectors to:
   - `testdata/expected.falcon_prompt_tokens.json`
   - `testdata/expected.qwen2_prompt_tokens.json`
+- `scripts/run_ref_i2s.sh` runs reference inference for i2_s models and materializes:
+  - `testdata/expected.i2s.tokens.json`
+  - `testdata/expected.i2s.topk_logits.json`
+  - `testdata/expected.i2s.timings.json`
+  - `testdata/expected.i2s.prompt_tokens.json`
 - Optional IQ fixture hash:
   - `scripts/gen_iq_fixture_hash.sh` writes `testdata/expected.iq_hash.json`
   - `BITNET_ENFORCE_IQ=1 go test ./internal/gguf -run TestIQFixtureHash -count=1`
@@ -98,7 +104,8 @@
   - update: GGML tensor layout is column-major (ne0 contiguous). Switched MatVec/embedding access and test fixtures to GGML layout; updated linear transpose preference to treat [in, out] layouts as transposed.
 - update: YaRN parity now matches tokens and top-k order with small logit deltas; increased default YaRN logit rtol to `3e-2` (Yarn test only) pending deeper investigation.
 - update: YaRN parity test now enforces only the first `BITNET_PARITY_TOPK_STRICT` entries (default 1 for YaRN, 3 for non-YaRN) to avoid tail-rank jitter while we investigate residual numeric drift.
-- update: added naive i8_s activation quantization + i2_s×i8_s matvec kernels in Go; assumed `nearest_int` uses round-to-even (`math.RoundToEven`). If reference quantization mismatches, adjust rounding mode to match upstream.
+- update: aligned i8_s quantization with upstream ggml: `nearest_int` bit trick rounding, `act_scale = 127/max`, and i2_s matvec uses `(sum - act_sum) / act_scale * weight_scale`.
+- update: runtime now reads `bitnet-b1.58.*` KV metadata (head counts, rope params, vocab/context length) to support BitNet b1.58 GGUFs.
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).

@@ -24,16 +24,13 @@ func QuantizeRowI8S(dst []int8, src []float32) (scale float32, sum int32) {
 		}
 	}
 	if maxAbs < 1e-5 {
-		for i := 0; i < n; i++ {
-			dst[i] = 0
-		}
-		return 0, 0
+		maxAbs = 1e-5
 	}
 
-	scale = maxAbs / 127.0
-	inv := 1.0 / float64(scale)
+	scale = 127.0 / maxAbs
+	inv := float64(scale)
 	for i := 0; i < n; i++ {
-		q := math.RoundToEven(float64(src[i]) * inv)
+		q := nearestInt(float32(float64(src[i]) * inv))
 		if q < -128 {
 			q = -128
 		} else if q > 127 {
@@ -45,76 +42,88 @@ func QuantizeRowI8S(dst []int8, src []float32) (scale float32, sum int32) {
 	return scale, sum
 }
 
+func nearestInt(fval float32) int {
+	const bias = 12582912.0
+	val := fval + float32(bias)
+	i := math.Float32bits(val)
+	return int(i&0x007fffff) - 0x00400000
+}
+
+func i2sPackedAt(packed []byte, idx int) byte {
+	if idx < 0 {
+		return 0
+	}
+	const block = 128
+	const blockBytes = 32
+	bi := idx / block
+	off := idx % block
+	gp := off % 32
+	group := off / 32
+	p := bi*blockBytes + gp
+	if p < 0 || p >= len(packed) {
+		return 0
+	}
+	shift := uint(6 - 2*group)
+	return (packed[p] >> shift) & 0x3
+}
+
+func i2sPackedLen(count int) int {
+	if count <= 0 {
+		return 0
+	}
+	const block = 128
+	const blockBytes = 32
+	return (count+block-1)/block * blockBytes
+}
+
 // MatVecI2SI8S computes dst = mat * vec where mat is GGML column-major [rows][cols]
 // stored in packed i2_s format with a global weight scale, and vec is quantized i8_s.
-func MatVecI2SI8S(dst []float32, packed []byte, rows, cols int, vec []int8, weightScale, actScale float32) {
+func MatVecI2SI8S(dst []float32, packed []byte, rows, cols int, vec []int8, weightScale, actScale float32, actSum int32) {
 	if rows <= 0 || cols <= 0 {
 		return
 	}
 	if len(dst) < rows || len(vec) < cols {
 		return
 	}
-	if rows*cols == 0 || len(packed) < (rows*cols+3)/4 {
+	if rows*cols == 0 || len(packed) < i2sPackedLen(rows*cols) {
 		return
 	}
-	combined := weightScale * actScale
 	for r := 0; r < rows; r++ {
 		var sum int32
 		for c := 0; c < cols; c++ {
 			idx := r + rows*c
-			b := packed[idx/4]
-			shift := uint(6 - 2*(idx%4))
-			q := (b >> shift) & 0x3
-			var w int8
-			switch q {
-			case 0:
-				w = -1
-			case 1:
-				w = 0
-			case 2:
-				w = 1
-			default:
-				w = 0
+			q := i2sPackedAt(packed, idx)
+			if q == 3 {
+				q = 1
 			}
-			sum += int32(w) * int32(vec[c])
+			sum += int32(q) * int32(vec[c])
 		}
-		dst[r] = float32(sum) * combined
+		dst[r] = float32(sum-actSum) * (weightScale / actScale)
 	}
 }
 
 // MatVecTI2SI8S computes dst = transpose(mat) * vec where mat is GGML column-major [rows][cols]
 // stored in packed i2_s format with a global weight scale, and vec is quantized i8_s.
-func MatVecTI2SI8S(dst []float32, packed []byte, rows, cols int, vec []int8, weightScale, actScale float32) {
+func MatVecTI2SI8S(dst []float32, packed []byte, rows, cols int, vec []int8, weightScale, actScale float32, actSum int32) {
 	if rows <= 0 || cols <= 0 {
 		return
 	}
 	if len(dst) < cols || len(vec) < rows {
 		return
 	}
-	if rows*cols == 0 || len(packed) < (rows*cols+3)/4 {
+	if rows*cols == 0 || len(packed) < i2sPackedLen(rows*cols) {
 		return
 	}
-	combined := weightScale * actScale
 	for c := 0; c < cols; c++ {
 		var sum int32
 		for r := 0; r < rows; r++ {
 			idx := r + rows*c
-			b := packed[idx/4]
-			shift := uint(6 - 2*(idx%4))
-			q := (b >> shift) & 0x3
-			var w int8
-			switch q {
-			case 0:
-				w = -1
-			case 1:
-				w = 0
-			case 2:
-				w = 1
-			default:
-				w = 0
+			q := i2sPackedAt(packed, idx)
+			if q == 3 {
+				q = 1
 			}
-			sum += int32(w) * int32(vec[r])
+			sum += int32(q) * int32(vec[r])
 		}
-		dst[c] = float32(sum) * combined
+		dst[c] = float32(sum-actSum) * (weightScale / actScale)
 	}
 }

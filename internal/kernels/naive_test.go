@@ -83,22 +83,7 @@ func TestMatVecI2S(t *testing.T) {
 	// stored in GGML column-major (ne0=rows).
 	rows, cols := 2, 3
 	vals := []int{1, -1, 0, 1, 1, 0}
-	packed := make([]byte, (rows*cols+3)/4)
-	for i, v := range vals {
-		var q byte
-		switch v {
-		case -1:
-			q = 0
-		case 0:
-			q = 1
-		case 1:
-			q = 2
-		default:
-			q = 1
-		}
-		shift := uint(6 - 2*(i%4))
-		packed[i/4] |= q << shift
-	}
+	packed := packI2S(vals)
 	vec := []float32{2, -1, 0.5}
 	dst := make([]float32, rows)
 	MatVecI2S(dst, packed, rows, cols, vec, 1.0)
@@ -114,22 +99,7 @@ func TestMatVecI2S(t *testing.T) {
 func TestMatVecTI2S(t *testing.T) {
 	rows, cols := 2, 3
 	vals := []int{1, -1, 0, 1, 1, 0}
-	packed := make([]byte, (rows*cols+3)/4)
-	for i, v := range vals {
-		var q byte
-		switch v {
-		case -1:
-			q = 0
-		case 0:
-			q = 1
-		case 1:
-			q = 2
-		default:
-			q = 1
-		}
-		shift := uint(6 - 2*(i%4))
-		packed[i/4] |= q << shift
-	}
+	packed := packI2S(vals)
 	vec := []float32{2, -1}
 	dst := make([]float32, cols)
 	MatVecTI2S(dst, packed, rows, cols, vec, 1.0)
@@ -143,4 +113,31 @@ func TestMatVecTI2S(t *testing.T) {
 	if dst[2] != 2 {
 		t.Fatalf("dst[2] = %f, want 2", dst[2])
 	}
+}
+
+func packI2S(vals []int) []byte {
+	const block = 128
+	const blockBytes = 32
+	n := len(vals)
+	packed := make([]byte, (n+block-1)/block*blockBytes)
+	for i, v := range vals {
+		var q byte
+		switch v {
+		case -1:
+			q = 0
+		case 0:
+			q = 1
+		case 1:
+			q = 2
+		default:
+			q = 1
+		}
+		blk := i / block
+		off := i % block
+		gp := off % 32
+		group := off / 32
+		shift := uint(6 - 2*group)
+		packed[blk*blockBytes+gp] |= q << shift
+	}
+	return packed
 }

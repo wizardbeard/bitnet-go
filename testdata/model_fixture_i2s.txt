@@ -1,0 +1,1 @@
+ggml-model-i2_s.gguf

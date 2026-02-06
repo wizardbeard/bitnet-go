@@ -97,3 +97,20 @@ if [ "${BITNET_FETCH_IQ:-0}" = "1" ]; then
     printf '%s\n' "$iq_file" > "$TESTDATA_DIR/model_fixture_iq.txt"
     echo "Updated fixture: $TESTDATA_DIR/model_fixture_iq.txt"
 fi
+
+# Optional i2_s fixture for parity. Set BITNET_FETCH_I2S=1 to enable.
+if [ "${BITNET_FETCH_I2S:-0}" = "1" ]; then
+    if [ "${BITNET_I2S_MODEL_URL:-}" = "" ]; then
+        echo "BITNET_I2S_MODEL_URL is required when BITNET_FETCH_I2S=1." >&2
+        exit 1
+    fi
+    if [ "${BITNET_I2S_MODEL_FILE:-}" = "" ]; then
+        i2s_file=$(basename "$BITNET_I2S_MODEL_URL")
+    else
+        i2s_file=$BITNET_I2S_MODEL_FILE
+    fi
+    i2s_min_size=${BITNET_I2S_MODEL_MIN_SIZE:-1000000}
+    fetch_url "$BITNET_I2S_MODEL_URL" "$TESTDATA_DIR/$i2s_file" "$i2s_min_size" "${BITNET_I2S_MODEL_SHA256:-}"
+    printf '%s\n' "$i2s_file" > "$TESTDATA_DIR/model_fixture_i2s.txt"
+    echo "Updated fixture: $TESTDATA_DIR/model_fixture_i2s.txt"
+fi

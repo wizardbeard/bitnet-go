@@ -82,16 +82,14 @@ func matVecI2SGeneric(dst []float32, packed []byte, rows, cols int, vec []float3
 	if len(dst) < rows || len(vec) < cols {
 		return
 	}
-	if rows*cols == 0 || len(packed) < (rows*cols+3)/4 {
+	if rows*cols == 0 || len(packed) < i2sPackedLen(rows*cols) {
 		return
 	}
 	for r := 0; r < rows; r++ {
 		var sum float32
 		for c := 0; c < cols; c++ {
 			idx := r + rows*c
-			b := packed[idx/4]
-			shift := uint(6 - 2*(idx%4))
-			q := (b >> shift) & 0x3
+			q := i2sPackedAt(packed, idx)
 			var w float32
 			switch q {
 			case 0:
@@ -118,16 +116,14 @@ func matVecTI2SGeneric(dst []float32, packed []byte, rows, cols int, vec []float
 	if len(dst) < cols || len(vec) < rows {
 		return
 	}
-	if rows*cols == 0 || len(packed) < (rows*cols+3)/4 {
+	if rows*cols == 0 || len(packed) < i2sPackedLen(rows*cols) {
 		return
 	}
 	for c := 0; c < cols; c++ {
 		var sum float32
 		for r := 0; r < rows; r++ {
 			idx := r + rows*c
-			b := packed[idx/4]
-			shift := uint(6 - 2*(idx%4))
-			q := (b >> shift) & 0x3
+			q := i2sPackedAt(packed, idx)
 			var w float32
 			switch q {
 			case 0:

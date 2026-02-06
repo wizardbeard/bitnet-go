@@ -284,6 +284,99 @@ func TestParityAgainstYarnVectors(t *testing.T) {
 	}
 }
 
+func TestParityAgainstI2SVectors(t *testing.T) {
+	if os.Getenv("BITNET_ENFORCE_I2S") != "1" {
+		t.Skip("set BITNET_ENFORCE_I2S=1 to enforce i2_s parity vectors")
+	}
+
+	root := filepath.Join("..", "..", "testdata")
+
+	tokenBytes, err := os.ReadFile(filepath.Join(root, "expected.i2s.tokens.json"))
+	if err != nil {
+		t.Fatalf("read expected.i2s.tokens.json: %v; run scripts/run_ref_i2s.sh", err)
+	}
+	var want []int32
+	if err := json.Unmarshal(tokenBytes, &want); err != nil {
+		t.Fatalf("decode expected.i2s.tokens.json: %v", err)
+	}
+	if len(want) == 0 {
+		t.Fatalf("expected.i2s.tokens.json is empty; run scripts/run_ref_i2s.sh to freeze vectors")
+	}
+
+	promptBytes, err := os.ReadFile(filepath.Join(root, "prompt.txt"))
+	if err != nil {
+		t.Fatalf("read prompt.txt: %v", err)
+	}
+	promptBytes = bytesTrimSpace(promptBytes)
+
+	modelFixture, err := os.ReadFile(filepath.Join(root, "model_fixture_i2s.txt"))
+	if err != nil {
+		t.Fatalf("read model_fixture_i2s.txt: %v", err)
+	}
+	modelPath := filepath.Join(root, string(bytesTrimSpace(modelFixture)))
+
+	session, err := LoadModel(context.Background(), modelPath)
+	if err != nil {
+		t.Fatalf("LoadModel() error = %v", err)
+	}
+
+	got, err := session.Generate(context.Background(), GenerateRequest{
+		Prompt:    string(promptBytes),
+		Seed:      1,
+		MaxTokens: len(want),
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if len(got.TokenIDs) != len(want) {
+		t.Fatalf("token length mismatch: got=%d want=%d", len(got.TokenIDs), len(want))
+	}
+	for i := range want {
+		if got.TokenIDs[i] != want[i] {
+			t.Fatalf("token mismatch at step %d: got=%d want=%d", i, got.TokenIDs[i], want[i])
+		}
+	}
+
+	topkBytes, err := os.ReadFile(filepath.Join(root, "expected.i2s.topk_logits.json"))
+	if err != nil {
+		t.Fatalf("read expected.i2s.topk_logits.json: %v", err)
+	}
+	var wantTopK []topKStep
+	if err := json.Unmarshal(topkBytes, &wantTopK); err != nil {
+		t.Fatalf("decode expected.i2s.topk_logits.json: %v", err)
+	}
+	if len(got.TopK) != len(wantTopK) {
+		t.Fatalf("topk step mismatch: got=%d want=%d", len(got.TopK), len(wantTopK))
+	}
+	atol := envFloat32("BITNET_PARITY_LOGIT_ATOL", 1e-3)
+	rtol := envFloat32("BITNET_PARITY_LOGIT_RTOL", 1e-3)
+	strictK := envInt("BITNET_PARITY_TOPK_STRICT", 3)
+	for i := range wantTopK {
+		if got.TopK[i].Step != wantTopK[i].Step {
+			t.Fatalf("topk step id mismatch at index %d: got=%d want=%d", i, got.TopK[i].Step, wantTopK[i].Step)
+		}
+		if len(got.TopK[i].Entries) != len(wantTopK[i].Entries) {
+			t.Fatalf("topk entry count mismatch at step %d: got=%d want=%d", i, len(got.TopK[i].Entries), len(wantTopK[i].Entries))
+		}
+		if strictK < 1 {
+			strictK = 1
+		}
+		if strictK > len(wantTopK[i].Entries) {
+			strictK = len(wantTopK[i].Entries)
+		}
+		for j := 0; j < strictK; j++ {
+			g := got.TopK[i].Entries[j]
+			w := wantTopK[i].Entries[j]
+			if g.TokenID != w.TokenID {
+				t.Fatalf("topk token mismatch step=%d rank=%d: got=%d want=%d", i, j, g.TokenID, w.TokenID)
+			}
+			if !closeLogit(g.Logit, w.Logit, atol, rtol) {
+				t.Fatalf("topk logit mismatch step=%d rank=%d: got=%f want=%f atol=%f rtol=%f", i, j, g.Logit, w.Logit, atol, rtol)
+			}
+		}
+	}
+}
+
 func bytesTrimSpace(b []byte) []byte {
 	start := 0
 	for start < len(b) && (b[start] == ' ' || b[start] == '\t' || b[start] == '\n' || b[start] == '\r') {

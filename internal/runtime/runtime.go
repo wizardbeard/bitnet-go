@@ -6,6 +6,8 @@ import (
 	"math"
 	"os"
 	"strconv"
+	"strings"
+	"sync"
 
 	"bitnet-go/internal/gguf"
 	"bitnet-go/internal/kernels"
@@ -46,8 +48,22 @@ type Runtime struct {
 
 var debugStep0 = os.Getenv("BITNET_DEBUG_STEP0") == "1"
 var disableFFN = os.Getenv("BITNET_DISABLE_FFN") == "1"
+var disableAttn = os.Getenv("BITNET_DISABLE_ATTN") == "1"
+var disableLayers = os.Getenv("BITNET_DISABLE_LAYERS") == "1"
+var debugOutput = os.Getenv("BITNET_DEBUG_OUTPUT") == "1"
+var debugOutputOnly = os.Getenv("BITNET_DEBUG_OUTPUT_ONLY") == "1"
+var debugStages = os.Getenv("BITNET_DEBUG_STAGES") == "1"
 var debugPos = parseDebugPos(os.Getenv("BITNET_DEBUG_POS"))
+var debugTokens = parseDebugTokens(os.Getenv("BITNET_DEBUG_TOKENS"))
 var debugStep0Printed bool
+var debugI2SDisableActSum = os.Getenv("BITNET_I2S_DISABLE_ACTSUM") == "1"
+var debugI2SInvertActScale = os.Getenv("BITNET_I2S_INVERT_ACT_SCALE") == "1"
+var debugI2SFloat = os.Getenv("BITNET_I2S_F32") == "1"
+var i8ScratchPool = sync.Pool{
+	New: func() any {
+		return make([]int8, 0)
+	},
+}
 
 func parseDebugPos(v string) int {
 	if v == "" {
@@ -58,6 +74,26 @@ func parseDebugPos(v string) int {
 		return -1
 	}
 	return n
+}
+
+func parseDebugTokens(v string) []int {
+	if v == "" {
+		return []int{0, 1, 2, 3, 4}
+	}
+	parts := strings.Split(v, ",")
+	out := make([]int, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		n, err := strconv.Atoi(part)
+		if err != nil {
+			continue
+		}
+		out = append(out, n)
+	}
+	return out
 }
 
 func shouldDebug(pos int) bool {
@@ -87,11 +123,13 @@ func New(_ context.Context, modelPath string) (*Runtime, error) {
 
 	arch, _ := info.KeyValues["general.architecture"].(string)
 	ctxLen := firstUint32(
+		info.KeyValues["bitnet-b1.58.context_length"],
 		info.KeyValues["llama.context_length"],
 		info.KeyValues["falcon.context_length"],
 		info.KeyValues["gpt2.context_length"],
 	)
 	vocab := firstUint32(
+		info.KeyValues["bitnet-b1.58.vocab_size"],
 		info.KeyValues["llama.vocab_size"],
 		info.KeyValues["gpt2.vocab_size"],
 		info.KeyValues["tokenizer.ggml.tokens_count"],
@@ -429,16 +467,33 @@ func loadLlamaStack(path string, info gguf.ModelInfo) (*tensorBlock, bool, error
 		vocabDim:      vocab,
 		tokenEmbdRows: hidden,
 		tokenEmbdCols: vocab,
-		rmsEps:        firstFloat32(info.KeyValues["llama.attention.layer_norm_rms_epsilon"], float32(1e-5)),
-		attnHeads:     int(firstUint32(info.KeyValues["llama.attention.head_count"])),
-		kvHeads:       int(firstUint32(info.KeyValues["llama.attention.head_count_kv"])),
-		ropeFreqBase:  firstFloat32(info.KeyValues["llama.rope.freq_base"], float32(10000)),
+		rmsEps: firstFloat32From(
+			float32(1e-5),
+			info.KeyValues["llama.attention.layer_norm_rms_epsilon"],
+			info.KeyValues["bitnet-b1.58.attention.layer_norm_rms_epsilon"],
+		),
+		attnHeads: int(firstUint32(
+			info.KeyValues["llama.attention.head_count"],
+			info.KeyValues["bitnet-b1.58.attention.head_count"],
+		)),
+		kvHeads: int(firstUint32(
+			info.KeyValues["llama.attention.head_count_kv"],
+			info.KeyValues["bitnet-b1.58.attention.head_count_kv"],
+		)),
+		ropeFreqBase: firstFloat32From(
+			float32(10000),
+			info.KeyValues["llama.rope.freq_base"],
+			info.KeyValues["bitnet-b1.58.rope.freq_base"],
+		),
 		ropeScale:     firstFloat32(info.KeyValues["llama.rope.scaling.factor"], 1.0),
 		ropeScalingType: firstString(
 			info.KeyValues["llama.rope.scaling.type"],
 			info.KeyValues["llama.rope.scaling_type"],
 		),
-		ropeDim:            int(firstUint32(info.KeyValues["llama.rope.dimension_count"])),
+		ropeDim: int(firstUint32(
+			info.KeyValues["llama.rope.dimension_count"],
+			info.KeyValues["bitnet-b1.58.rope.dimension_count"],
+		)),
 		ropeYarnBetaFast:   firstFloat32(info.KeyValues["llama.rope.scaling.beta_fast"], 0),
 		ropeYarnBetaSlow:   firstFloat32(info.KeyValues["llama.rope.scaling.beta_slow"], 0),
 		ropeYarnOrigCtx:    firstFloat32(info.KeyValues["llama.rope.scaling.original_context_length"], 0),
@@ -763,44 +818,125 @@ func makeLlamaLayerState(layer llamaLayer, hiddenDim, maxSeq, heads int) llamaLa
 }
 
 func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token int32, pos int, x, n1, n2, logits []float32) {
-	if !embedToken(x, block, token) {
+	embedded := embedToken(x, block, token)
+	if !embedded {
 		fillTokenVector(x, token)
+	}
+
+	var stageNormBuf []float32
+	if debugStages && shouldDebug(pos) {
+		stageNormBuf = make([]float32, block.hiddenDim)
+		debugStage("stage.embed", x, block, stageNormBuf, false)
+	}
+
+	if debugOutput && shouldDebug(pos) && embedded {
+		fmt.Fprintf(os.Stderr, "debug emb dims rows=%d cols=%d\n", block.tokenEmbdRows, block.tokenEmbdCols)
+		fmt.Fprintf(os.Stderr, "debug output dims rows=%d cols=%d transposed=%v qtype=%d\n", block.outputRows, block.outputCols, block.outputTransposed, block.outputWeightType)
+
+		xCol := make([]float32, block.hiddenDim)
+		copy(xCol, x)
+		xRow := make([]float32, block.hiddenDim)
+		for r := 0; r < block.hiddenDim; r++ {
+			xRow[r] = block.tokenEmbd[int(token)+block.tokenEmbdCols*r]
+		}
+		debugVecStats("embed.col", xCol)
+		debugVecStats("embed.row", xRow)
+		debugVecDiff("embed.col_vs_row", xCol, xRow)
+
+		nCol := make([]float32, block.hiddenDim)
+		nRow := make([]float32, block.hiddenDim)
+		rmsNormInto(nCol, xCol, block.outputNorm, block.rmsEps)
+		rmsNormInto(nRow, xRow, block.outputNorm, block.rmsEps)
+		debugVecStats("output_norm.col", nCol)
+		debugVecStats("output_norm.row", nRow)
+		debugVecDiff("output_norm.col_vs_row", nCol, nRow)
+
+		w := linearWeight{
+			data:       block.outputWeight,
+			rows:       block.outputRows,
+			cols:       block.outputCols,
+			transposed: block.outputTransposed,
+			qtype:      block.outputWeightType,
+			i2sPacked:  block.outputWeightPacked,
+			i2sScale:   block.outputWeightScale,
+		}
+		debugLogitsForTokens("col", w, nCol)
+		debugLogitsForTokens("row", w, nRow)
+		debugStep0Printed = true
+	}
+	if debugOutputOnly && debugStep0Printed {
+		return
+	}
+
+	if disableLayers {
+		if shouldDebug(pos) {
+			fmt.Fprintln(os.Stderr, "debug layers: disabled")
+		}
+		rmsNormInto(n1, x, block.outputNorm, block.rmsEps)
+		linearApplyIntoWeight(logits, linearWeight{
+			data:       block.outputWeight,
+			rows:       block.outputRows,
+			cols:       block.outputCols,
+			transposed: block.outputTransposed,
+			qtype:      block.outputWeightType,
+			i2sPacked:  block.outputWeightPacked,
+			i2sScale:   block.outputWeightScale,
+		}, n1)
+		if shouldDebug(pos) {
+			debugVecStats("output_norm", n1)
+			debugVecStats("logits", logits)
+			debugStep0Printed = true
+		}
+		return
 	}
 
 	for i := range block.layers {
 		layer := block.layers[i]
 		st := &layerStates[i]
 
-		rmsNormInto(n1, x, layer.attnNorm, block.rmsEps)
-		if shouldDebug(pos) && i == 0 {
-			debugVecStats("x.embed", x)
-			debugVecStats("attn_norm", n1)
-		}
-		linearApplyIntoWeight(st.q, layer.attnQ, n1)
-		linearApplyIntoWeight(st.k, layer.attnK, n1)
-		linearApplyIntoWeight(st.v, layer.attnV, n1)
-		if shouldDebug(pos) && i == 0 {
-			debugVecStats("q", st.q)
-			debugVecStats("k", st.k)
-			debugVecStats("v", st.v)
-		}
-		applyRoPEInPlace(st.q, pos, block.attnHeads, block.ropeFreqBase, block.ropeScale, block.ropeScalingType, block.ropeDim, block.ropeYarnBetaFast, block.ropeYarnBetaSlow, block.ropeYarnExtFactor, block.ropeYarnAttnFactor)
-		applyRoPEInPlace(st.k, pos, block.kvHeads, block.ropeFreqBase, block.ropeScale, block.ropeScalingType, block.ropeDim, block.ropeYarnBetaFast, block.ropeYarnBetaSlow, block.ropeYarnExtFactor, block.ropeYarnAttnFactor)
+		if !disableAttn {
+			rmsNormInto(n1, x, layer.attnNorm, block.rmsEps)
+			if debugStages && shouldDebug(pos) && i == 0 {
+				debugStage("stage.attn_norm", n1, block, stageNormBuf, false)
+			}
+			if shouldDebug(pos) && i == 0 {
+				debugVecStats("x.embed", x)
+				debugVecStats("attn_norm", n1)
+			}
+			linearApplyIntoWeight(st.q, layer.attnQ, n1)
+			linearApplyIntoWeight(st.k, layer.attnK, n1)
+			linearApplyIntoWeight(st.v, layer.attnV, n1)
+			if shouldDebug(pos) && i == 0 {
+				debugVecStats("q", st.q)
+				debugVecStats("k", st.k)
+				debugVecStats("v", st.v)
+			}
+			applyRoPEInPlace(st.q, pos, block.attnHeads, block.ropeFreqBase, block.ropeScale, block.ropeScalingType, block.ropeDim, block.ropeYarnBetaFast, block.ropeYarnBetaSlow, block.ropeYarnExtFactor, block.ropeYarnAttnFactor)
+			applyRoPEInPlace(st.k, pos, block.kvHeads, block.ropeFreqBase, block.ropeScale, block.ropeScalingType, block.ropeDim, block.ropeYarnBetaFast, block.ropeYarnBetaSlow, block.ropeYarnExtFactor, block.ropeYarnAttnFactor)
 
-		storeCacheVector(st.keys, pos, st.k)
-		storeCacheVector(st.values, pos, st.v)
-		causalAttentionMultiHeadInto(st.attnAcc, st.scores, st.q, st.keys, st.values, pos+1, block.attnHeads, block.kvHeads, len(st.k), len(st.v))
+			storeCacheVector(st.keys, pos, st.k)
+			storeCacheVector(st.values, pos, st.v)
+			causalAttentionMultiHeadInto(st.attnAcc, st.scores, st.q, st.keys, st.values, pos+1, block.attnHeads, block.kvHeads, len(st.k), len(st.v))
 
-		linearApplyIntoWeight(st.attnOut, layer.attnOut, st.attnAcc)
-		kernels.AddScaled(x, st.attnOut, 1.0)
-		if shouldDebug(pos) && i == 0 {
-			debugVecStats("attn_acc", st.attnAcc)
-			debugVecStats("attn_out", st.attnOut)
-			debugVecStats("x.post_attn", x)
+			linearApplyIntoWeight(st.attnOut, layer.attnOut, st.attnAcc)
+			kernels.AddScaled(x, st.attnOut, 1.0)
+			if debugStages && shouldDebug(pos) && i == 0 {
+				debugStage("stage.post_attn", x, block, stageNormBuf, false)
+			}
+			if shouldDebug(pos) && i == 0 {
+				debugVecStats("attn_acc", st.attnAcc)
+				debugVecStats("attn_out", st.attnOut)
+				debugVecStats("x.post_attn", x)
+			}
+		} else if shouldDebug(pos) && i == 0 {
+			fmt.Fprintln(os.Stderr, "debug attn: disabled")
 		}
 
 		if !disableFFN {
 			rmsNormInto(n2, x, layer.ffnNorm, block.rmsEps)
+			if debugStages && shouldDebug(pos) && i == 0 {
+				debugStage("stage.ffn_norm", n2, block, stageNormBuf, false)
+			}
 			linearApplyIntoWeight(st.gate, layer.ffnGate, n2)
 			linearApplyIntoWeight(st.up, layer.ffnUp, n2)
 			if shouldDebug(pos) && i == 0 {
@@ -818,6 +954,9 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 			}
 			linearApplyIntoWeight(st.ffnDown, layer.ffnDown, st.ffnAct)
 			kernels.AddScaled(x, st.ffnDown, 1.0)
+			if debugStages && shouldDebug(pos) && i == 0 {
+				debugStage("stage.post_ffn", x, block, stageNormBuf, false)
+			}
 			if shouldDebug(pos) && i == 0 {
 				debugVecStats("ffn_act", st.ffnAct)
 				debugVecStats("ffn_down", st.ffnDown)
@@ -829,6 +968,9 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 	}
 
 	rmsNormInto(n1, x, block.outputNorm, block.rmsEps)
+	if debugStages && shouldDebug(pos) {
+		debugStage("stage.output_norm", n1, block, stageNormBuf, true)
+	}
 	linearApplyIntoWeight(logits, linearWeight{
 		data:       block.outputWeight,
 		rows:       block.outputRows,
@@ -1094,6 +1236,148 @@ func debugVecStats(label string, v []float32) {
 	fmt.Fprintf(os.Stderr, "debug %s: n=%d min=%g max=%g mean=%g rms=%g\n", label, len(v), min, max, mean, rms)
 }
 
+func debugVecDiff(label string, a, b []float32) {
+	if len(a) == 0 || len(b) == 0 {
+		fmt.Fprintf(os.Stderr, "debug %s: empty\n", label)
+		return
+	}
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
+	}
+	var sum float32
+	var maxAbs float32
+	for i := 0; i < n; i++ {
+		d := a[i] - b[i]
+		if d < 0 {
+			d = -d
+		}
+		sum += d
+		if d > maxAbs {
+			maxAbs = d
+		}
+	}
+	mean := sum / float32(n)
+	fmt.Fprintf(os.Stderr, "debug %s: n=%d mean_abs=%g max_abs=%g\n", label, n, mean, maxAbs)
+}
+
+func debugLogitsForTokens(label string, w linearWeight, x []float32) {
+	if len(debugTokens) == 0 {
+		return
+	}
+	if w.qtype == gguf.GGMLTypeI2_S && len(w.i2sPacked) > 0 {
+		vec := make([]int8, len(x))
+		actScale, actSum := kernels.QuantizeRowI8S(vec, x)
+		for _, tok := range debugTokens {
+			v := i2sLogitForToken(w.i2sPacked, w.rows, w.cols, tok, vec, w.i2sScale, actScale, actSum, w.transposed)
+			alt := i2sLogitForToken(w.i2sPacked, w.rows, w.cols, tok, vec, w.i2sScale, actScale, actSum, !w.transposed)
+			fmt.Fprintf(os.Stderr, "debug logits.%s token=%d logit=%g altT=%g\n", label, tok, v, alt)
+		}
+		return
+	}
+	for _, tok := range debugTokens {
+		v := f32LogitForToken(w.data, w.rows, w.cols, tok, x, w.transposed)
+		alt := f32LogitForToken(w.data, w.rows, w.cols, tok, x, !w.transposed)
+		fmt.Fprintf(os.Stderr, "debug logits.%s token=%d logit=%g altT=%g\n", label, tok, v, alt)
+	}
+}
+
+func debugStage(label string, vec []float32, block *tensorBlock, normBuf []float32, alreadyNorm bool) {
+	debugVecStats(label, vec)
+	w := linearWeight{
+		data:       block.outputWeight,
+		rows:       block.outputRows,
+		cols:       block.outputCols,
+		transposed: block.outputTransposed,
+		qtype:      block.outputWeightType,
+		i2sPacked:  block.outputWeightPacked,
+		i2sScale:   block.outputWeightScale,
+	}
+	if alreadyNorm {
+		debugLogitsForTokens(label, w, vec)
+		return
+	}
+	if len(normBuf) < len(vec) {
+		return
+	}
+	rmsNormInto(normBuf[:len(vec)], vec, block.outputNorm, block.rmsEps)
+	debugVecStats(label+".outnorm", normBuf[:len(vec)])
+	debugLogitsForTokens(label+".outnorm", w, normBuf[:len(vec)])
+}
+
+func f32LogitForToken(mat []float32, rows, cols, token int, x []float32, transposed bool) float32 {
+	if transposed {
+		if token < 0 || token >= cols || len(x) < rows {
+			return 0
+		}
+		var sum float32
+		for r := 0; r < rows; r++ {
+			sum += mat[r+rows*token] * x[r]
+		}
+		return sum
+	}
+	if token < 0 || token >= rows || len(x) < cols {
+		return 0
+	}
+	var sum float32
+	for c := 0; c < cols; c++ {
+		sum += mat[token+rows*c] * x[c]
+	}
+	return sum
+}
+
+func i2sLogitForToken(packed []byte, rows, cols, token int, vec []int8, weightScale, actScale float32, actSum int32, transposed bool) float32 {
+	if actScale == 0 {
+		return 0
+	}
+	if transposed {
+		if token < 0 || token >= cols || len(vec) < rows {
+			return 0
+		}
+		var sum int32
+		for r := 0; r < rows; r++ {
+			idx := r + rows*token
+			q := i2sPackedAtLocal(packed, idx)
+			if q == 3 {
+				q = 1
+			}
+			sum += int32(q) * int32(vec[r])
+		}
+		return float32(sum-actSum) * (weightScale / actScale)
+	}
+	if token < 0 || token >= rows || len(vec) < cols {
+		return 0
+	}
+	var sum int32
+	for c := 0; c < cols; c++ {
+		idx := token + rows*c
+		q := i2sPackedAtLocal(packed, idx)
+		if q == 3 {
+			q = 1
+		}
+		sum += int32(q) * int32(vec[c])
+	}
+	return float32(sum-actSum) * (weightScale / actScale)
+}
+
+func i2sPackedAtLocal(packed []byte, idx int) byte {
+	if idx < 0 {
+		return 0
+	}
+	const block = 128
+	const blockBytes = 32
+	bi := idx / block
+	off := idx % block
+	gp := off % 32
+	group := off / 32
+	p := bi*blockBytes + gp
+	if p < 0 || p >= len(packed) {
+		return 0
+	}
+	shift := uint(6 - 2*group)
+	return (packed[p] >> shift) & 0x3
+}
+
 func linearOutputLen(w linearWeight) int {
 	if w.transposed {
 		return w.cols
@@ -1103,11 +1387,33 @@ func linearOutputLen(w linearWeight) int {
 
 func linearApplyIntoWeight(dst []float32, w linearWeight, x []float32) {
 	if w.qtype == gguf.GGMLTypeI2_S && len(w.i2sPacked) > 0 {
-		if w.transposed {
-			kernels.MatVecTI2S(dst, w.i2sPacked, w.rows, w.cols, x, w.i2sScale)
+		if debugI2SFloat {
+			if w.transposed {
+				kernels.MatVecTI2S(dst, w.i2sPacked, w.rows, w.cols, x, w.i2sScale)
+			} else {
+				kernels.MatVecI2S(dst, w.i2sPacked, w.rows, w.cols, x, w.i2sScale)
+			}
 			return
 		}
-		kernels.MatVecI2S(dst, w.i2sPacked, w.rows, w.cols, x, w.i2sScale)
+		scratch := i8ScratchPool.Get().([]int8)
+		if cap(scratch) < len(x) {
+			scratch = make([]int8, len(x))
+		} else {
+			scratch = scratch[:len(x)]
+		}
+		actScale, actSum := kernels.QuantizeRowI8S(scratch, x)
+		if debugI2SDisableActSum {
+			actSum = 0
+		}
+		if debugI2SInvertActScale && actScale != 0 {
+			actScale = 1 / actScale
+		}
+		if w.transposed {
+			kernels.MatVecTI2SI8S(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
+		} else {
+			kernels.MatVecI2SI8S(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
+		}
+		i8ScratchPool.Put(scratch[:0])
 		return
 	}
 	if w.transposed {
@@ -1115,6 +1421,11 @@ func linearApplyIntoWeight(dst []float32, w linearWeight, x []float32) {
 		return
 	}
 	kernels.MatVec(dst, w.data, w.rows, w.cols, x)
+}
+
+func linearApplyIntoWeightTransposed(dst []float32, w linearWeight, x []float32, transposed bool) {
+	w.transposed = transposed
+	linearApplyIntoWeight(dst, w, x)
 }
 
 func loadLinearWeight(path string, info gguf.ModelInfo, name string, inDim int) (linearWeight, error) {
@@ -1187,6 +1498,26 @@ func firstFloat32(v any, fallback float32) float32 {
 	default:
 		return fallback
 	}
+}
+
+func firstFloat32From(fallback float32, values ...any) float32 {
+	for _, v := range values {
+		switch x := v.(type) {
+		case float32:
+			return x
+		case float64:
+			return float32(x)
+		case uint32:
+			return float32(x)
+		case uint64:
+			return float32(x)
+		case int32:
+			return float32(x)
+		case int64:
+			return float32(x)
+		}
+	}
+	return fallback
 }
 
 func firstString(values ...any) string {
