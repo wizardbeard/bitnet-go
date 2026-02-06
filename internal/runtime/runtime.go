@@ -61,6 +61,7 @@ var debugValuesN = parseDebugValuesN(os.Getenv("BITNET_DEBUG_VALUES_N"))
 var debugPos = parseDebugPos(os.Getenv("BITNET_DEBUG_POS"))
 var debugTokens = parseDebugTokens(os.Getenv("BITNET_DEBUG_TOKENS"))
 var debugSoftmaxPrinted bool
+var debugStrictAttention = os.Getenv("BITNET_STRICT_ATTENTION") == "1"
 var debugStep0Printed bool
 var debugI2SDisableActSum = os.Getenv("BITNET_I2S_DISABLE_ACTSUM") == "1"
 var debugI2SInvertActScale = os.Getenv("BITNET_I2S_INVERT_ACT_SCALE") == "1"
@@ -1203,6 +1204,12 @@ func causalAttentionMultiHeadInto(dst, scores, q, keys, values []float32, steps,
 			continue
 		}
 		inv := 1 / sum
+		if debugStrictAttention {
+			for i := 0; i < steps; i++ {
+				idx := h*steps + i
+				scores[idx] *= inv
+			}
+		}
 		if debugValues && h == 0 && shouldDebug(pos) && !debugSoftmaxPrinted {
 			limit := steps
 			if limit > debugValuesN {
@@ -1214,11 +1221,20 @@ func causalAttentionMultiHeadInto(dst, scores, q, keys, values []float32, steps,
 					if i > 0 {
 						fmt.Fprint(os.Stderr, ",")
 					}
-					fmt.Fprintf(os.Stderr, "%.9g", scores[i]*inv)
+					fmt.Fprintf(os.Stderr, "%.9g", scores[i])
 				}
 				fmt.Fprintln(os.Stderr)
 				debugSoftmaxPrinted = true
 			}
+		}
+		if debugStrictAttention {
+			vHeadBase := kvHead * headDim * maxSeq
+			weights := scores[h*steps : h*steps+steps]
+			for j := 0; j < headDim; j++ {
+				rowBase := vHeadBase + j*maxSeq
+				dst[qBase+j] += dotF32GGML(weights, values[rowBase:rowBase+steps])
+			}
+			continue
 		}
 		for i := 0; i < steps; i++ {
 			w := scores[h*steps+i] * inv
@@ -1229,6 +1245,42 @@ func causalAttentionMultiHeadInto(dst, scores, q, keys, values []float32, steps,
 			}
 		}
 	}
+}
+
+func dotF32GGML(a, b []float32) float32 {
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
+	}
+	const step = 32
+	const epr = 8
+	const arr = step / epr
+	np := n & ^(step - 1)
+	var sum0, sum1, sum2, sum3 float32
+	for i := 0; i < np; i += step {
+		for j := 0; j < arr; j++ {
+			base := i + j*epr
+			var s float32
+			for k := 0; k < epr; k++ {
+				s += a[base+k] * b[base+k]
+			}
+			switch j {
+			case 0:
+				sum0 += s
+			case 1:
+				sum1 += s
+			case 2:
+				sum2 += s
+			default:
+				sum3 += s
+			}
+		}
+	}
+	sum := sum0 + sum1 + sum2 + sum3
+	for i := np; i < n; i++ {
+		sum += a[i] * b[i]
+	}
+	return sum
 }
 
 func storeCacheVector(cache []float32, pos int, vec []float32) {
