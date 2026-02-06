@@ -72,11 +72,11 @@ else
 fi
 
 # Vocab-only GGUF fixtures for tokenizer tests.
-fetch_url "${BITNET_GPT2_VOCAB_URL:-https://huggingface.co/ggml-org/models/resolve/main/ggml-vocab-gpt-2.gguf}" \
+fetch_url "${BITNET_GPT2_VOCAB_URL:-https://huggingface.co/spaces/Steven10429/apply_lora_and_quantize/resolve/main/llama.cpp/models/ggml-vocab-gpt-2.gguf}" \
     "$TESTDATA_DIR/ggml-vocab-gpt-2.gguf" 1000000 "${BITNET_GPT2_VOCAB_SHA256:-}"
-fetch_url "${BITNET_FALCON_VOCAB_URL:-https://huggingface.co/ggml-org/models/resolve/main/ggml-vocab-falcon.gguf}" \
+fetch_url "${BITNET_FALCON_VOCAB_URL:-https://huggingface.co/spaces/Steven10429/apply_lora_and_quantize/resolve/main/llama.cpp/models/ggml-vocab-falcon.gguf}" \
     "$TESTDATA_DIR/ggml-vocab-falcon.gguf" 1000000 "${BITNET_FALCON_VOCAB_SHA256:-}"
-fetch_url "${BITNET_QWEN2_VOCAB_URL:-https://huggingface.co/ggml-org/models/resolve/main/ggml-vocab-qwen2.gguf}" \
+fetch_url "${BITNET_QWEN2_VOCAB_URL:-https://huggingface.co/spaces/Steven10429/apply_lora_and_quantize/resolve/main/llama.cpp/models/ggml-vocab-qwen2.gguf}" \
     "$TESTDATA_DIR/ggml-vocab-qwen2.gguf" 1000000 "${BITNET_QWEN2_VOCAB_SHA256:-}"
 
 # Optional YaRN model for parity. Set BITNET_FETCH_YARN=1 to enable.
