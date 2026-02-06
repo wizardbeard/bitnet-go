@@ -12,9 +12,9 @@ import (
 
 func main() {
 	var (
-		modelPath = flag.String("model", "", "Path to GGUF model")
-		showKV    = flag.Bool("kv", true, "Print GGUF key-values")
-		kvPrefix  = flag.String("kv-prefix", "", "Only print KV keys with this prefix")
+		modelPath   = flag.String("model", "", "Path to GGUF model")
+		showKV      = flag.Bool("kv", true, "Print GGUF key-values")
+		kvPrefix    = flag.String("kv-prefix", "", "Only print KV keys with this prefix")
 		showTensors = flag.Bool("tensors", true, "Print tensor directory")
 	)
 	flag.Parse()
