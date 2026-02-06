@@ -249,6 +249,7 @@ type tensorBlock struct {
 	ropeScale            float32
 	ropeScalingType      string
 	ropeDim              int
+	ropeNeox             bool
 	ropeYarnBetaFast     float32
 	ropeYarnBetaSlow     float32
 	ropeYarnOrigCtx      float32
@@ -470,6 +471,7 @@ func loadLlamaStack(path string, info gguf.ModelInfo) (*tensorBlock, bool, error
 	}
 	arch, _ := info.KeyValues["general.architecture"].(string)
 	useTokEmbOut := arch == "bitnet-b1.58" || arch == "bitnet" || arch == "bitnet-25"
+	ropeNeox := arch == "bitnet-b1.58" || arch == "bitnet" || arch == "bitnet-25"
 
 	embInfo, ok := info.TensorByName("token_embd.weight")
 	if !ok {
@@ -517,6 +519,7 @@ func loadLlamaStack(path string, info gguf.ModelInfo) (*tensorBlock, bool, error
 			info.KeyValues["llama.rope.dimension_count"],
 			info.KeyValues["bitnet-b1.58.rope.dimension_count"],
 		)),
+		ropeNeox: ropeNeox,
 		ropeYarnBetaFast:   firstFloat32(info.KeyValues["llama.rope.scaling.beta_fast"], 0),
 		ropeYarnBetaSlow:   firstFloat32(info.KeyValues["llama.rope.scaling.beta_slow"], 0),
 		ropeYarnOrigCtx:    firstFloat32(info.KeyValues["llama.rope.scaling.original_context_length"], 0),
@@ -965,8 +968,8 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 				debugStage("stage.attn_norm", n1, block, stageNormBuf, false)
 			}
 			if shouldDebug(pos) && i == 0 {
-				debugVecStats("x.embed", x)
-				debugVecStats("attn_norm", n1)
+				debugVecStats("inp_embd", x)
+				debugVecStats("attn_norm-0", n1)
 			}
 			linearApplyIntoWeight(st.q, layer.attnQ, n1)
 			linearApplyIntoWeight(st.k, layer.attnK, n1)
@@ -985,15 +988,18 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 				debugVecSlice("k.pre", st.k, 8)
 			}
 			if shouldDebug(pos) && i == 0 {
-				debugVecStats("q", st.q)
-				debugVecStats("k", st.k)
-				debugVecStats("v", st.v)
+				debugVecStats("Qcur-0", st.q)
+				debugVecStats("Kcur-0", st.k)
+				debugVecStats("Vcur-0", st.v)
 			}
-			applyRoPEInPlace(st.q, pos, block.attnHeads, block.ropeFreqBase, block.ropeScale, block.ropeScalingType, block.ropeDim, block.ropeYarnBetaFast, block.ropeYarnBetaSlow, block.ropeYarnExtFactor, block.ropeYarnAttnFactor)
-			applyRoPEInPlace(st.k, pos, block.kvHeads, block.ropeFreqBase, block.ropeScale, block.ropeScalingType, block.ropeDim, block.ropeYarnBetaFast, block.ropeYarnBetaSlow, block.ropeYarnExtFactor, block.ropeYarnAttnFactor)
+			applyRoPEInPlace(st.q, pos, block.attnHeads, block.ropeFreqBase, block.ropeScale, block.ropeScalingType, block.ropeDim, block.ropeNeox, block.ropeYarnBetaFast, block.ropeYarnBetaSlow, block.ropeYarnExtFactor, block.ropeYarnAttnFactor)
+			applyRoPEInPlace(st.k, pos, block.kvHeads, block.ropeFreqBase, block.ropeScale, block.ropeScalingType, block.ropeDim, block.ropeNeox, block.ropeYarnBetaFast, block.ropeYarnBetaSlow, block.ropeYarnExtFactor, block.ropeYarnAttnFactor)
 			if debugAttnMeta && shouldDebug(pos) && i == 0 {
 				debugVecSlice("q.post", st.q, 8)
 				debugVecSlice("k.post", st.k, 8)
+			}
+			if shouldDebug(pos) && i == 0 {
+				debugVecStats("q-0", st.q)
 			}
 
 			storeCacheVector(st.keys, pos, st.k)
@@ -1004,6 +1010,9 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 			if debugStages && shouldDebug(pos) && i == 0 {
 				debugStage("stage.attn_sub_norm", n2, block, stageNormBuf, false)
 			}
+			if shouldDebug(pos) && i == 0 {
+				debugVecStats("attn_sub_norm-0", n2)
+			}
 			if debugValues && shouldDebug(pos) && i == 0 {
 				debugVecValues("attn_sub_norm", n2, debugValuesN)
 			}
@@ -1013,8 +1022,9 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 				debugStage("stage.post_attn", x, block, stageNormBuf, false)
 			}
 			if shouldDebug(pos) && i == 0 {
-				debugVecStats("attn_acc", st.attnAcc)
-				debugVecStats("attn_out", st.attnOut)
+				debugVecStats("kqv-0", st.attnAcc)
+				debugVecStats("kqv_out-0", st.attnAcc)
+				debugVecStats("attn_o_out-0", st.attnOut)
 				debugVecStats("x.post_attn", x)
 			}
 		} else if shouldDebug(pos) && i == 0 {
@@ -1201,7 +1211,7 @@ func seedToken(seed int64, vocab int) int32 {
 	return int32(x)
 }
 
-func applyRoPEInPlace(v []float32, pos, heads int, base, scale float32, scalingType string, ropeDim int, betaFast, betaSlow, extFactor, attnFactor float32) {
+func applyRoPEInPlace(v []float32, pos, heads int, base, scale float32, scalingType string, ropeDim int, ropeNeox bool, betaFast, betaSlow, extFactor, attnFactor float32) {
 	if heads <= 0 || len(v) == 0 {
 		return
 	}
@@ -1224,6 +1234,20 @@ func applyRoPEInPlace(v []float32, pos, heads int, base, scale float32, scalingT
 
 	for h := 0; h < heads; h++ {
 		offset := h * headDim
+		if ropeNeox {
+			halfDim := ropeDim / 2
+			for i := 0; i+1 < ropeDim; i += 2 {
+				pair := i / 2
+				exponent := float64(pair) / float64(half)
+				thetaBase := posf / math.Pow(basef, exponent)
+				cosT, sinT := ropeCosSin(thetaBase, scale, scalingType, betaFast, betaSlow, extFactor, attnFactor, i)
+				x0 := v[offset+pair]
+				x1 := v[offset+pair+halfDim]
+				v[offset+pair] = x0*cosT - x1*sinT
+				v[offset+pair+halfDim] = x0*sinT + x1*cosT
+			}
+			continue
+		}
 		for i := 0; i+1 < ropeDim; i += 2 {
 			pair := i / 2
 			exponent := float64(pair) / float64(half)
@@ -1516,9 +1540,6 @@ func i2sLogitForToken(packed []byte, rows, cols, token int, vec []int8, weightSc
 		for r := 0; r < rows; r++ {
 			idx := r + rows*token
 			q := i2sPackedAtLocal(packed, idx)
-			if q == 3 {
-				q = 1
-			}
 			sum += int32(q) * int32(vec[r])
 		}
 		return float32(sum-actSum) * (weightScale / actScale)
@@ -1530,9 +1551,6 @@ func i2sLogitForToken(packed []byte, rows, cols, token int, vec []int8, weightSc
 	for c := 0; c < cols; c++ {
 		idx := token + rows*c
 		q := i2sPackedAtLocal(packed, idx)
-		if q == 3 {
-			q = 1
-		}
 		sum += int32(q) * int32(vec[c])
 	}
 	return float32(sum-actSum) * (weightScale / actScale)

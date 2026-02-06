@@ -5,11 +5,11 @@ func Dot(a, b []float32) float32 {
 	if len(b) < n {
 		n = len(b)
 	}
-	var sum float32
+	var sum float64
 	for i := 0; i < n; i++ {
-		sum += a[i] * b[i]
+		sum += float64(a[i]) * float64(b[i])
 	}
-	return sum
+	return float32(sum)
 }
 
 func AddScaled(dst, src []float32, scale float32) {
@@ -47,11 +47,11 @@ func MatVec(dst, mat []float32, rows, cols int, vec []float32) {
 		return
 	}
 	for r := 0; r < rows; r++ {
-		var sum float32
+		var sum float64
 		for c := 0; c < cols; c++ {
-			sum += mat[r+rows*c] * vec[c]
+			sum += float64(mat[r+rows*c]) * float64(vec[c])
 		}
-		dst[r] = sum
+		dst[r] = float32(sum)
 	}
 }
 
@@ -65,11 +65,11 @@ func MatVecT(dst, mat []float32, rows, cols int, vec []float32) {
 		return
 	}
 	for c := 0; c < cols; c++ {
-		var sum float32
+		var sum float64
 		for r := 0; r < rows; r++ {
-			sum += mat[r+rows*c] * vec[r]
+			sum += float64(mat[r+rows*c]) * float64(vec[r])
 		}
-		dst[c] = sum
+		dst[c] = float32(sum)
 	}
 }
 

@@ -13,9 +13,9 @@ func QuantizeRowI8S(dst []int8, src []float32) (scale float32, sum int32) {
 		return 0, 0
 	}
 
-	var maxAbs float32
+	var maxAbs float64
 	for i := 0; i < n; i++ {
-		v := src[i]
+		v := float64(src[i])
 		if v < 0 {
 			v = -v
 		}
@@ -27,10 +27,9 @@ func QuantizeRowI8S(dst []int8, src []float32) (scale float32, sum int32) {
 		maxAbs = 1e-5
 	}
 
-	scale = 127.0 / maxAbs
-	inv := float64(scale)
+	scale = float32(127.0 / maxAbs)
 	for i := 0; i < n; i++ {
-		q := nearestInt(float32(float64(src[i]) * inv))
+		q := nearestInt(src[i] * scale)
 		if q < -128 {
 			q = -128
 		} else if q > 127 {
@@ -93,9 +92,6 @@ func MatVecI2SI8S(dst []float32, packed []byte, rows, cols int, vec []int8, weig
 		for c := 0; c < cols; c++ {
 			idx := r + rows*c
 			q := i2sPackedAt(packed, idx)
-			if q == 3 {
-				q = 1
-			}
 			sum += int32(q) * int32(vec[c])
 		}
 		dst[r] = float32(sum-actSum) * (weightScale / actScale)
@@ -119,9 +115,6 @@ func MatVecTI2SI8S(dst []float32, packed []byte, rows, cols int, vec []int8, wei
 		for r := 0; r < rows; r++ {
 			idx := r + rows*c
 			q := i2sPackedAt(packed, idx)
-			if q == 3 {
-				q = 1
-			}
 			sum += int32(q) * int32(vec[r])
 		}
 		dst[c] = float32(sum-actSum) * (weightScale / actScale)
