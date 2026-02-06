@@ -62,6 +62,7 @@ var debugPos = parseDebugPos(os.Getenv("BITNET_DEBUG_POS"))
 var debugTokens = parseDebugTokens(os.Getenv("BITNET_DEBUG_TOKENS"))
 var debugSoftmaxPrinted bool
 var debugStrictAttention = os.Getenv("BITNET_STRICT_ATTENTION") == "1"
+var debugStrictExpf = os.Getenv("BITNET_STRICT_EXPF") == "1"
 var debugStep0Printed bool
 var debugI2SDisableActSum = os.Getenv("BITNET_I2S_DISABLE_ACTSUM") == "1"
 var debugI2SInvertActScale = os.Getenv("BITNET_I2S_INVERT_ACT_SCALE") == "1"
@@ -1196,7 +1197,13 @@ func causalAttentionMultiHeadInto(dst, scores, q, keys, values []float32, steps,
 		var sum float32
 		for i := 0; i < steps; i++ {
 			idx := h*steps + i
-			w := float32(math.Exp(float64(scores[idx] - maxScore)))
+			diff := scores[idx] - maxScore
+			var w float32
+			if debugStrictExpf {
+				w = expf32(diff)
+			} else {
+				w = float32(math.Exp(float64(diff)))
+			}
 			scores[idx] = w
 			sum += w
 		}
@@ -1281,6 +1288,46 @@ func dotF32GGML(a, b []float32) float32 {
 		sum += a[i] * b[i]
 	}
 	return sum
+}
+
+func expf32(x float32) float32 {
+	// Cephes-style expf approximation in pure float32.
+	const (
+		expHi  float32 = 88.3762626647949
+		expLo  float32 = -88.3762626647949
+		log2e  float32 = 1.44269504088896341
+		ln2    float32 = 0.6931471805599453
+		c0     float32 = 1.9875691500E-4
+		c1     float32 = 1.3981999507E-3
+		c2     float32 = 8.3334519073E-3
+		c3     float32 = 4.1665795894E-2
+		c4     float32 = 1.6666665459E-1
+		c5     float32 = 5.0000001201E-1
+	)
+	if x > expHi {
+		x = expHi
+	} else if x < expLo {
+		x = expLo
+	}
+	fx := x*log2e + 0.5
+	n := int(fx)
+	if float32(n) > fx {
+		n--
+	}
+	x = x - float32(n)*ln2
+	x2 := x * x
+	px := c0
+	px = px*x + c1
+	px = px*x + c2
+	px = px*x + c3
+	px = px*x + c4
+	px = px*x + c5
+	px = px*x2 + x + 1
+
+	// 2^n via bit manipulation.
+	bits := uint32((n + 127) << 23)
+	scale := math.Float32frombits(bits)
+	return px * scale
 }
 
 func storeCacheVector(cache []float32, pos int, vec []float32) {
