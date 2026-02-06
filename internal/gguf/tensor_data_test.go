@@ -225,6 +225,446 @@ func TestReadTensorTQ20(t *testing.T) {
 	}
 }
 
+func TestReadTensorI2S(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	writeString(t, buf, "GGUF")
+	writeU32(t, buf, 3)
+	writeU64(t, buf, 1) // tensor count
+	writeU64(t, buf, 1) // kv count
+
+	writeGGUFString(t, buf, "general.alignment")
+	writeU32(t, buf, valueTypeUint32)
+	writeU32(t, buf, 32)
+
+	writeGGUFString(t, buf, "w")
+	writeU32(t, buf, 1)
+	writeU64(t, buf, 8)
+	writeU32(t, buf, GGMLTypeI2_S)
+	writeU64(t, buf, 0)
+
+	padTo(t, buf, 32)
+	buf.Write([]byte{0x1b, 0x85})
+	writeF32(t, buf, 2.0)
+
+	path := filepath.Join(t.TempDir(), "tensor_i2_s.gguf")
+	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	info, err := ReadModelInfo(path)
+	if err != nil {
+		t.Fatalf("ReadModelInfo() error = %v", err)
+	}
+	got, err := ReadTensorF32(path, info, "w")
+	if err != nil {
+		t.Fatalf("ReadTensorF32() error = %v", err)
+	}
+	want := []float32{-2, 0, 2, 0, 2, -2, 0, 0}
+	if len(got) != len(want) {
+		t.Fatalf("len(got) = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got[%d] = %f, want %f", i, got[i], want[i])
+		}
+	}
+}
+
+func TestReadTensorIQ2XXS(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	writeString(t, buf, "GGUF")
+	writeU32(t, buf, 3)
+	writeU64(t, buf, 1)
+	writeU64(t, buf, 1)
+
+	writeGGUFString(t, buf, "general.alignment")
+	writeU32(t, buf, valueTypeUint32)
+	writeU32(t, buf, 32)
+
+	writeGGUFString(t, buf, "w")
+	writeU32(t, buf, 1)
+	writeU64(t, buf, 256)
+	writeU32(t, buf, GGMLTypeIQ2_XXS)
+	writeU64(t, buf, 0)
+
+	padTo(t, buf, 32)
+	writeU16(t, buf, 0x3c00)
+	buf.Write(make([]byte, 64))
+
+	path := filepath.Join(t.TempDir(), "tensor_iq2_xxs.gguf")
+	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	info, err := ReadModelInfo(path)
+	if err != nil {
+		t.Fatalf("ReadModelInfo() error = %v", err)
+	}
+	got, err := ReadTensorF32(path, info, "w")
+	if err != nil {
+		t.Fatalf("ReadTensorF32() error = %v", err)
+	}
+	if len(got) != 256 {
+		t.Fatalf("len(got) = %d, want 256", len(got))
+	}
+	for i, v := range got {
+		if v != 1.0 {
+			t.Fatalf("got[%d] = %f, want 1.0", i, v)
+		}
+	}
+}
+
+func TestReadTensorIQ2XS(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	writeString(t, buf, "GGUF")
+	writeU32(t, buf, 3)
+	writeU64(t, buf, 1)
+	writeU64(t, buf, 1)
+
+	writeGGUFString(t, buf, "general.alignment")
+	writeU32(t, buf, valueTypeUint32)
+	writeU32(t, buf, 32)
+
+	writeGGUFString(t, buf, "w")
+	writeU32(t, buf, 1)
+	writeU64(t, buf, 256)
+	writeU32(t, buf, GGMLTypeIQ2_XS)
+	writeU64(t, buf, 0)
+
+	padTo(t, buf, 32)
+	writeU16(t, buf, 0x3c00)
+	buf.Write(make([]byte, 64))
+	buf.Write(make([]byte, 8))
+
+	path := filepath.Join(t.TempDir(), "tensor_iq2_xs.gguf")
+	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	info, err := ReadModelInfo(path)
+	if err != nil {
+		t.Fatalf("ReadModelInfo() error = %v", err)
+	}
+	got, err := ReadTensorF32(path, info, "w")
+	if err != nil {
+		t.Fatalf("ReadTensorF32() error = %v", err)
+	}
+	if len(got) != 256 {
+		t.Fatalf("len(got) = %d, want 256", len(got))
+	}
+	for i, v := range got {
+		if v != 1.0 {
+			t.Fatalf("got[%d] = %f, want 1.0", i, v)
+		}
+	}
+}
+
+func TestReadTensorIQ2S(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	writeString(t, buf, "GGUF")
+	writeU32(t, buf, 3)
+	writeU64(t, buf, 1)
+	writeU64(t, buf, 1)
+
+	writeGGUFString(t, buf, "general.alignment")
+	writeU32(t, buf, valueTypeUint32)
+	writeU32(t, buf, 32)
+
+	writeGGUFString(t, buf, "w")
+	writeU32(t, buf, 1)
+	writeU64(t, buf, 256)
+	writeU32(t, buf, GGMLTypeIQ2_S)
+	writeU64(t, buf, 0)
+
+	padTo(t, buf, 32)
+	writeU16(t, buf, 0x3c00)
+	buf.Write(make([]byte, 64))
+	buf.Write(make([]byte, 8))
+	buf.Write(make([]byte, 8))
+
+	path := filepath.Join(t.TempDir(), "tensor_iq2_s.gguf")
+	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	info, err := ReadModelInfo(path)
+	if err != nil {
+		t.Fatalf("ReadModelInfo() error = %v", err)
+	}
+	got, err := ReadTensorF32(path, info, "w")
+	if err != nil {
+		t.Fatalf("ReadTensorF32() error = %v", err)
+	}
+	if len(got) != 256 {
+		t.Fatalf("len(got) = %d, want 256", len(got))
+	}
+	for i, v := range got {
+		if v != 1.0 {
+			t.Fatalf("got[%d] = %f, want 1.0", i, v)
+		}
+	}
+}
+
+func TestReadTensorIQ3XXS(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	writeString(t, buf, "GGUF")
+	writeU32(t, buf, 3)
+	writeU64(t, buf, 1)
+	writeU64(t, buf, 1)
+
+	writeGGUFString(t, buf, "general.alignment")
+	writeU32(t, buf, valueTypeUint32)
+	writeU32(t, buf, 32)
+
+	writeGGUFString(t, buf, "w")
+	writeU32(t, buf, 1)
+	writeU64(t, buf, 256)
+	writeU32(t, buf, GGMLTypeIQ3_XXS)
+	writeU64(t, buf, 0)
+
+	padTo(t, buf, 32)
+	writeU16(t, buf, 0x3c00)
+	buf.Write(make([]byte, 96))
+
+	path := filepath.Join(t.TempDir(), "tensor_iq3_xxs.gguf")
+	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	info, err := ReadModelInfo(path)
+	if err != nil {
+		t.Fatalf("ReadModelInfo() error = %v", err)
+	}
+	got, err := ReadTensorF32(path, info, "w")
+	if err != nil {
+		t.Fatalf("ReadTensorF32() error = %v", err)
+	}
+	if len(got) != 256 {
+		t.Fatalf("len(got) = %d, want 256", len(got))
+	}
+	for i, v := range got {
+		if v != 1.0 {
+			t.Fatalf("got[%d] = %f, want 1.0", i, v)
+		}
+	}
+}
+
+func TestReadTensorIQ3S(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	writeString(t, buf, "GGUF")
+	writeU32(t, buf, 3)
+	writeU64(t, buf, 1)
+	writeU64(t, buf, 1)
+
+	writeGGUFString(t, buf, "general.alignment")
+	writeU32(t, buf, valueTypeUint32)
+	writeU32(t, buf, 32)
+
+	writeGGUFString(t, buf, "w")
+	writeU32(t, buf, 1)
+	writeU64(t, buf, 256)
+	writeU32(t, buf, GGMLTypeIQ3_S)
+	writeU64(t, buf, 0)
+
+	padTo(t, buf, 32)
+	writeU16(t, buf, 0x3c00)
+	buf.Write(make([]byte, 64))
+	buf.Write(make([]byte, 8))
+	buf.Write(make([]byte, 32))
+	buf.Write(make([]byte, 4))
+
+	path := filepath.Join(t.TempDir(), "tensor_iq3_s.gguf")
+	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	info, err := ReadModelInfo(path)
+	if err != nil {
+		t.Fatalf("ReadModelInfo() error = %v", err)
+	}
+	got, err := ReadTensorF32(path, info, "w")
+	if err != nil {
+		t.Fatalf("ReadTensorF32() error = %v", err)
+	}
+	if len(got) != 256 {
+		t.Fatalf("len(got) = %d, want 256", len(got))
+	}
+	for i, v := range got {
+		if v != 1.0 {
+			t.Fatalf("got[%d] = %f, want 1.0", i, v)
+		}
+	}
+}
+
+func TestReadTensorIQ1S(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	writeString(t, buf, "GGUF")
+	writeU32(t, buf, 3)
+	writeU64(t, buf, 1)
+	writeU64(t, buf, 1)
+
+	writeGGUFString(t, buf, "general.alignment")
+	writeU32(t, buf, valueTypeUint32)
+	writeU32(t, buf, 32)
+
+	writeGGUFString(t, buf, "w")
+	writeU32(t, buf, 1)
+	writeU64(t, buf, 256)
+	writeU32(t, buf, GGMLTypeIQ1_S)
+	writeU64(t, buf, 0)
+
+	padTo(t, buf, 32)
+	writeU16(t, buf, 0x3c00)
+	buf.Write(make([]byte, 32))
+	buf.Write(make([]byte, 16))
+
+	path := filepath.Join(t.TempDir(), "tensor_iq1_s.gguf")
+	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	info, err := ReadModelInfo(path)
+	if err != nil {
+		t.Fatalf("ReadModelInfo() error = %v", err)
+	}
+	got, err := ReadTensorF32(path, info, "w")
+	if err != nil {
+		t.Fatalf("ReadTensorF32() error = %v", err)
+	}
+	if len(got) != 256 {
+		t.Fatalf("len(got) = %d, want 256", len(got))
+	}
+	for i, v := range got {
+		if v != -0.875 {
+			t.Fatalf("got[%d] = %f, want -0.875", i, v)
+		}
+	}
+}
+
+func TestReadTensorIQ1M(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	writeString(t, buf, "GGUF")
+	writeU32(t, buf, 3)
+	writeU64(t, buf, 1)
+	writeU64(t, buf, 1)
+
+	writeGGUFString(t, buf, "general.alignment")
+	writeU32(t, buf, valueTypeUint32)
+	writeU32(t, buf, 32)
+
+	writeGGUFString(t, buf, "w")
+	writeU32(t, buf, 1)
+	writeU64(t, buf, 256)
+	writeU32(t, buf, GGMLTypeIQ1_M)
+	writeU64(t, buf, 0)
+
+	padTo(t, buf, 32)
+	buf.Write(make([]byte, 56))
+
+	path := filepath.Join(t.TempDir(), "tensor_iq1_m.gguf")
+	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	info, err := ReadModelInfo(path)
+	if err != nil {
+		t.Fatalf("ReadModelInfo() error = %v", err)
+	}
+	got, err := ReadTensorF32(path, info, "w")
+	if err != nil {
+		t.Fatalf("ReadTensorF32() error = %v", err)
+	}
+	if len(got) != 256 {
+		t.Fatalf("len(got) = %d, want 256", len(got))
+	}
+	for i, v := range got {
+		if v != 0 {
+			t.Fatalf("got[%d] = %f, want 0", i, v)
+		}
+	}
+}
+
+func TestReadTensorIQ4NL(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	writeString(t, buf, "GGUF")
+	writeU32(t, buf, 3)
+	writeU64(t, buf, 1)
+	writeU64(t, buf, 1)
+
+	writeGGUFString(t, buf, "general.alignment")
+	writeU32(t, buf, valueTypeUint32)
+	writeU32(t, buf, 32)
+
+	writeGGUFString(t, buf, "w")
+	writeU32(t, buf, 1)
+	writeU64(t, buf, 32)
+	writeU32(t, buf, GGMLTypeIQ4_NL)
+	writeU64(t, buf, 0)
+
+	padTo(t, buf, 32)
+	writeU16(t, buf, 0x3c00)
+	buf.Write(make([]byte, 16))
+
+	path := filepath.Join(t.TempDir(), "tensor_iq4_nl.gguf")
+	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	info, err := ReadModelInfo(path)
+	if err != nil {
+		t.Fatalf("ReadModelInfo() error = %v", err)
+	}
+	got, err := ReadTensorF32(path, info, "w")
+	if err != nil {
+		t.Fatalf("ReadTensorF32() error = %v", err)
+	}
+	if len(got) != 32 {
+		t.Fatalf("len(got) = %d, want 32", len(got))
+	}
+	for i, v := range got {
+		if v != -127 {
+			t.Fatalf("got[%d] = %f, want -127", i, v)
+		}
+	}
+}
+
+func TestReadTensorIQ4XS(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	writeString(t, buf, "GGUF")
+	writeU32(t, buf, 3)
+	writeU64(t, buf, 1)
+	writeU64(t, buf, 1)
+
+	writeGGUFString(t, buf, "general.alignment")
+	writeU32(t, buf, valueTypeUint32)
+	writeU32(t, buf, 32)
+
+	writeGGUFString(t, buf, "w")
+	writeU32(t, buf, 1)
+	writeU64(t, buf, 256)
+	writeU32(t, buf, GGMLTypeIQ4_XS)
+	writeU64(t, buf, 0)
+
+	padTo(t, buf, 32)
+	writeU16(t, buf, 0x3c00)
+	writeU16(t, buf, 0x0000)
+	buf.Write(make([]byte, 4))
+	buf.Write(make([]byte, 128))
+
+	path := filepath.Join(t.TempDir(), "tensor_iq4_xs.gguf")
+	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	info, err := ReadModelInfo(path)
+	if err != nil {
+		t.Fatalf("ReadModelInfo() error = %v", err)
+	}
+	got, err := ReadTensorF32(path, info, "w")
+	if err != nil {
+		t.Fatalf("ReadTensorF32() error = %v", err)
+	}
+	if len(got) != 256 {
+		t.Fatalf("len(got) = %d, want 256", len(got))
+	}
+	for i, v := range got {
+		if v != 4064 {
+			t.Fatalf("got[%d] = %f, want 4064", i, v)
+		}
+	}
+}
+
 func TestReadTensorQ80AsF32(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
 	writeString(t, buf, "GGUF")

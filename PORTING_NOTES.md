@@ -74,7 +74,8 @@
 - Expand tensor payload loading beyond `f32` + `q8_0`:
   - now supports `f16`, `q4_0`, `q4_1`, `q5_0`, `q5_1`, `q2_k`, `q3_k`, `q4_k`, `q5_k`, `q6_k`, `q8_k` (naive decode).
   - now supports ternary `tq1_0` and `tq2_0` GGML types (naive decode).
-  - remaining: add IQ variants, `i2_s`, and any missing GGML types used by target models.
+  - now supports IQ variants: `iq1_s`, `iq1_m`, `iq2_xxs`, `iq2_xs`, `iq2_s`, `iq3_xxs`, `iq3_s`, `iq4_nl`, `iq4_xs` (naive decode).
+  - remaining: add any missing GGML types used by target models.
 - Wire loaded tensors into runtime block execution:
   - in progress: initial single-block tensor-backed path is wired.
   - now: llama `token_embd.weight` + `output.weight` path wired.

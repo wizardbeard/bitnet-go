@@ -139,6 +139,26 @@ func ReadTensorAsF32(path string, info ModelInfo, name string) ([]float32, error
 		return readTensorTQ10AsF32(f, name, count)
 	case GGMLTypeTQ2_0:
 		return readTensorTQ20AsF32(f, name, count)
+	case GGMLTypeI2_S:
+		return readTensorI2SAsF32(f, name, count)
+	case GGMLTypeIQ2_XXS:
+		return readTensorIQ2XXSAsF32(f, name, count)
+	case GGMLTypeIQ2_XS:
+		return readTensorIQ2XSAsF32(f, name, count)
+	case GGMLTypeIQ2_S:
+		return readTensorIQ2SAsF32(f, name, count)
+	case GGMLTypeIQ3_XXS:
+		return readTensorIQ3XXSAsF32(f, name, count)
+	case GGMLTypeIQ3_S:
+		return readTensorIQ3SAsF32(f, name, count)
+	case GGMLTypeIQ1_S:
+		return readTensorIQ1SAsF32(f, name, count)
+	case GGMLTypeIQ1_M:
+		return readTensorIQ1MAsF32(f, name, count)
+	case GGMLTypeIQ4_NL:
+		return readTensorIQ4NLAsF32(f, name, count)
+	case GGMLTypeIQ4_XS:
+		return readTensorIQ4XSAsF32(f, name, count)
 	default:
 		return nil, fmt.Errorf("tensor %q type=%d not supported", name, t.Type)
 	}
@@ -237,6 +257,571 @@ func readTensorTQ20AsF32(r io.Reader, name string, count uint64) ([]float32, err
 					outIdx++
 				}
 			}
+		}
+	}
+	return out, nil
+}
+
+func readTensorI2SAsF32(r io.Reader, name string, count uint64) ([]float32, error) {
+	if count%4 != 0 {
+		return nil, fmt.Errorf("tensor %q i2_s element count=%d not divisible by 4", name, count)
+	}
+	if count > uint64(math.MaxInt) {
+		return nil, fmt.Errorf("tensor %q has too many i2_s elements", name)
+	}
+	packed := make([]byte, count/4)
+	if _, err := io.ReadFull(r, packed); err != nil {
+		return nil, fmt.Errorf("read tensor %q i2_s packed: %w", name, err)
+	}
+	var scale float32
+	if err := binary.Read(r, binary.LittleEndian, &scale); err != nil {
+		return nil, fmt.Errorf("read tensor %q i2_s scale: %w", name, err)
+	}
+
+	out := make([]float32, count)
+	const (
+		v0 = -1.0
+		v1 = 0.0
+		v2 = 1.0
+		v3 = 0.0
+	)
+	outIdx := 0
+	for _, b := range packed {
+		c0 := (b >> 6) & 0x3
+		c1 := (b >> 4) & 0x3
+		c2 := (b >> 2) & 0x3
+		c3 := b & 0x3
+		switch c0 {
+		case 0:
+			out[outIdx] = float32(v0) * scale
+		case 1:
+			out[outIdx] = float32(v1) * scale
+		case 2:
+			out[outIdx] = float32(v2) * scale
+		default:
+			out[outIdx] = float32(v3) * scale
+		}
+		outIdx++
+		switch c1 {
+		case 0:
+			out[outIdx] = float32(v0) * scale
+		case 1:
+			out[outIdx] = float32(v1) * scale
+		case 2:
+			out[outIdx] = float32(v2) * scale
+		default:
+			out[outIdx] = float32(v3) * scale
+		}
+		outIdx++
+		switch c2 {
+		case 0:
+			out[outIdx] = float32(v0) * scale
+		case 1:
+			out[outIdx] = float32(v1) * scale
+		case 2:
+			out[outIdx] = float32(v2) * scale
+		default:
+			out[outIdx] = float32(v3) * scale
+		}
+		outIdx++
+		switch c3 {
+		case 0:
+			out[outIdx] = float32(v0) * scale
+		case 1:
+			out[outIdx] = float32(v1) * scale
+		case 2:
+			out[outIdx] = float32(v2) * scale
+		default:
+			out[outIdx] = float32(v3) * scale
+		}
+		outIdx++
+	}
+	return out, nil
+}
+
+func readTensorIQ2XXSAsF32(r io.Reader, name string, count uint64) ([]float32, error) {
+	const qk = 256
+	const qsBytes = qk / 8 * 2
+	const blockSize = 2 + qsBytes
+	if count%qk != 0 {
+		return nil, fmt.Errorf("tensor %q iq2_xxs element count=%d not divisible by %d", name, count, qk)
+	}
+	blocks := count / qk
+	if blocks > uint64(math.MaxInt) {
+		return nil, fmt.Errorf("tensor %q has too many iq2_xxs blocks", name)
+	}
+	out := make([]float32, count)
+	buf := make([]byte, blockSize)
+	outIdx := 0
+	for b := uint64(0); b < blocks; b++ {
+		if _, err := io.ReadFull(r, buf); err != nil {
+			return nil, fmt.Errorf("read tensor %q iq2_xxs block %d: %w", name, b, err)
+		}
+		d := binary.LittleEndian.Uint16(buf[:2])
+		scale := float16ToFloat32(d)
+		qs := buf[2:]
+		for ib32 := 0; ib32 < qk/32; ib32++ {
+			off := 4 * ib32
+			aux1 := binary.LittleEndian.Uint32(qs[off+4 : off+8])
+			db := scale * (0.5 + float32(aux1>>28)) * 0.25
+			for l := 0; l < 4; l++ {
+				gridIdx := int(qs[off+l])
+				signs := ksigns_iq2xs[(aux1>>(7*l))&127]
+				grid := iq2xxs_grid[gridIdx]
+				for j := 0; j < 8; j++ {
+					g := float32(uint8(grid >> (8 * j)))
+					if signs&kmask_iq2xs[j] != 0 {
+						g = -g
+					}
+					out[outIdx] = db * g
+					outIdx++
+				}
+			}
+		}
+	}
+	return out, nil
+}
+
+func readTensorIQ2XSAsF32(r io.Reader, name string, count uint64) ([]float32, error) {
+	const qk = 256
+	const qsBytes = qk / 8 * 2
+	const scalesBytes = qk / 32
+	const blockSize = 2 + qsBytes + scalesBytes
+	if count%qk != 0 {
+		return nil, fmt.Errorf("tensor %q iq2_xs element count=%d not divisible by %d", name, count, qk)
+	}
+	blocks := count / qk
+	if blocks > uint64(math.MaxInt) {
+		return nil, fmt.Errorf("tensor %q has too many iq2_xs blocks", name)
+	}
+	out := make([]float32, count)
+	buf := make([]byte, blockSize)
+	outIdx := 0
+	for b := uint64(0); b < blocks; b++ {
+		if _, err := io.ReadFull(r, buf); err != nil {
+			return nil, fmt.Errorf("read tensor %q iq2_xs block %d: %w", name, b, err)
+		}
+		d := binary.LittleEndian.Uint16(buf[:2])
+		scale := float16ToFloat32(d)
+		qsRaw := buf[2 : 2+qsBytes]
+		scales := buf[2+qsBytes:]
+		qs := make([]uint16, qk/8)
+		for i := range qs {
+			qs[i] = binary.LittleEndian.Uint16(qsRaw[i*2:])
+		}
+		for ib32 := 0; ib32 < qk/32; ib32++ {
+			db0 := scale * (0.5 + float32(scales[ib32]&0x0f)) * 0.25
+			db1 := scale * (0.5 + float32(scales[ib32]>>4)) * 0.25
+			for l := 0; l < 4; l++ {
+				q := qs[4*ib32+l]
+				gridIdx := int(q & 0x1ff)
+				signs := ksigns_iq2xs[q>>9]
+				grid := iq2xs_grid[gridIdx]
+				db := db0
+				if l >= 2 {
+					db = db1
+				}
+				for j := 0; j < 8; j++ {
+					g := float32(uint8(grid >> (8 * j)))
+					if signs&kmask_iq2xs[j] != 0 {
+						g = -g
+					}
+					out[outIdx] = db * g
+					outIdx++
+				}
+			}
+		}
+	}
+	return out, nil
+}
+
+func readTensorIQ2SAsF32(r io.Reader, name string, count uint64) ([]float32, error) {
+	const qk = 256
+	const qsBytes = qk / 4
+	const qhBytes = qk / 32
+	const scalesBytes = qk / 32
+	const blockSize = 2 + qsBytes + qhBytes + scalesBytes
+	if count%qk != 0 {
+		return nil, fmt.Errorf("tensor %q iq2_s element count=%d not divisible by %d", name, count, qk)
+	}
+	blocks := count / qk
+	if blocks > uint64(math.MaxInt) {
+		return nil, fmt.Errorf("tensor %q has too many iq2_s blocks", name)
+	}
+	out := make([]float32, count)
+	buf := make([]byte, blockSize)
+	outIdx := 0
+	for b := uint64(0); b < blocks; b++ {
+		if _, err := io.ReadFull(r, buf); err != nil {
+			return nil, fmt.Errorf("read tensor %q iq2_s block %d: %w", name, b, err)
+		}
+		d := binary.LittleEndian.Uint16(buf[:2])
+		scale := float16ToFloat32(d)
+		qs := buf[2 : 2+qsBytes]
+		qh := buf[2+qsBytes : 2+qsBytes+qhBytes]
+		scales := buf[2+qsBytes+qhBytes:]
+		signs := qs[qk/8:]
+		qsIdx := 0
+		signIdx := 0
+		for ib32 := 0; ib32 < qk/32; ib32++ {
+			db0 := scale * (0.5 + float32(scales[ib32]&0x0f)) * 0.25
+			db1 := scale * (0.5 + float32(scales[ib32]>>4)) * 0.25
+			for l := 0; l < 4; l++ {
+				dl := db0
+				if l >= 2 {
+					dl = db1
+				}
+				gridIdx := int(qs[qsIdx+l]) | (int(qh[ib32]) << (8 - 2*l) & 0x300)
+				grid := iq2s_grid[gridIdx]
+				sign := signs[signIdx+l]
+				for j := 0; j < 8; j++ {
+					g := float32(uint8(grid >> (8 * j)))
+					if sign&kmask_iq2xs[j] != 0 {
+						g = -g
+					}
+					out[outIdx] = dl * g
+					outIdx++
+				}
+			}
+			qsIdx += 4
+			signIdx += 4
+		}
+	}
+	return out, nil
+}
+
+func readTensorIQ3XXSAsF32(r io.Reader, name string, count uint64) ([]float32, error) {
+	const qk = 256
+	const qsBytes = 3 * qk / 8
+	const blockSize = 2 + qsBytes
+	if count%qk != 0 {
+		return nil, fmt.Errorf("tensor %q iq3_xxs element count=%d not divisible by %d", name, count, qk)
+	}
+	blocks := count / qk
+	if blocks > uint64(math.MaxInt) {
+		return nil, fmt.Errorf("tensor %q has too many iq3_xxs blocks", name)
+	}
+	out := make([]float32, count)
+	buf := make([]byte, blockSize)
+	outIdx := 0
+	for b := uint64(0); b < blocks; b++ {
+		if _, err := io.ReadFull(r, buf); err != nil {
+			return nil, fmt.Errorf("read tensor %q iq3_xxs block %d: %w", name, b, err)
+		}
+		d := binary.LittleEndian.Uint16(buf[:2])
+		scale := float16ToFloat32(d)
+		qs := buf[2:]
+		scales := qs[qk/4:]
+		qsIdx := 0
+		for ib32 := 0; ib32 < qk/32; ib32++ {
+			aux := binary.LittleEndian.Uint32(scales[4*ib32:])
+			db := scale * (0.5 + float32(aux>>28)) * 0.5
+			for l := 0; l < 4; l++ {
+				signs := ksigns_iq2xs[(aux>>(7*l))&127]
+				grid1 := iq3xxs_grid[int(qs[qsIdx+2*l])]
+				grid2 := iq3xxs_grid[int(qs[qsIdx+2*l+1])]
+				base := outIdx
+				for j := 0; j < 4; j++ {
+					g0 := float32(uint8(grid1 >> (8 * j)))
+					if signs&kmask_iq2xs[j] != 0 {
+						g0 = -g0
+					}
+					out[base+j] = db * g0
+					g1 := float32(uint8(grid2 >> (8 * j)))
+					if signs&kmask_iq2xs[j+4] != 0 {
+						g1 = -g1
+					}
+					out[base+4+j] = db * g1
+				}
+				outIdx += 8
+			}
+			qsIdx += 8
+		}
+	}
+	return out, nil
+}
+
+func readTensorIQ3SAsF32(r io.Reader, name string, count uint64) ([]float32, error) {
+	const qk = 256
+	const qsBytes = qk / 4
+	const qhBytes = qk / 32
+	const signsBytes = qk / 8
+	const scalesBytes = qk / 64
+	const blockSize = 2 + qsBytes + qhBytes + signsBytes + scalesBytes
+	if count%qk != 0 {
+		return nil, fmt.Errorf("tensor %q iq3_s element count=%d not divisible by %d", name, count, qk)
+	}
+	blocks := count / qk
+	if blocks > uint64(math.MaxInt) {
+		return nil, fmt.Errorf("tensor %q has too many iq3_s blocks", name)
+	}
+	out := make([]float32, count)
+	buf := make([]byte, blockSize)
+	outIdx := 0
+	for b := uint64(0); b < blocks; b++ {
+		if _, err := io.ReadFull(r, buf); err != nil {
+			return nil, fmt.Errorf("read tensor %q iq3_s block %d: %w", name, b, err)
+		}
+		d := binary.LittleEndian.Uint16(buf[:2])
+		scale := float16ToFloat32(d)
+		qs := buf[2 : 2+qsBytes]
+		qh := buf[2+qsBytes : 2+qsBytes+qhBytes]
+		signs := buf[2+qsBytes+qhBytes : 2+qsBytes+qhBytes+signsBytes]
+		scales := buf[2+qsBytes+qhBytes+signsBytes:]
+		qsIdx := 0
+		signIdx := 0
+		qhIdx := 0
+		for ib32 := 0; ib32 < qk/32; ib32 += 2 {
+			db1 := scale * float32(1+2*int(scales[ib32/2]&0x0f))
+			db2 := scale * float32(1+2*int(scales[ib32/2]>>4))
+			for l := 0; l < 4; l++ {
+				sign := signs[signIdx+l]
+				grid1 := iq3s_grid[int(qs[qsIdx+2*l])|((int(qh[qhIdx+0])<<(8-2*l))&0x100)]
+				grid2 := iq3s_grid[int(qs[qsIdx+2*l+1])|((int(qh[qhIdx+0])<<(7-2*l))&0x100)]
+				base := outIdx
+				for j := 0; j < 4; j++ {
+					g0 := float32(uint8(grid1 >> (8 * j)))
+					if sign&kmask_iq2xs[j] != 0 {
+						g0 = -g0
+					}
+					out[base+j] = db1 * g0
+					g1 := float32(uint8(grid2 >> (8 * j)))
+					if sign&kmask_iq2xs[j+4] != 0 {
+						g1 = -g1
+					}
+					out[base+4+j] = db1 * g1
+				}
+				outIdx += 8
+			}
+			qsIdx += 8
+			signIdx += 4
+			for l := 0; l < 4; l++ {
+				sign := signs[signIdx+l]
+				grid1 := iq3s_grid[int(qs[qsIdx+2*l])|((int(qh[qhIdx+1])<<(8-2*l))&0x100)]
+				grid2 := iq3s_grid[int(qs[qsIdx+2*l+1])|((int(qh[qhIdx+1])<<(7-2*l))&0x100)]
+				base := outIdx
+				for j := 0; j < 4; j++ {
+					g0 := float32(uint8(grid1 >> (8 * j)))
+					if sign&kmask_iq2xs[j] != 0 {
+						g0 = -g0
+					}
+					out[base+j] = db2 * g0
+					g1 := float32(uint8(grid2 >> (8 * j)))
+					if sign&kmask_iq2xs[j+4] != 0 {
+						g1 = -g1
+					}
+					out[base+4+j] = db2 * g1
+				}
+				outIdx += 8
+			}
+			qhIdx += 2
+			qsIdx += 8
+			signIdx += 4
+		}
+	}
+	return out, nil
+}
+
+func readTensorIQ1SAsF32(r io.Reader, name string, count uint64) ([]float32, error) {
+	const qk = 256
+	const qsBytes = qk / 8
+	const qhBytes = qk / 32 * 2
+	const blockSize = 2 + qsBytes + qhBytes
+	if count%qk != 0 {
+		return nil, fmt.Errorf("tensor %q iq1_s element count=%d not divisible by %d", name, count, qk)
+	}
+	blocks := count / qk
+	if blocks > uint64(math.MaxInt) {
+		return nil, fmt.Errorf("tensor %q has too many iq1_s blocks", name)
+	}
+	out := make([]float32, count)
+	buf := make([]byte, blockSize)
+	outIdx := 0
+	for b := uint64(0); b < blocks; b++ {
+		if _, err := io.ReadFull(r, buf); err != nil {
+			return nil, fmt.Errorf("read tensor %q iq1_s block %d: %w", name, b, err)
+		}
+		d := binary.LittleEndian.Uint16(buf[:2])
+		scale := float16ToFloat32(d)
+		qs := buf[2 : 2+qsBytes]
+		qhRaw := buf[2+qsBytes:]
+		qh := make([]uint16, qk/32)
+		for i := range qh {
+			qh[i] = binary.LittleEndian.Uint16(qhRaw[i*2:])
+		}
+		qsIdx := 0
+		for ib := 0; ib < qk/32; ib++ {
+			dl := scale * float32(2*int((qh[ib]>>12)&7)+1)
+			delta := iq1sDelta
+			if qh[ib]&0x8000 != 0 {
+				delta = -iq1sDelta
+			}
+			for l := 0; l < 4; l++ {
+				gridIdx := int(qs[qsIdx+l]) | (int((qh[ib]>>(3*l))&7) << 8)
+				grid := iq1s_grid[gridIdx]
+				for j := 0; j < 8; j++ {
+					g := int8(grid >> (8 * j))
+					out[outIdx] = dl * (float32(g) + delta)
+					outIdx++
+				}
+			}
+			qsIdx += 4
+		}
+	}
+	return out, nil
+}
+
+func readTensorIQ1MAsF32(r io.Reader, name string, count uint64) ([]float32, error) {
+	const qk = 256
+	const qsBytes = qk / 8
+	const qhBytes = qk / 16
+	const scalesBytes = qk / 32
+	const blockSize = qsBytes + qhBytes + scalesBytes
+	if count%qk != 0 {
+		return nil, fmt.Errorf("tensor %q iq1_m element count=%d not divisible by %d", name, count, qk)
+	}
+	blocks := count / qk
+	if blocks > uint64(math.MaxInt) {
+		return nil, fmt.Errorf("tensor %q has too many iq1_m blocks", name)
+	}
+	out := make([]float32, count)
+	buf := make([]byte, blockSize)
+	outIdx := 0
+	for b := uint64(0); b < blocks; b++ {
+		if _, err := io.ReadFull(r, buf); err != nil {
+			return nil, fmt.Errorf("read tensor %q iq1_m block %d: %w", name, b, err)
+		}
+		qs := buf[:qsBytes]
+		qh := buf[qsBytes : qsBytes+qhBytes]
+		scalesRaw := buf[qsBytes+qhBytes:]
+		sc := make([]uint16, qk/64)
+		for i := range sc {
+			sc[i] = binary.LittleEndian.Uint16(scalesRaw[i*2:])
+		}
+		scaleU16 := uint16((sc[0]>>12)&0x000f | (sc[1]>>8)&0x00f0 | (sc[2]>>4)&0x0f00 | (sc[3] & 0xf000))
+		scale := float16ToFloat32(scaleU16)
+		qsIdx := 0
+		qhIdx := 0
+		for ib := 0; ib < qk/32; ib++ {
+			dl1 := scale * float32(2*int((sc[ib/2]>>(6*(ib%2)+0))&0x7)+1)
+			dl2 := scale * float32(2*int((sc[ib/2]>>(6*(ib%2)+3))&0x7)+1)
+			idx0 := int(qs[qsIdx+0]) | (int(qh[qhIdx+0])<<8)&0x700
+			idx1 := int(qs[qsIdx+1]) | (int(qh[qhIdx+0])<<4)&0x700
+			idx2 := int(qs[qsIdx+2]) | (int(qh[qhIdx+1])<<8)&0x700
+			idx3 := int(qs[qsIdx+3]) | (int(qh[qhIdx+1])<<4)&0x700
+			delta0 := iq1sDelta
+			if qh[qhIdx+0]&0x08 != 0 {
+				delta0 = -iq1sDelta
+			}
+			delta1 := iq1sDelta
+			if qh[qhIdx+0]&0x80 != 0 {
+				delta1 = -iq1sDelta
+			}
+			delta2 := iq1sDelta
+			if qh[qhIdx+1]&0x08 != 0 {
+				delta2 = -iq1sDelta
+			}
+			delta3 := iq1sDelta
+			if qh[qhIdx+1]&0x80 != 0 {
+				delta3 = -iq1sDelta
+			}
+			grid := iq1s_grid[idx0]
+			for j := 0; j < 8; j++ {
+				g := int8(grid >> (8 * j))
+				out[outIdx] = dl1 * (float32(g) + delta0)
+				outIdx++
+			}
+			grid = iq1s_grid[idx1]
+			for j := 0; j < 8; j++ {
+				g := int8(grid >> (8 * j))
+				out[outIdx] = dl1 * (float32(g) + delta1)
+				outIdx++
+			}
+			grid = iq1s_grid[idx2]
+			for j := 0; j < 8; j++ {
+				g := int8(grid >> (8 * j))
+				out[outIdx] = dl2 * (float32(g) + delta2)
+				outIdx++
+			}
+			grid = iq1s_grid[idx3]
+			for j := 0; j < 8; j++ {
+				g := int8(grid >> (8 * j))
+				out[outIdx] = dl2 * (float32(g) + delta3)
+				outIdx++
+			}
+			qsIdx += 4
+			qhIdx += 2
+		}
+	}
+	return out, nil
+}
+
+func readTensorIQ4NLAsF32(r io.Reader, name string, count uint64) ([]float32, error) {
+	const qk = 32
+	const qsBytes = qk / 2
+	const blockSize = 2 + qsBytes
+	if count%qk != 0 {
+		return nil, fmt.Errorf("tensor %q iq4_nl element count=%d not divisible by %d", name, count, qk)
+	}
+	blocks := count / qk
+	if blocks > uint64(math.MaxInt) {
+		return nil, fmt.Errorf("tensor %q has too many iq4_nl blocks", name)
+	}
+	out := make([]float32, count)
+	buf := make([]byte, blockSize)
+	outIdx := 0
+	for b := uint64(0); b < blocks; b++ {
+		if _, err := io.ReadFull(r, buf); err != nil {
+			return nil, fmt.Errorf("read tensor %q iq4_nl block %d: %w", name, b, err)
+		}
+		d := binary.LittleEndian.Uint16(buf[:2])
+		scale := float16ToFloat32(d)
+		qs := buf[2:]
+		for j := 0; j < qsBytes; j++ {
+			q := qs[j]
+			out[outIdx+j] = scale * float32(kvaluesIQ4NL[q&0x0f])
+			out[outIdx+j+qsBytes] = scale * float32(kvaluesIQ4NL[q>>4])
+		}
+		outIdx += qk
+	}
+	return out, nil
+}
+
+func readTensorIQ4XSAsF32(r io.Reader, name string, count uint64) ([]float32, error) {
+	const qk = 256
+	const qsBytes = qk / 2
+	const scalesLBytes = qk / 64
+	const blockSize = 2 + 2 + scalesLBytes + qsBytes
+	if count%qk != 0 {
+		return nil, fmt.Errorf("tensor %q iq4_xs element count=%d not divisible by %d", name, count, qk)
+	}
+	blocks := count / qk
+	if blocks > uint64(math.MaxInt) {
+		return nil, fmt.Errorf("tensor %q has too many iq4_xs blocks", name)
+	}
+	out := make([]float32, count)
+	buf := make([]byte, blockSize)
+	outIdx := 0
+	for b := uint64(0); b < blocks; b++ {
+		if _, err := io.ReadFull(r, buf); err != nil {
+			return nil, fmt.Errorf("read tensor %q iq4_xs block %d: %w", name, b, err)
+		}
+		d := binary.LittleEndian.Uint16(buf[:2])
+		scale := float16ToFloat32(d)
+		scalesH := binary.LittleEndian.Uint16(buf[2:4])
+		scalesL := buf[4 : 4+scalesLBytes]
+		qs := buf[4+scalesLBytes:]
+		qsIdx := 0
+		for ib := 0; ib < qk/32; ib++ {
+			ls := int((scalesL[ib/2]>>(4*(ib%2)))&0x0f) | int(((scalesH>>(2*ib))&0x3)<<4)
+			dl := scale * float32(ls-32)
+			for j := 0; j < 16; j++ {
+				q := qs[qsIdx+j]
+				out[outIdx+j] = dl * float32(kvaluesIQ4NL[q&0x0f])
+				out[outIdx+j+16] = dl * float32(kvaluesIQ4NL[q>>4])
+			}
+			outIdx += 32
+			qsIdx += 16
 		}
 	}
 	return out, nil
