@@ -65,7 +65,8 @@ sh "$ROOT_DIR/scripts/fetch_ref_model.sh"
 # Minimal GGUF header fixture.
 minimal_path="$TESTDATA_DIR/minimal.gguf"
 if [ ! -f "$minimal_path" ] || [ "$force_fetch" = "1" ]; then
-    printf '\x47\x47\x55\x46\x03\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00' > "$minimal_path"
+    # Use octal escapes for POSIX printf portability.
+    printf '\107\107\125\106\003\000\000\000\002\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000' > "$minimal_path"
     echo "Wrote: $minimal_path"
 else
     echo "Exists: $minimal_path"
