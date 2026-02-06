@@ -1,0 +1,43 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+          cache: true
+      - name: fmt
+        run: |
+          test -z "$(gofmt -l .)"
+      - name: vet
+        run: |
+          go vet ./...
+      - name: fetch-gguf
+        run: |
+          ./scripts/fetch_testdata_gguf.sh
+      - name: test
+        run: |
+          go test ./...
+      - name: parity
+        run: |
+          go test ./... -run TestParity -count=1
+      - name: bench-smoke
+        run: |
+          go test ./... -bench . -benchmem
+        continue-on-error: true
+      - name: bench-kernels
+        run: |
+          go test ./internal/kernels -bench . -benchmem
+        continue-on-error: true
+      - name: bench-runtime
+        run: |
+          go test ./internal/runtime -bench . -benchmem
+        continue-on-error: true
