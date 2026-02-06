@@ -95,6 +95,9 @@ struct DebugState {
     std::unordered_set<std::string> seen;
 };
 
+bool g_print_values = false;
+int g_values_n = 8;
+
 bool name_matches(const char * name) {
     if (name == nullptr || name[0] == '\0') {
         return false;
@@ -102,6 +105,7 @@ bool name_matches(const char * name) {
     const char * targets[] = {
         "inp_embd",
         "attn_norm-0",
+        "attn_sub_norm-0",
         "Qcur-0",
         "Kcur-0",
         "Vcur-0",
@@ -111,16 +115,37 @@ bool name_matches(const char * name) {
         "kqv-0",
         "kqv_wo-0",
         "kqv_out-0",
+        "attn_o_out-0",
         "ffn_inp-0",
         "ffn_norm-0",
         "ffn_up-0",
         "ffn_gate-0",
         "ffn_act-0",
         "ffn_down-0",
+        "ffn_sub_norm-0",
         "ffn_out-0",
         "l_out-0",
         "result_norm",
         "result_output",
+    };
+    for (const char * target : targets) {
+        if (std::strcmp(name, target) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool name_values_matches(const char * name) {
+    if (name == nullptr || name[0] == '\0') {
+        return false;
+    }
+    const char * targets[] = {
+        "attn_sub_norm-0",
+        "ffn_norm-0",
+        "ffn_out-0",
+        "ffn_sub_norm-0",
+        "result_norm",
     };
     for (const char * target : targets) {
         if (std::strcmp(name, target) == 0) {
@@ -160,6 +185,18 @@ void print_tensor_stats(const char * name, const ggml_tensor * t) {
     const double rms = std::sqrt(sum_sq / static_cast<double>(n));
     std::printf("DEBUG name=%s n=%lld min=%.9g max=%.9g mean=%.9g rms=%.9g\n",
         name, static_cast<long long>(n), min_v, max_v, mean, rms);
+    if (g_print_values && name_values_matches(name)) {
+        int count = g_values_n;
+        if (count > n) {
+            count = static_cast<int>(n);
+        }
+        std::printf("DEBUG_VALUES name=%s values=", name);
+        for (int i = 0; i < count; ++i) {
+            if (i > 0) std::printf(",");
+            std::printf("%.9g", data[i]);
+        }
+        std::printf("\n");
+    }
 }
 
 bool eval_callback(struct ggml_tensor * t, bool ask, void * user_data) {
@@ -200,6 +237,8 @@ int main() {
     const int n_threads = env_or_int("BITNET_REF_THREADS", 0);
     const int n_ctx_override = env_or_int("BITNET_REF_N_CTX", 0);
     const bool token_by_token = env_or_bool("BITNET_REF_TOKEN_BY_TOKEN", false);
+    g_print_values = env_or_bool("BITNET_REF_DEBUG_VALUES", false);
+    g_values_n = env_or_int("BITNET_REF_DEBUG_VALUES_N", 8);
 
     if (model_path.empty()) {
         std::fprintf(stderr, "BITNET_REF_MODEL is required\n");

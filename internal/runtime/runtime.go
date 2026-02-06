@@ -53,6 +53,11 @@ var disableLayers = os.Getenv("BITNET_DISABLE_LAYERS") == "1"
 var debugOutput = os.Getenv("BITNET_DEBUG_OUTPUT") == "1"
 var debugOutputOnly = os.Getenv("BITNET_DEBUG_OUTPUT_ONLY") == "1"
 var debugStages = os.Getenv("BITNET_DEBUG_STAGES") == "1"
+var debugFFNTranspose = os.Getenv("BITNET_DEBUG_FFN_TRANSPOSE") == "1"
+var debugFFNLoad = os.Getenv("BITNET_DEBUG_FFN_LOAD") == "1"
+var debugAttnMeta = os.Getenv("BITNET_DEBUG_ATTN_META") == "1"
+var debugValues = os.Getenv("BITNET_DEBUG_VALUES") == "1"
+var debugValuesN = parseDebugValuesN(os.Getenv("BITNET_DEBUG_VALUES_N"))
 var debugPos = parseDebugPos(os.Getenv("BITNET_DEBUG_POS"))
 var debugTokens = parseDebugTokens(os.Getenv("BITNET_DEBUG_TOKENS"))
 var debugStep0Printed bool
@@ -94,6 +99,17 @@ func parseDebugTokens(v string) []int {
 		out = append(out, n)
 	}
 	return out
+}
+
+func parseDebugValuesN(v string) int {
+	if v == "" {
+		return 8
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		return 8
+	}
+	return n
 }
 
 func shouldDebug(pos int) bool {
@@ -267,6 +283,8 @@ const (
 type llamaLayer struct {
 	attnNorm []float32
 	ffnNorm  []float32
+	attnSubNorm []float32
+	ffnSubNorm  []float32
 	attnQ    linearWeight
 	attnK    linearWeight
 	attnV    linearWeight
@@ -274,6 +292,9 @@ type llamaLayer struct {
 	ffnGate  linearWeight
 	ffnUp    linearWeight
 	ffnDown  linearWeight
+	debugFFNGateF32 []float32
+	debugFFNUpF32   []float32
+	debugFFNDownF32 []float32
 }
 
 type linearWeight struct {
@@ -447,6 +468,8 @@ func loadLlamaStack(path string, info gguf.ModelInfo) (*tensorBlock, bool, error
 	if _, ok := info.TensorByName("blk.0.attn_q.weight"); !ok {
 		return nil, false, nil
 	}
+	arch, _ := info.KeyValues["general.architecture"].(string)
+	useTokEmbOut := arch == "bitnet-b1.58" || arch == "bitnet" || arch == "bitnet-25"
 
 	embInfo, ok := info.TensorByName("token_embd.weight")
 	if !ok {
@@ -529,7 +552,13 @@ func loadLlamaStack(path string, info gguf.ModelInfo) (*tensorBlock, bool, error
 	if len(b.outputNorm) != hidden {
 		return nil, false, fmt.Errorf("output_norm.weight len=%d want=%d", len(b.outputNorm), hidden)
 	}
-	if outInfo, ok := info.TensorByName("output.weight"); ok {
+	if useTokEmbOut {
+		b.outputWeight = b.tokenEmbd
+		b.outputRows = hidden
+		b.outputCols = b.vocabDim
+		b.outputTransposed = true
+		b.outputWeightType = gguf.GGMLTypeF32
+	} else if outInfo, ok := info.TensorByName("output.weight"); ok {
 		if b.outputWeight, b.outputRows, b.outputCols, b.outputTransposed, err = loadLinearTensor(path, info, "output.weight", hidden); err != nil {
 			return nil, false, err
 		}
@@ -548,6 +577,7 @@ func loadLlamaStack(path string, info gguf.ModelInfo) (*tensorBlock, bool, error
 		b.outputRows = hidden
 		b.outputCols = b.vocabDim
 		b.outputTransposed = true
+		b.outputWeightType = gguf.GGMLTypeF32
 	}
 
 	for idx := 0; ; idx++ {
@@ -558,7 +588,7 @@ func loadLlamaStack(path string, info gguf.ModelInfo) (*tensorBlock, bool, error
 			}
 			break
 		}
-		layer, err := loadLlamaLayer(path, info, prefix, hidden, b.attnHeads, b.kvHeads)
+		layer, err := loadLlamaLayer(path, info, idx, prefix, hidden, b.attnHeads, b.kvHeads)
 		if err != nil {
 			return nil, false, err
 		}
@@ -570,7 +600,7 @@ func loadLlamaStack(path string, info gguf.ModelInfo) (*tensorBlock, bool, error
 	return b, true, nil
 }
 
-func loadLlamaLayer(path string, info gguf.ModelInfo, prefix string, hidden, attnHeads, kvHeads int) (llamaLayer, error) {
+func loadLlamaLayer(path string, info gguf.ModelInfo, layerIdx int, prefix string, hidden, attnHeads, kvHeads int) (llamaLayer, error) {
 	var l llamaLayer
 	var err error
 
@@ -579,6 +609,12 @@ func loadLlamaLayer(path string, info gguf.ModelInfo, prefix string, hidden, att
 	}
 	if len(l.attnNorm) != hidden {
 		return llamaLayer{}, fmt.Errorf("%sattn_norm.weight len=%d want=%d", prefix, len(l.attnNorm), hidden)
+	}
+	if l.attnSubNorm, err = gguf.ReadTensorAsF32(path, info, prefix+"attn_sub_norm.weight"); err != nil {
+		return llamaLayer{}, err
+	}
+	if len(l.attnSubNorm) != hidden {
+		return llamaLayer{}, fmt.Errorf("%sattn_sub_norm.weight len=%d want=%d", prefix, len(l.attnSubNorm), hidden)
 	}
 	if l.ffnNorm, err = gguf.ReadTensorAsF32(path, info, prefix+"ffn_norm.weight"); err != nil {
 		return llamaLayer{}, err
@@ -622,6 +658,12 @@ func loadLlamaLayer(path string, info gguf.ModelInfo, prefix string, hidden, att
 	if l.ffnUp, err = loadLinearWeight(path, info, prefix+"ffn_up.weight", hidden); err != nil {
 		return llamaLayer{}, err
 	}
+	if l.ffnSubNorm, err = gguf.ReadTensorAsF32(path, info, prefix+"ffn_sub_norm.weight"); err != nil {
+		return llamaLayer{}, err
+	}
+	if len(l.ffnSubNorm) != linearOutputLen(l.ffnGate) {
+		return llamaLayer{}, fmt.Errorf("%sffn_sub_norm.weight len=%d want=%d", prefix, len(l.ffnSubNorm), linearOutputLen(l.ffnGate))
+	}
 	if linearOutputLen(l.ffnGate) != linearOutputLen(l.ffnUp) {
 		return llamaLayer{}, fmt.Errorf("%sincompatible ffn gate/up dims", prefix)
 	}
@@ -630,6 +672,25 @@ func loadLlamaLayer(path string, info gguf.ModelInfo, prefix string, hidden, att
 	}
 	if linearOutputLen(l.ffnDown) != hidden {
 		return llamaLayer{}, fmt.Errorf("%sffn_down.weight output dim=%d want=%d", prefix, linearOutputLen(l.ffnDown), hidden)
+	}
+	if debugFFNLoad && layerIdx == 0 {
+		if l.debugFFNGateF32, err = gguf.ReadTensorAsF32(path, info, prefix+"ffn_gate.weight"); err != nil {
+			return llamaLayer{}, err
+		}
+		if l.debugFFNUpF32, err = gguf.ReadTensorAsF32(path, info, prefix+"ffn_up.weight"); err != nil {
+			return llamaLayer{}, err
+		}
+		if l.debugFFNDownF32, err = gguf.ReadTensorAsF32(path, info, prefix+"ffn_down.weight"); err != nil {
+			return llamaLayer{}, err
+		}
+		fmt.Fprintf(os.Stderr, "debug ffn load: layer=%d gate=%d up=%d down=%d\n", layerIdx, len(l.debugFFNGateF32), len(l.debugFFNUpF32), len(l.debugFFNDownF32))
+		fmt.Fprintf(os.Stderr, "debug ffn meta: gate rows=%d cols=%d transposed=%v qtype=%d\n", l.ffnGate.rows, l.ffnGate.cols, l.ffnGate.transposed, l.ffnGate.qtype)
+		fmt.Fprintf(os.Stderr, "debug ffn meta: up rows=%d cols=%d transposed=%v qtype=%d\n", l.ffnUp.rows, l.ffnUp.cols, l.ffnUp.transposed, l.ffnUp.qtype)
+		fmt.Fprintf(os.Stderr, "debug ffn meta: down rows=%d cols=%d transposed=%v qtype=%d\n", l.ffnDown.rows, l.ffnDown.cols, l.ffnDown.transposed, l.ffnDown.qtype)
+		debugVecStats("debug attn_norm.weight", l.attnNorm)
+		debugVecStats("debug attn_sub_norm.weight", l.attnSubNorm)
+		debugVecStats("debug ffn_norm.weight", l.ffnNorm)
+		debugVecStats("debug ffn_sub_norm.weight", l.ffnSubNorm)
 	}
 	return l, nil
 }
@@ -737,6 +798,10 @@ func embedToken(dst []float32, block *tensorBlock, token int32) bool {
 func runForwardLlamaStack(block *tensorBlock, seed int64, promptTokens []int32, out []int32, topk *[]TopKStep) {
 	if len(out) == 0 {
 		return
+	}
+	if debugAttnMeta {
+		fmt.Fprintf(os.Stderr, "debug attn meta: heads=%d kv_heads=%d rope_dim=%d rope_freq_base=%g rope_scale=%g rope_type=%q rope_yarn_beta_fast=%g rope_yarn_beta_slow=%g rope_yarn_ext=%g rope_yarn_attn=%g\n",
+			block.attnHeads, block.kvHeads, block.ropeDim, block.ropeFreqBase, block.ropeScale, block.ropeScalingType, block.ropeYarnBetaFast, block.ropeYarnBetaSlow, block.ropeYarnExtFactor, block.ropeYarnAttnFactor)
 	}
 	maxSeq := len(promptTokens) + len(out)
 	if maxSeq < 1 {
@@ -906,6 +971,19 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 			linearApplyIntoWeight(st.q, layer.attnQ, n1)
 			linearApplyIntoWeight(st.k, layer.attnK, n1)
 			linearApplyIntoWeight(st.v, layer.attnV, n1)
+			if debugAttnMeta && shouldDebug(pos) && i == 0 {
+				qHead := 0
+				kHead := 0
+				if block.attnHeads > 0 {
+					qHead = len(st.q) / block.attnHeads
+				}
+				if block.kvHeads > 0 {
+					kHead = len(st.k) / block.kvHeads
+				}
+				fmt.Fprintf(os.Stderr, "debug attn dims: q=%d k=%d v=%d qHeadDim=%d kHeadDim=%d\n", len(st.q), len(st.k), len(st.v), qHead, kHead)
+				debugVecSlice("q.pre", st.q, 8)
+				debugVecSlice("k.pre", st.k, 8)
+			}
 			if shouldDebug(pos) && i == 0 {
 				debugVecStats("q", st.q)
 				debugVecStats("k", st.k)
@@ -913,12 +991,23 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 			}
 			applyRoPEInPlace(st.q, pos, block.attnHeads, block.ropeFreqBase, block.ropeScale, block.ropeScalingType, block.ropeDim, block.ropeYarnBetaFast, block.ropeYarnBetaSlow, block.ropeYarnExtFactor, block.ropeYarnAttnFactor)
 			applyRoPEInPlace(st.k, pos, block.kvHeads, block.ropeFreqBase, block.ropeScale, block.ropeScalingType, block.ropeDim, block.ropeYarnBetaFast, block.ropeYarnBetaSlow, block.ropeYarnExtFactor, block.ropeYarnAttnFactor)
+			if debugAttnMeta && shouldDebug(pos) && i == 0 {
+				debugVecSlice("q.post", st.q, 8)
+				debugVecSlice("k.post", st.k, 8)
+			}
 
 			storeCacheVector(st.keys, pos, st.k)
 			storeCacheVector(st.values, pos, st.v)
 			causalAttentionMultiHeadInto(st.attnAcc, st.scores, st.q, st.keys, st.values, pos+1, block.attnHeads, block.kvHeads, len(st.k), len(st.v))
 
-			linearApplyIntoWeight(st.attnOut, layer.attnOut, st.attnAcc)
+			rmsNormInto(n2, st.attnAcc, layer.attnSubNorm, block.rmsEps)
+			if debugStages && shouldDebug(pos) && i == 0 {
+				debugStage("stage.attn_sub_norm", n2, block, stageNormBuf, false)
+			}
+			if debugValues && shouldDebug(pos) && i == 0 {
+				debugVecValues("attn_sub_norm", n2, debugValuesN)
+			}
+			linearApplyIntoWeight(st.attnOut, layer.attnOut, n2)
 			kernels.AddScaled(x, st.attnOut, 1.0)
 			if debugStages && shouldDebug(pos) && i == 0 {
 				debugStage("stage.post_attn", x, block, stageNormBuf, false)
@@ -937,8 +1026,20 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 			if debugStages && shouldDebug(pos) && i == 0 {
 				debugStage("stage.ffn_norm", n2, block, stageNormBuf, false)
 			}
-			linearApplyIntoWeight(st.gate, layer.ffnGate, n2)
-			linearApplyIntoWeight(st.up, layer.ffnUp, n2)
+			if debugValues && shouldDebug(pos) && i == 0 {
+				debugVecValues("ffn_norm", n2, debugValuesN)
+			}
+			if debugFFNTranspose {
+				linearApplyIntoWeightTransposed(st.gate, layer.ffnGate, n2, !layer.ffnGate.transposed)
+				linearApplyIntoWeightTransposed(st.up, layer.ffnUp, n2, !layer.ffnUp.transposed)
+			} else {
+				linearApplyIntoWeight(st.gate, layer.ffnGate, n2)
+				linearApplyIntoWeight(st.up, layer.ffnUp, n2)
+			}
+			if debugFFNLoad && shouldDebug(pos) && i == 0 {
+				debugFfnCompare("ffn_gate", st.gate, layer.ffnGate, layer.debugFFNGateF32, n2)
+				debugFfnCompare("ffn_up", st.up, layer.ffnUp, layer.debugFFNUpF32, n2)
+			}
 			if shouldDebug(pos) && i == 0 {
 				debugVecStats("ffn_norm", n2)
 				debugVecStats("ffn_gate", st.gate)
@@ -950,9 +1051,30 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 			}
 			for j := 0; j < n; j++ {
 				gg := st.gate[j]
-				st.ffnAct[j] = (gg / (1 + float32(math.Exp(float64(-gg))))) * st.up[j]
+				if gg < 0 {
+					gg = 0
+				}
+				gg = gg * gg
+				st.ffnAct[j] = gg * st.up[j]
 			}
-			linearApplyIntoWeight(st.ffnDown, layer.ffnDown, st.ffnAct)
+			if debugValues && shouldDebug(pos) && i == 0 {
+				debugVecValues("ffn_out", st.ffnAct, debugValuesN)
+			}
+			rmsNormInto(st.up, st.ffnAct, layer.ffnSubNorm, block.rmsEps)
+			if debugStages && shouldDebug(pos) && i == 0 {
+				debugStage("stage.ffn_sub_norm", st.up, block, stageNormBuf, false)
+			}
+			if debugValues && shouldDebug(pos) && i == 0 {
+				debugVecValues("ffn_sub_norm", st.up, debugValuesN)
+			}
+			if debugFFNTranspose {
+				linearApplyIntoWeightTransposed(st.ffnDown, layer.ffnDown, st.up, !layer.ffnDown.transposed)
+			} else {
+				linearApplyIntoWeight(st.ffnDown, layer.ffnDown, st.up)
+			}
+			if debugFFNLoad && shouldDebug(pos) && i == 0 {
+				debugFfnCompare("ffn_down", st.ffnDown, layer.ffnDown, layer.debugFFNDownF32, st.up)
+			}
 			kernels.AddScaled(x, st.ffnDown, 1.0)
 			if debugStages && shouldDebug(pos) && i == 0 {
 				debugStage("stage.post_ffn", x, block, stageNormBuf, false)
@@ -970,6 +1092,9 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 	rmsNormInto(n1, x, block.outputNorm, block.rmsEps)
 	if debugStages && shouldDebug(pos) {
 		debugStage("stage.output_norm", n1, block, stageNormBuf, true)
+	}
+	if debugValues && shouldDebug(pos) {
+		debugVecValues("result_norm", n1, debugValuesN)
 	}
 	linearApplyIntoWeight(logits, linearWeight{
 		data:       block.outputWeight,
@@ -1202,11 +1327,12 @@ func rmsNormInto(dst, x, weight []float32, eps float32) {
 	if n == 0 {
 		return
 	}
-	var sum float32
+	var sum float64
 	for i := 0; i < n; i++ {
-		sum += x[i] * x[i]
+		v := float64(x[i])
+		sum += v * v
 	}
-	inv := float32(1.0 / math.Sqrt(float64(sum/float32(n)+eps)))
+	inv := float32(1.0 / math.Sqrt(sum/float64(n)+float64(eps)))
 	for i := 0; i < n; i++ {
 		dst[i] = x[i] * inv * weight[i]
 	}
@@ -1261,6 +1387,44 @@ func debugVecDiff(label string, a, b []float32) {
 	fmt.Fprintf(os.Stderr, "debug %s: n=%d mean_abs=%g max_abs=%g\n", label, n, mean, maxAbs)
 }
 
+func debugVecSlice(label string, v []float32, n int) {
+	if len(v) == 0 {
+		fmt.Fprintf(os.Stderr, "debug %s: empty\n", label)
+		return
+	}
+	if n <= 0 {
+		return
+	}
+	if len(v) < n {
+		n = len(v)
+	}
+	fmt.Fprintf(os.Stderr, "debug %s:", label)
+	for i := 0; i < n; i++ {
+		fmt.Fprintf(os.Stderr, " %g", v[i])
+	}
+	fmt.Fprintln(os.Stderr)
+}
+
+func debugVecValues(label string, v []float32, n int) {
+	if n <= 0 {
+		return
+	}
+	if len(v) < n {
+		n = len(v)
+	}
+	if n == 0 {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "debug_values %s values=", label)
+	for i := 0; i < n; i++ {
+		if i > 0 {
+			fmt.Fprint(os.Stderr, ",")
+		}
+		fmt.Fprintf(os.Stderr, "%g", v[i])
+	}
+	fmt.Fprintln(os.Stderr)
+}
+
 func debugLogitsForTokens(label string, w linearWeight, x []float32) {
 	if len(debugTokens) == 0 {
 		return
@@ -1303,6 +1467,20 @@ func debugStage(label string, vec []float32, block *tensorBlock, normBuf []float
 	rmsNormInto(normBuf[:len(vec)], vec, block.outputNorm, block.rmsEps)
 	debugVecStats(label+".outnorm", normBuf[:len(vec)])
 	debugLogitsForTokens(label+".outnorm", w, normBuf[:len(vec)])
+}
+
+func debugFfnCompare(label string, got []float32, w linearWeight, wF32 []float32, x []float32) {
+	if len(wF32) == 0 {
+		return
+	}
+	out := make([]float32, len(got))
+	if w.transposed {
+		kernels.MatVecT(out, wF32, w.rows, w.cols, x)
+	} else {
+		kernels.MatVec(out, wF32, w.rows, w.cols, x)
+	}
+	debugVecStats(label+".f32", out)
+	debugVecDiff(label+".diff", got, out)
 }
 
 func f32LogitForToken(mat []float32, rows, cols, token int, x []float32, transposed bool) float32 {
