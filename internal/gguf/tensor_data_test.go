@@ -136,6 +136,95 @@ func TestReadTensorF16(t *testing.T) {
 	}
 }
 
+func TestReadTensorTQ10(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	writeString(t, buf, "GGUF")
+	writeU32(t, buf, 3)
+	writeU64(t, buf, 1) // tensor count
+	writeU64(t, buf, 1) // kv count
+
+	writeGGUFString(t, buf, "general.alignment")
+	writeU32(t, buf, valueTypeUint32)
+	writeU32(t, buf, 32)
+
+	writeGGUFString(t, buf, "w")
+	writeU32(t, buf, 1)
+	writeU64(t, buf, 256)
+	writeU32(t, buf, GGMLTypeTQ1_0)
+	writeU64(t, buf, 0)
+
+	padTo(t, buf, 32)
+	buf.Write(make([]byte, 48)) // qs
+	buf.Write(make([]byte, 4))  // qh
+	writeU16(t, buf, 0x3c00)    // d = 1.0
+
+	path := filepath.Join(t.TempDir(), "tensor_tq1_0.gguf")
+	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	info, err := ReadModelInfo(path)
+	if err != nil {
+		t.Fatalf("ReadModelInfo() error = %v", err)
+	}
+	got, err := ReadTensorF32(path, info, "w")
+	if err != nil {
+		t.Fatalf("ReadTensorF32() error = %v", err)
+	}
+	if len(got) != 256 {
+		t.Fatalf("len(got) = %d, want 256", len(got))
+	}
+	for i, v := range got {
+		if v != -1.0 {
+			t.Fatalf("got[%d] = %f, want -1.0", i, v)
+		}
+	}
+}
+
+func TestReadTensorTQ20(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	writeString(t, buf, "GGUF")
+	writeU32(t, buf, 3)
+	writeU64(t, buf, 1) // tensor count
+	writeU64(t, buf, 1) // kv count
+
+	writeGGUFString(t, buf, "general.alignment")
+	writeU32(t, buf, valueTypeUint32)
+	writeU32(t, buf, 32)
+
+	writeGGUFString(t, buf, "w")
+	writeU32(t, buf, 1)
+	writeU64(t, buf, 256)
+	writeU32(t, buf, GGMLTypeTQ2_0)
+	writeU64(t, buf, 0)
+
+	padTo(t, buf, 32)
+	buf.Write(make([]byte, 64)) // qs
+	writeU16(t, buf, 0x3c00)    // d = 1.0
+
+	path := filepath.Join(t.TempDir(), "tensor_tq2_0.gguf")
+	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	info, err := ReadModelInfo(path)
+	if err != nil {
+		t.Fatalf("ReadModelInfo() error = %v", err)
+	}
+	got, err := ReadTensorF32(path, info, "w")
+	if err != nil {
+		t.Fatalf("ReadTensorF32() error = %v", err)
+	}
+	if len(got) != 256 {
+		t.Fatalf("len(got) = %d, want 256", len(got))
+	}
+	for i, v := range got {
+		if v != -1.0 {
+			t.Fatalf("got[%d] = %f, want -1.0", i, v)
+		}
+	}
+}
+
 func TestReadTensorQ80AsF32(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
 	writeString(t, buf, "GGUF")

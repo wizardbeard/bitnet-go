@@ -9,19 +9,44 @@ import (
 )
 
 const (
-	GGMLTypeF32  = 0
-	GGMLTypeF16  = 1
-	GGMLTypeQ4_0 = 2
-	GGMLTypeQ4_1 = 3
-	GGMLTypeQ5_0 = 6
-	GGMLTypeQ5_1 = 7
-	GGMLTypeQ8_0 = 8
-	GGMLTypeQ2_K = 10
-	GGMLTypeQ3_K = 11
-	GGMLTypeQ4_K = 12
-	GGMLTypeQ5_K = 13
-	GGMLTypeQ6_K = 14
-	GGMLTypeQ8_K = 15
+	GGMLTypeF32      = 0
+	GGMLTypeF16      = 1
+	GGMLTypeQ4_0     = 2
+	GGMLTypeQ4_1     = 3
+	GGMLTypeQ5_0     = 6
+	GGMLTypeQ5_1     = 7
+	GGMLTypeQ8_0     = 8
+	GGMLTypeQ8_1     = 9
+	GGMLTypeQ2_K     = 10
+	GGMLTypeQ3_K     = 11
+	GGMLTypeQ4_K     = 12
+	GGMLTypeQ5_K     = 13
+	GGMLTypeQ6_K     = 14
+	GGMLTypeQ8_K     = 15
+	GGMLTypeIQ2_XXS  = 16
+	GGMLTypeIQ2_XS   = 17
+	GGMLTypeIQ3_XXS  = 18
+	GGMLTypeIQ1_S    = 19
+	GGMLTypeIQ4_NL   = 20
+	GGMLTypeIQ3_S    = 21
+	GGMLTypeIQ2_S    = 22
+	GGMLTypeIQ4_XS   = 23
+	GGMLTypeI8       = 24
+	GGMLTypeI16      = 25
+	GGMLTypeI32      = 26
+	GGMLTypeI64      = 27
+	GGMLTypeF64      = 28
+	GGMLTypeIQ1_M    = 29
+	GGMLTypeBF16     = 30
+	GGMLTypeQ4_0_4_4 = 31
+	GGMLTypeQ4_0_4_8 = 32
+	GGMLTypeQ4_0_8_8 = 33
+	GGMLTypeTQ1_0    = 34
+	GGMLTypeTQ2_0    = 35
+	GGMLTypeI2_S     = 36
+	GGMLTypeI8_S     = 37
+	GGMLTypeTL1      = 38
+	GGMLTypeTL2      = 39
 )
 
 func (m ModelInfo) TensorByName(name string) (TensorInfo, bool) {
@@ -110,9 +135,111 @@ func ReadTensorAsF32(path string, info ModelInfo, name string) ([]float32, error
 		return readTensorQ6KAsF32(f, name, count)
 	case GGMLTypeQ8_K:
 		return readTensorQ8KAsF32(f, name, count)
+	case GGMLTypeTQ1_0:
+		return readTensorTQ10AsF32(f, name, count)
+	case GGMLTypeTQ2_0:
+		return readTensorTQ20AsF32(f, name, count)
 	default:
 		return nil, fmt.Errorf("tensor %q type=%d not supported", name, t.Type)
 	}
+}
+
+func readTensorTQ10AsF32(r io.Reader, name string, count uint64) ([]float32, error) {
+	const qk = 256
+	const qh = qk / 64
+	const qs = (qk - 4*qk/64) / 5
+	const blockSize = qs + qh + 2
+	if count%qk != 0 {
+		return nil, fmt.Errorf("tensor %q tq1_0 element count=%d not divisible by %d", name, count, qk)
+	}
+	blocks := count / qk
+	if blocks > uint64(math.MaxInt) {
+		return nil, fmt.Errorf("tensor %q has too many tq1_0 blocks", name)
+	}
+	out := make([]float32, count)
+	buf := make([]byte, blockSize)
+	pow3 := [6]uint16{1, 3, 9, 27, 81, 243}
+
+	outIdx := 0
+	for b := uint64(0); b < blocks; b++ {
+		if _, err := io.ReadFull(r, buf); err != nil {
+			return nil, fmt.Errorf("read tensor %q tq1_0 block %d: %w", name, b, err)
+		}
+		qsBytes := buf[:qs]
+		qhBytes := buf[qs : qs+qh]
+		d := binary.LittleEndian.Uint16(buf[qs+qh:])
+		scale := float16ToFloat32(d)
+
+		mainLen := len(qsBytes) - (len(qsBytes) % 32)
+		for j := 0; j < mainLen; j += 32 {
+			for n := 0; n < 5; n++ {
+				p := pow3[n]
+				for m := 0; m < 32; m++ {
+					q := uint16(qsBytes[j+m]) * p
+					xi := (q * 3) >> 8
+					out[outIdx] = float32(int16(xi)-1) * scale
+					outIdx++
+				}
+			}
+		}
+		for j := mainLen; j < len(qsBytes); j += 16 {
+			for n := 0; n < 5; n++ {
+				p := pow3[n]
+				for m := 0; m < 16 && j+m < len(qsBytes); m++ {
+					q := uint16(qsBytes[j+m]) * p
+					xi := (q * 3) >> 8
+					out[outIdx] = float32(int16(xi)-1) * scale
+					outIdx++
+				}
+			}
+		}
+
+		for n := 0; n < 4; n++ {
+			p := pow3[n]
+			for j := 0; j < len(qhBytes); j++ {
+				q := uint16(qhBytes[j]) * p
+				xi := (q * 3) >> 8
+				out[outIdx] = float32(int16(xi)-1) * scale
+				outIdx++
+			}
+		}
+	}
+	return out, nil
+}
+
+func readTensorTQ20AsF32(r io.Reader, name string, count uint64) ([]float32, error) {
+	const qk = 256
+	const qs = qk / 4
+	const blockSize = qs + 2
+	if count%qk != 0 {
+		return nil, fmt.Errorf("tensor %q tq2_0 element count=%d not divisible by %d", name, count, qk)
+	}
+	blocks := count / qk
+	if blocks > uint64(math.MaxInt) {
+		return nil, fmt.Errorf("tensor %q has too many tq2_0 blocks", name)
+	}
+	out := make([]float32, count)
+	buf := make([]byte, blockSize)
+	outIdx := 0
+	for b := uint64(0); b < blocks; b++ {
+		if _, err := io.ReadFull(r, buf); err != nil {
+			return nil, fmt.Errorf("read tensor %q tq2_0 block %d: %w", name, b, err)
+		}
+		qsBytes := buf[:qs]
+		d := binary.LittleEndian.Uint16(buf[qs:])
+		scale := float16ToFloat32(d)
+		for j := 0; j < len(qsBytes); j += 32 {
+			for l := 0; l < 4; l++ {
+				shift := uint(l * 2)
+				for m := 0; m < 32; m++ {
+					q := (qsBytes[j+m] >> shift) & 0x3
+					out[outIdx] = float32(int8(q)-1) * scale
+					outIdx++
+				}
+			}
+		}
+	}
+	return out, nil
 }
 
 func readTensorF16AsF32(r io.Reader, name string, count uint64) ([]float32, error) {
