@@ -96,8 +96,9 @@
   - update: prompt tokenization now matches `expected.yarn.prompt_tokens.json` for "Hello from YaRN." (tokens `[19556,429,36379,15986,30]`), but generation still diverges at step 0 (got 18263, want 49157).
   - update: added `BITNET_DISABLE_FFN=1` to skip the MLP block for isolation during step-0 divergence debugging.
   - update: GGML tensor layout is column-major (ne0 contiguous). Switched MatVec/embedding access and test fixtures to GGML layout; updated linear transpose preference to treat [in, out] layouts as transposed.
-  - update: YaRN parity now matches tokens and top-k order with small logit deltas; increased default YaRN logit rtol to `3e-2` (Yarn test only) pending deeper investigation.
-  - update: YaRN parity test now enforces only the first `BITNET_PARITY_TOPK_STRICT` entries (default 1 for YaRN, 3 for non-YaRN) to avoid tail-rank jitter while we investigate residual numeric drift.
+- update: YaRN parity now matches tokens and top-k order with small logit deltas; increased default YaRN logit rtol to `3e-2` (Yarn test only) pending deeper investigation.
+- update: YaRN parity test now enforces only the first `BITNET_PARITY_TOPK_STRICT` entries (default 1 for YaRN, 3 for non-YaRN) to avoid tail-rank jitter while we investigate residual numeric drift.
+- update: added naive i8_s activation quantization + i2_s×i8_s matvec kernels in Go; assumed `nearest_int` uses round-to-even (`math.RoundToEven`). If reference quantization mismatches, adjust rounding mode to match upstream.
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).
