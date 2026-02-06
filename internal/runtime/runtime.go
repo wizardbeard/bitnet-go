@@ -60,6 +60,7 @@ var debugValues = os.Getenv("BITNET_DEBUG_VALUES") == "1"
 var debugValuesN = parseDebugValuesN(os.Getenv("BITNET_DEBUG_VALUES_N"))
 var debugPos = parseDebugPos(os.Getenv("BITNET_DEBUG_POS"))
 var debugTokens = parseDebugTokens(os.Getenv("BITNET_DEBUG_TOKENS"))
+var debugSoftmaxPrinted bool
 var debugStep0Printed bool
 var debugI2SDisableActSum = os.Getenv("BITNET_I2S_DISABLE_ACTSUM") == "1"
 var debugI2SInvertActScale = os.Getenv("BITNET_I2S_INVERT_ACT_SCALE") == "1"
@@ -992,6 +993,11 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 				debugVecStats("Kcur-0", st.k)
 				debugVecStats("Vcur-0", st.v)
 			}
+			if debugValues && shouldDebug(pos) && i == 0 {
+				debugVecValues("Qcur", st.q, debugValuesN)
+				debugVecValues("Kcur", st.k, debugValuesN)
+				debugVecValues("Vcur", st.v, debugValuesN)
+			}
 			applyRoPEInPlace(st.q, pos, block.attnHeads, block.ropeFreqBase, block.ropeScale, block.ropeScalingType, block.ropeDim, block.ropeNeox, block.ropeYarnBetaFast, block.ropeYarnBetaSlow, block.ropeYarnExtFactor, block.ropeYarnAttnFactor)
 			applyRoPEInPlace(st.k, pos, block.kvHeads, block.ropeFreqBase, block.ropeScale, block.ropeScalingType, block.ropeDim, block.ropeNeox, block.ropeYarnBetaFast, block.ropeYarnBetaSlow, block.ropeYarnExtFactor, block.ropeYarnAttnFactor)
 			if debugAttnMeta && shouldDebug(pos) && i == 0 {
@@ -1003,8 +1009,8 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 			}
 
 			storeCacheVector(st.keys, pos, st.k)
-			storeCacheVector(st.values, pos, st.v)
-			causalAttentionMultiHeadInto(st.attnAcc, st.scores, st.q, st.keys, st.values, pos+1, block.attnHeads, block.kvHeads, len(st.k), len(st.v))
+			storeCacheVectorV(st.values, pos, st.v, block.kvHeads)
+			causalAttentionMultiHeadInto(st.attnAcc, st.scores, st.q, st.keys, st.values, pos+1, block.attnHeads, block.kvHeads, len(st.k), len(st.v), pos)
 
 			rmsNormInto(n2, st.attnAcc, layer.attnSubNorm, block.rmsEps)
 			if debugStages && shouldDebug(pos) && i == 0 {
@@ -1014,12 +1020,17 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 				debugVecStats("attn_sub_norm-0", n2)
 			}
 			if debugValues && shouldDebug(pos) && i == 0 {
+				debugVecValues("kqv", st.attnAcc, debugValuesN)
 				debugVecValues("attn_sub_norm", n2, debugValuesN)
 			}
 			linearApplyIntoWeight(st.attnOut, layer.attnOut, n2)
 			kernels.AddScaled(x, st.attnOut, 1.0)
 			if debugStages && shouldDebug(pos) && i == 0 {
 				debugStage("stage.post_attn", x, block, stageNormBuf, false)
+			}
+			if debugValues && shouldDebug(pos) && i == 0 {
+				debugVecValues("attn_o_out", st.attnOut, debugValuesN)
+				debugVecValues("ffn_inp", x, debugValuesN)
 			}
 			if shouldDebug(pos) && i == 0 {
 				debugVecStats("kqv-0", st.attnAcc)
@@ -1122,7 +1133,7 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 	}
 }
 
-func causalAttentionMultiHeadInto(dst, scores, q, keys, values []float32, steps, qHeads, kvHeads, kStepDim, vStepDim int) {
+func causalAttentionMultiHeadInto(dst, scores, q, keys, values []float32, steps, qHeads, kvHeads, kStepDim, vStepDim int, pos int) {
 	for i := range dst {
 		dst[i] = 0
 	}
@@ -1153,43 +1164,68 @@ func causalAttentionMultiHeadInto(dst, scores, q, keys, values []float32, steps,
 	if kStepDim/kvHeads != headDim || vStepDim/kvHeads != headDim {
 		return
 	}
+	maxSeq := 0
+	if vStepDim > 0 {
+		maxSeq = len(values) / vStepDim
+	}
+	if maxSeq <= 0 {
+		return
+	}
 
 	for h := 0; h < qHeads; h++ {
 		qBase := h * headDim
 		qh := q[qBase : qBase+headDim]
 		kvHead := h * kvHeads / qHeads
 		kBase := kvHead * headDim
-		scale := 1.0 / math.Sqrt(float64(headDim))
-		maxScore := -math.MaxFloat64
+		scale := float32(1.0 / math.Sqrt(float64(headDim)))
+		maxScore := float32(-math.MaxFloat32)
 		for i := 0; i < steps; i++ {
 			kb := i*kStepDim + kBase
-			var sum float64
+			var sum float32
 			for j := 0; j < headDim; j++ {
-				sum += float64(qh[j]) * float64(keys[kb+j])
+				sum += qh[j] * keys[kb+j]
 			}
 			s := sum * scale
-			scores[h*steps+i] = float32(s)
+			scores[h*steps+i] = s
 			if s > maxScore {
 				maxScore = s
 			}
 		}
 
-		var sum float64
+		var sum float32
 		for i := 0; i < steps; i++ {
 			idx := h*steps + i
-			w := math.Exp(float64(scores[idx]) - maxScore)
-			scores[idx] = float32(w)
+			w := float32(math.Exp(float64(scores[idx] - maxScore)))
+			scores[idx] = w
 			sum += w
 		}
 		if sum == 0 {
 			continue
 		}
-		inv := 1.0 / sum
+		inv := 1 / sum
+		if debugValues && h == 0 && shouldDebug(pos) && !debugSoftmaxPrinted {
+			limit := steps
+			if limit > debugValuesN {
+				limit = debugValuesN
+			}
+			if limit > 0 {
+				fmt.Fprint(os.Stderr, "debug_values kq_softmax values=")
+				for i := 0; i < limit; i++ {
+					if i > 0 {
+						fmt.Fprint(os.Stderr, ",")
+					}
+					fmt.Fprintf(os.Stderr, "%.9g", scores[i]*inv)
+				}
+				fmt.Fprintln(os.Stderr)
+				debugSoftmaxPrinted = true
+			}
+		}
 		for i := 0; i < steps; i++ {
-			w := float32(float64(scores[h*steps+i]) * inv)
-			vb := i*vStepDim + kBase
+			w := scores[h*steps+i] * inv
+			vHeadBase := kvHead * headDim * maxSeq
 			for j := 0; j < headDim; j++ {
-				dst[qBase+j] += values[vb+j] * w
+				vb := vHeadBase + j*maxSeq + i
+				dst[qBase+j] += values[vb] * w
 			}
 		}
 	}
@@ -1198,6 +1234,28 @@ func causalAttentionMultiHeadInto(dst, scores, q, keys, values []float32, steps,
 func storeCacheVector(cache []float32, pos int, vec []float32) {
 	base := pos * len(vec)
 	copy(cache[base:base+len(vec)], vec)
+}
+
+func storeCacheVectorV(cache []float32, pos int, vec []float32, kvHeads int) {
+	if kvHeads <= 0 || len(vec) == 0 {
+		return
+	}
+	if len(vec)%kvHeads != 0 {
+		kvHeads = 1
+	}
+	headDim := len(vec) / kvHeads
+	if headDim == 0 {
+		return
+	}
+	maxSeq := len(cache) / len(vec)
+	if maxSeq <= 0 || pos < 0 || pos >= maxSeq {
+		return
+	}
+	for h := 0; h < kvHeads; h++ {
+		for d := 0; d < headDim; d++ {
+			cache[h*headDim*maxSeq+d*maxSeq+pos] = vec[h*headDim+d]
+		}
+	}
 }
 
 func seedToken(seed int64, vocab int) int32 {
@@ -1229,34 +1287,32 @@ func applyRoPEInPlace(v []float32, pos, heads int, base, scale float32, scalingT
 	if half == 0 {
 		return
 	}
-	posf := ropeScaledPosition(pos, scale, scalingType)
-	basef := float64(base)
+	posf := float32(ropeScaledPosition(pos, scale, scalingType))
+	thetaScale := float32(math.Pow(float64(base), -2.0/float64(ropeDim)))
 
 	for h := 0; h < heads; h++ {
 		offset := h * headDim
+		theta := posf
 		if ropeNeox {
 			halfDim := ropeDim / 2
 			for i := 0; i+1 < ropeDim; i += 2 {
 				pair := i / 2
-				exponent := float64(pair) / float64(half)
-				thetaBase := posf / math.Pow(basef, exponent)
-				cosT, sinT := ropeCosSin(thetaBase, scale, scalingType, betaFast, betaSlow, extFactor, attnFactor, i)
+				cosT, sinT := ropeCosSin(theta, scale, scalingType, betaFast, betaSlow, extFactor, attnFactor, i)
 				x0 := v[offset+pair]
 				x1 := v[offset+pair+halfDim]
 				v[offset+pair] = x0*cosT - x1*sinT
 				v[offset+pair+halfDim] = x0*sinT + x1*cosT
+				theta *= thetaScale
 			}
 			continue
 		}
 		for i := 0; i+1 < ropeDim; i += 2 {
-			pair := i / 2
-			exponent := float64(pair) / float64(half)
-			thetaBase := posf / math.Pow(basef, exponent)
-			cosT, sinT := ropeCosSin(thetaBase, scale, scalingType, betaFast, betaSlow, extFactor, attnFactor, i)
+			cosT, sinT := ropeCosSin(theta, scale, scalingType, betaFast, betaSlow, extFactor, attnFactor, i)
 			x0 := v[offset+i]
 			x1 := v[offset+i+1]
 			v[offset+i] = x0*cosT - x1*sinT
 			v[offset+i+1] = x0*sinT + x1*cosT
+			theta *= thetaScale
 		}
 	}
 }
@@ -1283,19 +1339,19 @@ func ropeScaledPosition(pos int, scale float32, scalingType string) float64 {
 	return p
 }
 
-func ropeCosSin(thetaBase float64, scale float32, scalingType string, betaFast, betaSlow, extFactor, attnFactor float32, i0 int) (float32, float32) {
+func ropeCosSin(thetaBase float32, scale float32, scalingType string, betaFast, betaSlow, extFactor, attnFactor float32, i0 int) (float32, float32) {
 	switch scalingType {
 	case "yarn":
 		return ropeYarnCosSin(thetaBase, scale, betaFast, betaSlow, extFactor, attnFactor, i0)
 	default:
-		theta := thetaBase
+		theta := float64(thetaBase)
 		cosT := float32(math.Cos(theta))
 		sinT := float32(math.Sin(theta))
 		return cosT, sinT
 	}
 }
 
-func ropeYarnCosSin(thetaExtrap float64, scale, betaFast, betaSlow, extFactor, attnFactor float32, i0 int) (float32, float32) {
+func ropeYarnCosSin(thetaExtrap float32, scale, betaFast, betaSlow, extFactor, attnFactor float32, i0 int) (float32, float32) {
 	freqScale := float32(1.0)
 	if scale != 0 {
 		freqScale = 1 / scale
@@ -1306,7 +1362,7 @@ func ropeYarnCosSin(thetaExtrap float64, scale, betaFast, betaSlow, extFactor, a
 	mscale := attnFactor
 	if extFactor != 0 {
 		rampMix := ropeYarnRamp(corrLow, corrHigh, i0) * extFactor
-		theta = thetaInterp*(1-rampMix) + float32(thetaExtrap)*rampMix
+		theta = thetaInterp*(1-rampMix) + thetaExtrap*rampMix
 		mscale *= 1.0 + 0.1*float32(math.Log(float64(1.0/freqScale)))
 	}
 	cosT := float32(math.Cos(float64(theta))) * mscale

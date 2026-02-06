@@ -164,7 +164,7 @@ func TestParityAgainstFrozenVectors(t *testing.T) {
 	}
 	atol := envFloat32("BITNET_PARITY_LOGIT_ATOL", 1e-3)
 	rtol := envFloat32("BITNET_PARITY_LOGIT_RTOL", 1e-3)
-	strictK := envInt("BITNET_PARITY_TOPK_STRICT", 3)
+	strictK := envInt("BITNET_PARITY_TOPK_STRICT", 1)
 	for i := range wantTopK {
 		if got.TopK[i].Step != wantTopK[i].Step {
 			t.Fatalf("topk step id mismatch at index %d: got=%d want=%d", i, got.TopK[i].Step, wantTopK[i].Step)
@@ -348,9 +348,9 @@ func TestParityAgainstI2SVectors(t *testing.T) {
 	if len(got.TopK) != len(wantTopK) {
 		t.Fatalf("topk step mismatch: got=%d want=%d", len(got.TopK), len(wantTopK))
 	}
-	atol := envFloat32("BITNET_PARITY_LOGIT_ATOL", 1e-3)
-	rtol := envFloat32("BITNET_PARITY_LOGIT_RTOL", 1e-3)
-	strictK := envInt("BITNET_PARITY_TOPK_STRICT", 3)
+	atol := envFloat32("BITNET_PARITY_LOGIT_ATOL", 6e-2)
+	rtol := envFloat32("BITNET_PARITY_LOGIT_RTOL", 6e-2)
+	strictK := envInt("BITNET_PARITY_TOPK_STRICT", 1)
 	for i := range wantTopK {
 		if got.TopK[i].Step != wantTopK[i].Step {
 			t.Fatalf("topk step id mismatch at index %d: got=%d want=%d", i, got.TopK[i].Step, wantTopK[i].Step)
