@@ -60,7 +60,7 @@ fetch_url() {
 }
 
 # Core parity model (updates model_fixture.txt).
-"$ROOT_DIR/scripts/fetch_ref_model.sh"
+sh "$ROOT_DIR/scripts/fetch_ref_model.sh"
 
 # Minimal GGUF header fixture.
 minimal_path="$TESTDATA_DIR/minimal.gguf"
