@@ -24,6 +24,12 @@ Overrides:
 - `BITNET_FORCE_FETCH=1` (redownload even if present)
 - `BITNET_GPT2_VOCAB_URL`, `BITNET_FALCON_VOCAB_URL`, `BITNET_QWEN2_VOCAB_URL`
 - `BITNET_FETCH_YARN=1`, `BITNET_YARN_MODEL_URL`, `BITNET_YARN_MODEL_FILE`
+- `BITNET_FETCH_IQ=1`, `BITNET_IQ_MODEL_URL`, `BITNET_IQ_MODEL_FILE`
+
+Optional IQ fixture hash:
+- `BITNET_FETCH_IQ=1 ./scripts/fetch_testdata_gguf.sh`
+- `./scripts/gen_iq_fixture_hash.sh` (writes `testdata/expected.iq_hash.json`)
+- `BITNET_ENFORCE_IQ=1 go test ./internal/gguf -run TestIQFixtureHash -count=1`
 
 `./scripts/fetch_ref_model.sh`:
 - Downloads a small GGUF fixture into `testdata/` (default: `stories15M-q8_0.gguf`)

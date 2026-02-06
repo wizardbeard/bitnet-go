@@ -1,0 +1,5 @@
+{
+  "tensor": "blk.0.attn_k.weight",
+  "count": 4096,
+  "sha256": "a0cc267ba4c472f648081c9cedcab23f19547e7988147032f033a815fc5857f1"
+}

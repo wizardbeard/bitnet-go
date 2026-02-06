@@ -1,0 +1,1 @@
+smollm2-135m-instruct-iq4_xs-imat.gguf

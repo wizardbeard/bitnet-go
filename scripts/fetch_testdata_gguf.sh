@@ -88,3 +88,12 @@ if [ "${BITNET_FETCH_YARN:-0}" = "1" ]; then
     printf '%s\n' "$yarn_file" > "$TESTDATA_DIR/model_fixture_yarn.txt"
     echo "Updated fixture: $TESTDATA_DIR/model_fixture_yarn.txt"
 fi
+
+# Optional IQ fixture for decoder validation. Set BITNET_FETCH_IQ=1 to enable.
+if [ "${BITNET_FETCH_IQ:-0}" = "1" ]; then
+    iq_file=${BITNET_IQ_MODEL_FILE:-smollm2-135m-instruct-iq4_xs-imat.gguf}
+    iq_url=${BITNET_IQ_MODEL_URL:-https://huggingface.co/ngxson/SmolLM2-135M-Instruct-IQ4_XS-GGUF/resolve/main/smollm2-135m-instruct-iq4_xs-imat.gguf}
+    fetch_url "$iq_url" "$TESTDATA_DIR/$iq_file" 80000000 "${BITNET_IQ_MODEL_SHA256:-}"
+    printf '%s\n' "$iq_file" > "$TESTDATA_DIR/model_fixture_iq.txt"
+    echo "Updated fixture: $TESTDATA_DIR/model_fixture_iq.txt"
+fi

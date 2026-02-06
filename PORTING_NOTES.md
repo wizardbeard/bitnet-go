@@ -64,6 +64,9 @@
 - `scripts/run_ref_tokenizer_variants.sh` extends tokenizer tracing vectors to:
   - `testdata/expected.falcon_prompt_tokens.json`
   - `testdata/expected.qwen2_prompt_tokens.json`
+- Optional IQ fixture hash:
+  - `scripts/gen_iq_fixture_hash.sh` writes `testdata/expected.iq_hash.json`
+  - `BITNET_ENFORCE_IQ=1 go test ./internal/gguf -run TestIQFixtureHash -count=1`
 - Structured trace format:
   - `TOKEN step=<n> id=<token_id>`
   - `TOPK step=<n> entries=<id:logit,id:logit,...>`
