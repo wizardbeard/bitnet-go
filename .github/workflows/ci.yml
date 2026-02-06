@@ -22,7 +22,7 @@ jobs:
           go vet ./...
       - name: fetch-gguf
         run: |
-          ./scripts/fetch_testdata_gguf.sh
+          sh ./scripts/fetch_testdata_gguf.sh
       - name: test
         run: |
           go test ./...
