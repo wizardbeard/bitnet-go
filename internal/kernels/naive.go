@@ -73,9 +73,9 @@ func MatVecT(dst, mat []float32, rows, cols int, vec []float32) {
 	}
 }
 
-// MatVecI2S computes dst = mat * vec where mat is GGML column-major [rows][cols]
+// matVecI2SGeneric computes dst = mat * vec where mat is GGML column-major [rows][cols]
 // stored in packed i2_s format with 2-bit values and a global scale.
-func MatVecI2S(dst []float32, packed []byte, rows, cols int, vec []float32, scale float32) {
+func matVecI2SGeneric(dst []float32, packed []byte, rows, cols int, vec []float32, scale float32) {
 	if rows <= 0 || cols <= 0 {
 		return
 	}
@@ -109,9 +109,9 @@ func MatVecI2S(dst []float32, packed []byte, rows, cols int, vec []float32, scal
 	}
 }
 
-// MatVecTI2S computes dst = transpose(mat) * vec where mat is GGML column-major [rows][cols]
+// matVecTI2SGeneric computes dst = transpose(mat) * vec where mat is GGML column-major [rows][cols]
 // stored in packed i2_s format with 2-bit values and a global scale.
-func MatVecTI2S(dst []float32, packed []byte, rows, cols int, vec []float32, scale float32) {
+func matVecTI2SGeneric(dst []float32, packed []byte, rows, cols int, vec []float32, scale float32) {
 	if rows <= 0 || cols <= 0 {
 		return
 	}
