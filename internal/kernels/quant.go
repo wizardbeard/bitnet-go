@@ -110,56 +110,13 @@ func MatVecTI2SI8S(dst []float32, packed []byte, rows, cols int, vec []int8, wei
 	if rows*cols == 0 || len(packed) < i2sPackedLen(rows*cols) {
 		return
 	}
-	rowBytes := (rows + 127) / 128 * 32
 	for c := 0; c < cols; c++ {
-		base := c * rowBytes
-		if base+rowBytes > len(packed) {
-			return
+		var sum int32
+		for r := 0; r < rows; r++ {
+			idx := r + rows*c
+			q := i2sPackedAt(packed, idx)
+			sum += int32(q) * int32(vec[r])
 		}
-		sum := dotI2SRowI8S(packed[base:base+rowBytes], vec, rows)
 		dst[c] = float32(sum-actSum) * (weightScale / actScale)
 	}
-}
-
-func dotI2SRowI8S(packed []byte, vec []int8, rows int) int32 {
-	var sum int32
-	if rows <= 0 {
-		return 0
-	}
-	if rows > len(vec) {
-		rows = len(vec)
-	}
-	blocks := (rows + 127) / 128
-	for b := 0; b < blocks; b++ {
-		baseIdx := b * 128
-		baseByte := b * 32
-		for gp := 0; gp < 32; gp++ {
-			if baseByte+gp >= len(packed) {
-				return sum
-			}
-			v := packed[baseByte+gp]
-			c0 := (v >> 6) & 0x3
-			c1 := (v >> 4) & 0x3
-			c2 := (v >> 2) & 0x3
-			c3 := v & 0x3
-
-			idx0 := baseIdx + gp
-			if idx0 < rows {
-				sum += int32(c0) * int32(vec[idx0])
-			}
-			idx1 := baseIdx + 32 + gp
-			if idx1 < rows {
-				sum += int32(c1) * int32(vec[idx1])
-			}
-			idx2 := baseIdx + 64 + gp
-			if idx2 < rows {
-				sum += int32(c2) * int32(vec[idx2])
-			}
-			idx3 := baseIdx + 96 + gp
-			if idx3 < rows {
-				sum += int32(c3) * int32(vec[idx3])
-			}
-		}
-	}
-	return sum
 }

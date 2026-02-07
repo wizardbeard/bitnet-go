@@ -436,22 +436,7 @@ func buildLlamaEmbeddingOutputModelI2S(t *testing.T) string {
 	// [ 1  0  1  0
 	//  0  1  0  1 ]
 	vals := []int{1, 0, 0, 1, 1, 0, 0, 1}
-	packed := make([]byte, (hidden*vocab+3)/4)
-	for i, v := range vals {
-		var q byte
-		switch v {
-		case -1:
-			q = 0
-		case 0:
-			q = 1
-		case 1:
-			q = 2
-		default:
-			q = 1
-		}
-		shift := uint(6 - 2*(i%4))
-		packed[i/4] |= q << shift
-	}
+	packed := rtPackI2S(vals)
 	buf.Write(packed)
 	rtWriteF32(t, buf, 1.0) // scale
 
@@ -552,6 +537,7 @@ func buildLlamaBlock0Model(t *testing.T) string {
 		},
 		{name: "blk.0.attn_output.weight", dims: []uint64{hidden, hidden}, data: makeIdentity(hidden, 0.5)},
 		{name: "blk.0.attn_norm.weight", dims: []uint64{hidden}, data: []float32{1, 1, 1, 1}},
+		{name: "blk.0.attn_sub_norm.weight", dims: []uint64{hidden}, data: []float32{1, 1, 1, 1}},
 		{
 			name: "blk.0.ffn_gate.weight",
 			dims: []uint64{ffn, hidden},
@@ -592,6 +578,7 @@ func buildLlamaBlock0Model(t *testing.T) string {
 			}(),
 		},
 		{name: "blk.0.ffn_norm.weight", dims: []uint64{hidden}, data: []float32{1, 1, 1, 1}},
+		{name: "blk.0.ffn_sub_norm.weight", dims: []uint64{ffn}, data: []float32{1, 1, 1, 1, 1, 1}},
 		{name: "blk.1.attn_q.weight", dims: []uint64{hidden, hidden}, data: makeIdentity(hidden, 0.9)},
 		{
 			name: "blk.1.attn_k.weight",
@@ -615,6 +602,7 @@ func buildLlamaBlock0Model(t *testing.T) string {
 		},
 		{name: "blk.1.attn_output.weight", dims: []uint64{hidden, hidden}, data: makeIdentity(hidden, 0.4)},
 		{name: "blk.1.attn_norm.weight", dims: []uint64{hidden}, data: []float32{1, 1, 1, 1}},
+		{name: "blk.1.attn_sub_norm.weight", dims: []uint64{hidden}, data: []float32{1, 1, 1, 1}},
 		{
 			name: "blk.1.ffn_gate.weight",
 			dims: []uint64{ffn, hidden},
@@ -655,6 +643,7 @@ func buildLlamaBlock0Model(t *testing.T) string {
 			}(),
 		},
 		{name: "blk.1.ffn_norm.weight", dims: []uint64{hidden}, data: []float32{1, 1, 1, 1}},
+		{name: "blk.1.ffn_sub_norm.weight", dims: []uint64{ffn}, data: []float32{1, 1, 1, 1, 1, 1}},
 	}
 
 	buf := bytes.NewBuffer(nil)
