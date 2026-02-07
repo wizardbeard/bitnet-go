@@ -70,6 +70,11 @@
   - `testdata/expected.i2s.topk_logits.json`
   - `testdata/expected.i2s.timings.json`
   - `testdata/expected.i2s.prompt_tokens.json`
+- `scripts/run_ref_i2s_2b.sh` runs reference inference for the BitNet 2B i2_s model and materializes:
+  - `testdata/expected.i2s_2b.tokens.json`
+  - `testdata/expected.i2s_2b.topk_logits.json`
+  - `testdata/expected.i2s_2b.timings.json`
+  - `testdata/expected.i2s_2b.prompt_tokens.json`
 - Optional IQ fixture hash:
   - `scripts/gen_iq_fixture_hash.sh` writes `testdata/expected.iq_hash.json`
   - `BITNET_ENFORCE_IQ=1 go test ./internal/gguf -run TestIQFixtureHash -count=1`
@@ -107,6 +112,9 @@
 - update: aligned i8_s quantization with upstream ggml: `nearest_int` bit trick rounding, `act_scale = 127/max`, and i2_s matvec uses `(sum - act_sum) / act_scale * weight_scale`.
 - update: runtime now reads `bitnet-b1.58.*` KV metadata (head counts, rope params, vocab/context length) to support BitNet b1.58 GGUFs.
 - update: i2_s parity shows numeric drift in attention accumulation for later prompt positions, accumulating to ~5e-2 top-1 logit deltas and larger deltas for lower-ranked top-k entries. Token IDs still match. Defaults for the i2_s parity test now check only top-1 (`BITNET_PARITY_TOPK_STRICT=1`) and use `6e-2` atol/rtol; needs investigation into ggml matmul/softmax ordering to tighten.
+- update: added amd64-only i2_s matvec fast path. Benchmarks on an i7-11800H show ~4x speedup vs generic for 256/512 shapes:
+  - MatVecI2S: 256x256 ~161,482 ns -> 40,681 ns; 512x512 ~690,120 ns -> 161,985 ns.
+  - MatVecTI2S: 256x256 ~152,724 ns -> 36,655 ns; 512x512 ~611,269 ns -> 147,892 ns.
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).
