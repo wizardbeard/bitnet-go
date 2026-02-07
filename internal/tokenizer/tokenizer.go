@@ -11,22 +11,26 @@ import (
 )
 
 type Tokenizer struct {
-	addBOS     bool
-	bosTokenID int32
-	unkTokenID int32
-	model      string
-	preType    string
-	vocab      map[string]int32
-	scores     []float32
-	bpeRanks   map[string]int
-	byteEncode [256]string
-	trie       *trieNode
-	byteTok    [256]int32
-	bpeBuf     []string
-	bpeWork    []string
-	bpeWork2   []string
-	bpeByteBuf []byte
-	bpeRuneBuf []rune
+	addBOS           bool
+	bosTokenID       int32
+	unkTokenID       int32
+	model            string
+	preType          string
+	vocab            map[string]int32
+	scores           []float32
+	bpeRanks         map[string]int
+	byteEncode       [256]string
+	trie             *trieNode
+	byteTok          [256]int32
+	bpeBuf           []string
+	bpeWork          []string
+	bpeWork2         []string
+	bpeByteBuf       []byte
+	bpeRuneBuf       []rune
+	bpeByteSym       [256]string
+	bpeKeyBuf        []byte
+	bpeChunkCache    *bpeChunkCache
+	bpeChunkCacheCap int
 }
 
 func NewFromModelInfo(info gguf.ModelInfo) (*Tokenizer, error) {
@@ -48,15 +52,22 @@ func NewFromModelInfo(info gguf.ModelInfo) (*Tokenizer, error) {
 	defaultAddBOS := model == "llama"
 
 	t := &Tokenizer{
-		addBOS:     defaultAddBOS,
-		bosTokenID: int32(firstUint32(info.KeyValues["tokenizer.ggml.bos_token_id"])),
-		unkTokenID: int32(firstUint32(info.KeyValues["tokenizer.ggml.unknown_token_id"])),
-		model:      model,
-		preType:    firstString(info.KeyValues["tokenizer.ggml.pre"]),
-		vocab:      make(map[string]int32, len(tokens)),
-		scores:     scores,
-		bpeRanks:   make(map[string]int),
-		trie:       newTrieNode(),
+		addBOS:           defaultAddBOS,
+		bosTokenID:       int32(firstUint32(info.KeyValues["tokenizer.ggml.bos_token_id"])),
+		unkTokenID:       int32(firstUint32(info.KeyValues["tokenizer.ggml.unknown_token_id"])),
+		model:            model,
+		preType:          firstString(info.KeyValues["tokenizer.ggml.pre"]),
+		vocab:            make(map[string]int32, len(tokens)),
+		scores:           scores,
+		bpeRanks:         make(map[string]int),
+		trie:             newTrieNode(),
+		bpeChunkCacheCap: 256,
+	}
+	if v, ok := info.KeyValues["bitnet.tokenizer.bpe_cache_size"].(uint32); ok {
+		t.bpeChunkCacheCap = int(v)
+	}
+	for i := 0; i < 256; i++ {
+		t.bpeByteSym[i] = string(byte(i))
 	}
 	for i := range t.byteTok {
 		t.byteTok[i] = t.unkTokenID
@@ -123,6 +134,9 @@ func (t *Tokenizer) tokenizeBPE(prompt string) []int32 {
 	if prompt == "" {
 		return nil
 	}
+	if t.bpeChunkCache == nil {
+		t.bpeChunkCache = newBPEChunkCache(t.bpeChunkCacheCap)
+	}
 	chunks := t.splitBPEPieces(prompt)
 	if len(chunks) == 0 {
 		chunks = []string{prompt}
@@ -130,7 +144,12 @@ func (t *Tokenizer) tokenizeBPE(prompt string) []int32 {
 
 	out := make([]int32, 0, len(prompt))
 	for _, chunk := range chunks {
-		out = append(out, t.encodeBPEWord(t.bpeByteMap(chunk))...)
+		encoded := t.bpeChunkCache.get(chunk)
+		if encoded == nil {
+			encoded = t.encodeBPEWord(t.bpeByteMap(chunk))
+			t.bpeChunkCache.add(chunk, encoded)
+		}
+		out = append(out, encoded...)
 	}
 	return out
 }
@@ -416,7 +435,7 @@ func (t *Tokenizer) encodeBPEWord(word string) []int32 {
 	syms := t.bpeBuf[:0]
 	if isASCII(word) {
 		for i := 0; i < len(word); i++ {
-			syms = append(syms, word[i:i+1])
+			syms = append(syms, t.bpeByteSym[word[i]])
 		}
 	} else {
 		runes := t.bpeRuneBuf[:0]
@@ -428,6 +447,7 @@ func (t *Tokenizer) encodeBPEWord(word string) []int32 {
 			syms = append(syms, string(runes[i]))
 		}
 	}
+	keyBuf := t.bpeKeyBuf
 	for {
 		if len(syms) < 2 {
 			break
@@ -435,7 +455,7 @@ func (t *Tokenizer) encodeBPEWord(word string) []int32 {
 		bestRank := int(^uint(0) >> 1)
 		bestIdx := -1
 		for i := 0; i < len(syms)-1; i++ {
-			key := syms[i] + "\x00" + syms[i+1]
+			key := t.pairKey(syms[i], syms[i+1])
 			rank, ok := t.bpeRanks[key]
 			if !ok {
 				continue
@@ -448,7 +468,7 @@ func (t *Tokenizer) encodeBPEWord(word string) []int32 {
 		if bestIdx < 0 {
 			break
 		}
-		merged := syms[bestIdx] + syms[bestIdx+1]
+		merged := t.mergePair(syms[bestIdx], syms[bestIdx+1])
 		next := t.bpeWork[:0]
 		next = append(next, syms[:bestIdx]...)
 		next = append(next, merged)
@@ -456,6 +476,7 @@ func (t *Tokenizer) encodeBPEWord(word string) []int32 {
 		syms, next = next, syms
 		t.bpeWork = next[:0]
 	}
+	t.bpeKeyBuf = keyBuf[:0]
 
 	out := make([]int32, 0, len(syms))
 	for _, s := range syms {
@@ -473,6 +494,21 @@ func (t *Tokenizer) encodeBPEWord(word string) []int32 {
 	}
 	t.bpeBuf = syms[:0]
 	return out
+}
+
+func (t *Tokenizer) pairKey(left, right string) string {
+	keyBuf := t.bpeKeyBuf
+	keyBuf = keyBuf[:0]
+	keyBuf = append(keyBuf, left...)
+	keyBuf = append(keyBuf, 0)
+	keyBuf = append(keyBuf, right...)
+	key := string(keyBuf)
+	t.bpeKeyBuf = keyBuf[:0]
+	return key
+}
+
+func (t *Tokenizer) mergePair(left, right string) string {
+	return left + right
 }
 
 func (t *Tokenizer) bpeByteMap(s string) string {

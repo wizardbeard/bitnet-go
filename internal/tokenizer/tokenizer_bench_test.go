@@ -39,3 +39,23 @@ func BenchmarkTokenizeBPE(b *testing.B) {
 		_ = tok.Tokenize(text)
 	}
 }
+
+func BenchmarkTokenizeBPECold(b *testing.B) {
+	info := gguf.ModelInfo{
+		KeyValues: map[string]any{
+			"tokenizer.ggml.model":            "gpt2",
+			"tokenizer.ggml.tokens":           []string{"<unk>", "Ġ", "h", "e", "l", "o", "Ġh", "Ġhe", "Ġhel", "Ġhell", "Ġhello"},
+			"tokenizer.ggml.merges":           []string{"Ġ h", "Ġh e", "Ġhe l", "Ġhel l", "Ġhell o"},
+			"tokenizer.ggml.bos_token_id":     uint32(1),
+			"tokenizer.ggml.unknown_token_id": uint32(0),
+		},
+	}
+	text := " hello hello hello"
+	for i := 0; i < b.N; i++ {
+		tok, err := NewFromModelInfo(info)
+		if err != nil {
+			b.Fatalf("NewFromModelInfo: %v", err)
+		}
+		_ = tok.Tokenize(text)
+	}
+}

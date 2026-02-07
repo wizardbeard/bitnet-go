@@ -132,7 +132,10 @@
 - update: tokenizer split prepass now uses an ASCII fast path; added tokenizer microbenchmarks (SplitGPT2/SplitLlama3/TokenizeBPE).
 - update: BPE encode reuses symbol buffers and bpeByteMap reuses byte buffer; TokenizeBPE allocs reduced (60 -> 39) and time improved (~3.0us -> ~2.4us on i7-11800H).
 - update: tried heap-based BPE merge selection; regressed perf on small merges, so retained linear scan (with buffer reuse).
-- update: encodeBPEWord now uses an ASCII fast path to avoid rune allocations; TokenizeBPE ~2.36us (allocs 39 -> 42, minor tradeoff).
+- update: encodeBPEWord ASCII path now uses a precomputed byte->string table; TokenizeBPE ~2.24us with allocs back to 39.
+- update: BPE merge loop reuses a byte buffer for pair-key construction; TokenizeBPE ~1.85us with allocs still at 39 (before later merge experiments).
+- update: tried merge-pair interning; regressed perf/allocs, so kept simple concatenation and key buffer reuse (~2.12us, 42 allocs).
+- update: added a small per-tokenizer BPE chunk cache (default 256 entries, override via `bitnet.tokenizer.bpe_cache_size`); hot TokenizeBPE ~0.20us with 3 allocs (cold remains ~22us).
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).
