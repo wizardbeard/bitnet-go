@@ -136,6 +136,7 @@
 - update: BPE merge loop reuses a byte buffer for pair-key construction; TokenizeBPE ~1.85us with allocs still at 39 (before later merge experiments).
 - update: tried merge-pair interning; regressed perf/allocs, so kept simple concatenation and key buffer reuse (~2.12us, 42 allocs).
 - update: added a small per-tokenizer BPE chunk cache (default 256 entries, override via `bitnet.tokenizer.bpe_cache_size`); hot TokenizeBPE ~0.20us with 3 allocs (cold remains ~22us).
+- update: added SPM chunk cache (default 256, override via `bitnet.tokenizer.spm_cache_size`); hot TokenizeSPM ~0.11us with 3 allocs (cold ~23us).
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).

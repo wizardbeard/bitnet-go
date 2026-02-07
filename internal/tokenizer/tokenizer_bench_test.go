@@ -59,3 +59,43 @@ func BenchmarkTokenizeBPECold(b *testing.B) {
 		_ = tok.Tokenize(text)
 	}
 }
+
+func BenchmarkTokenizeSPM(b *testing.B) {
+	info := gguf.ModelInfo{
+		KeyValues: map[string]any{
+			"tokenizer.ggml.model":            "llama",
+			"tokenizer.ggml.tokens":           []string{"<unk>", "<s>", "▁", "h", "e", "l", "o", "▁h", "▁he", "▁hel", "▁hell", "▁hello"},
+			"tokenizer.ggml.scores":           []float32{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+			"tokenizer.ggml.bos_token_id":     uint32(1),
+			"tokenizer.ggml.unknown_token_id": uint32(0),
+		},
+	}
+	tok, err := NewFromModelInfo(info)
+	if err != nil {
+		b.Fatalf("NewFromModelInfo: %v", err)
+	}
+	text := "Hello hello hello"
+	for i := 0; i < b.N; i++ {
+		_ = tok.Tokenize(text)
+	}
+}
+
+func BenchmarkTokenizeSPMCold(b *testing.B) {
+	info := gguf.ModelInfo{
+		KeyValues: map[string]any{
+			"tokenizer.ggml.model":            "llama",
+			"tokenizer.ggml.tokens":           []string{"<unk>", "<s>", "▁", "h", "e", "l", "o", "▁h", "▁he", "▁hel", "▁hell", "▁hello"},
+			"tokenizer.ggml.scores":           []float32{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+			"tokenizer.ggml.bos_token_id":     uint32(1),
+			"tokenizer.ggml.unknown_token_id": uint32(0),
+		},
+	}
+	text := "Hello hello hello"
+	for i := 0; i < b.N; i++ {
+		tok, err := NewFromModelInfo(info)
+		if err != nil {
+			b.Fatalf("NewFromModelInfo: %v", err)
+		}
+		_ = tok.Tokenize(text)
+	}
+}

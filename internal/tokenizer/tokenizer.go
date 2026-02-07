@@ -31,6 +31,8 @@ type Tokenizer struct {
 	bpeKeyBuf        []byte
 	bpeChunkCache    *bpeChunkCache
 	bpeChunkCacheCap int
+	spmChunkCache    *bpeChunkCache
+	spmChunkCacheCap int
 }
 
 func NewFromModelInfo(info gguf.ModelInfo) (*Tokenizer, error) {
@@ -62,9 +64,13 @@ func NewFromModelInfo(info gguf.ModelInfo) (*Tokenizer, error) {
 		bpeRanks:         make(map[string]int),
 		trie:             newTrieNode(),
 		bpeChunkCacheCap: 256,
+		spmChunkCacheCap: 256,
 	}
 	if v, ok := info.KeyValues["bitnet.tokenizer.bpe_cache_size"].(uint32); ok {
 		t.bpeChunkCacheCap = int(v)
+	}
+	if v, ok := info.KeyValues["bitnet.tokenizer.spm_cache_size"].(uint32); ok {
+		t.spmChunkCacheCap = int(v)
 	}
 	for i := 0; i < 256; i++ {
 		t.bpeByteSym[i] = string(byte(i))
@@ -114,7 +120,17 @@ func (t *Tokenizer) Tokenize(prompt string) []int32 {
 	}
 
 	if t.model == "llama" {
-		out = append(out, t.tokenizeSPM(normalizeSPM(prompt))...)
+		normalized := normalizeSPM(prompt)
+		if t.spmChunkCache == nil {
+			t.spmChunkCache = newBPEChunkCache(t.spmChunkCacheCap)
+		}
+		if cached := t.spmChunkCache.get(normalized); cached != nil {
+			out = append(out, cached...)
+			return out
+		}
+		encoded := t.tokenizeSPM(normalized)
+		t.spmChunkCache.add(normalized, encoded)
+		out = append(out, encoded...)
 		return out
 	}
 	if t.model == "gpt2" && len(t.bpeRanks) > 0 {
