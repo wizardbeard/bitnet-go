@@ -974,9 +974,7 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 				debugVecStats("inp_embd", x)
 				debugVecStats("attn_norm-0", n1)
 			}
-			linearApplyIntoWeight(st.q, layer.attnQ, n1)
-			linearApplyIntoWeight(st.k, layer.attnK, n1)
-			linearApplyIntoWeight(st.v, layer.attnV, n1)
+			linearApplyQKV(st.q, st.k, st.v, layer.attnQ, layer.attnK, layer.attnV, n1)
 			if debugAttnMeta && shouldDebug(pos) && i == 0 {
 				qHead := 0
 				kHead := 0
@@ -1717,6 +1715,47 @@ func linearApplyIntoWeight(dst []float32, w linearWeight, x []float32) {
 func linearApplyIntoWeightTransposed(dst []float32, w linearWeight, x []float32, transposed bool) {
 	w.transposed = transposed
 	linearApplyIntoWeight(dst, w, x)
+}
+
+func linearApplyQKV(dstQ, dstK, dstV []float32, wQ, wK, wV linearWeight, x []float32) {
+	if wQ.qtype == gguf.GGMLTypeF32 && wK.qtype == gguf.GGMLTypeF32 && wV.qtype == gguf.GGMLTypeF32 &&
+		!wQ.transposed && !wK.transposed && !wV.transposed &&
+		wQ.rows == wK.rows && wQ.rows == wV.rows &&
+		wQ.cols == wK.cols && wQ.cols == wV.cols &&
+		len(dstQ) >= wQ.rows && len(dstK) >= wQ.rows && len(dstV) >= wQ.rows &&
+		len(x) >= wQ.cols &&
+		len(wQ.data) >= wQ.rows*wQ.cols && len(wK.data) >= wQ.rows*wQ.cols && len(wV.data) >= wQ.rows*wQ.cols {
+		matVec3F32(dstQ, dstK, dstV, wQ.data, wK.data, wV.data, wQ.rows, wQ.cols, x)
+		return
+	}
+	linearApplyIntoWeight(dstQ, wQ, x)
+	linearApplyIntoWeight(dstK, wK, x)
+	linearApplyIntoWeight(dstV, wV, x)
+}
+
+func matVec3F32(dstA, dstB, dstC []float32, matA, matB, matC []float32, rows, cols int, vec []float32) {
+	if rows <= 0 || cols <= 0 {
+		return
+	}
+	if len(dstA) < rows || len(dstB) < rows || len(dstC) < rows || len(vec) < cols {
+		return
+	}
+	if len(matA) < rows*cols || len(matB) < rows*cols || len(matC) < rows*cols {
+		return
+	}
+	for r := 0; r < rows; r++ {
+		var sumA, sumB, sumC float64
+		for c := 0; c < cols; c++ {
+			idx := r + rows*c
+			v := float64(vec[c])
+			sumA += float64(matA[idx]) * v
+			sumB += float64(matB[idx]) * v
+			sumC += float64(matC[idx]) * v
+		}
+		dstA[r] = float32(sumA)
+		dstB[r] = float32(sumB)
+		dstC[r] = float32(sumC)
+	}
 }
 
 func loadLinearWeight(path string, info gguf.ModelInfo, name string, inDim int) (linearWeight, error) {
