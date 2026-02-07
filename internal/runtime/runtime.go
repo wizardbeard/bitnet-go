@@ -285,17 +285,17 @@ const (
 )
 
 type llamaLayer struct {
-	attnNorm []float32
-	ffnNorm  []float32
-	attnSubNorm []float32
-	ffnSubNorm  []float32
-	attnQ    linearWeight
-	attnK    linearWeight
-	attnV    linearWeight
-	attnOut  linearWeight
-	ffnGate  linearWeight
-	ffnUp    linearWeight
-	ffnDown  linearWeight
+	attnNorm        []float32
+	ffnNorm         []float32
+	attnSubNorm     []float32
+	ffnSubNorm      []float32
+	attnQ           linearWeight
+	attnK           linearWeight
+	attnV           linearWeight
+	attnOut         linearWeight
+	ffnGate         linearWeight
+	ffnUp           linearWeight
+	ffnDown         linearWeight
 	debugFFNGateF32 []float32
 	debugFFNUpF32   []float32
 	debugFFNDownF32 []float32
@@ -513,7 +513,7 @@ func loadLlamaStack(path string, info gguf.ModelInfo) (*tensorBlock, bool, error
 			info.KeyValues["llama.rope.freq_base"],
 			info.KeyValues["bitnet-b1.58.rope.freq_base"],
 		),
-		ropeScale:     firstFloat32(info.KeyValues["llama.rope.scaling.factor"], 1.0),
+		ropeScale: firstFloat32(info.KeyValues["llama.rope.scaling.factor"], 1.0),
 		ropeScalingType: firstString(
 			info.KeyValues["llama.rope.scaling.type"],
 			info.KeyValues["llama.rope.scaling_type"],
@@ -522,7 +522,7 @@ func loadLlamaStack(path string, info gguf.ModelInfo) (*tensorBlock, bool, error
 			info.KeyValues["llama.rope.dimension_count"],
 			info.KeyValues["bitnet-b1.58.rope.dimension_count"],
 		)),
-		ropeNeox: ropeNeox,
+		ropeNeox:           ropeNeox,
 		ropeYarnBetaFast:   firstFloat32(info.KeyValues["llama.rope.scaling.beta_fast"], 0),
 		ropeYarnBetaSlow:   firstFloat32(info.KeyValues["llama.rope.scaling.beta_slow"], 0),
 		ropeYarnOrigCtx:    firstFloat32(info.KeyValues["llama.rope.scaling.original_context_length"], 0),
@@ -1293,16 +1293,16 @@ func dotF32GGML(a, b []float32) float32 {
 func expf32(x float32) float32 {
 	// Cephes-style expf approximation in pure float32.
 	const (
-		expHi  float32 = 88.3762626647949
-		expLo  float32 = -88.3762626647949
-		log2e  float32 = 1.44269504088896341
-		ln2    float32 = 0.6931471805599453
-		c0     float32 = 1.9875691500E-4
-		c1     float32 = 1.3981999507E-3
-		c2     float32 = 8.3334519073E-3
-		c3     float32 = 4.1665795894E-2
-		c4     float32 = 1.6666665459E-1
-		c5     float32 = 5.0000001201E-1
+		expHi float32 = 88.3762626647949
+		expLo float32 = -88.3762626647949
+		log2e float32 = 1.44269504088896341
+		ln2   float32 = 0.6931471805599453
+		c0    float32 = 1.9875691500e-4
+		c1    float32 = 1.3981999507e-3
+		c2    float32 = 8.3334519073e-3
+		c3    float32 = 4.1665795894e-2
+		c4    float32 = 1.6666665459e-1
+		c5    float32 = 5.0000001201e-1
 	)
 	if x > expHi {
 		x = expHi

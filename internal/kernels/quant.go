@@ -72,7 +72,7 @@ func i2sPackedLen(count int) int {
 	}
 	const block = 128
 	const blockBytes = 32
-	return (count+block-1)/block * blockBytes
+	return (count + block - 1) / block * blockBytes
 }
 
 // MatVecI2SI8S computes dst = mat * vec where mat is GGML column-major [rows][cols]
