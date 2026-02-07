@@ -22,6 +22,11 @@ type Tokenizer struct {
 	byteEncode [256]string
 	trie       *trieNode
 	byteTok    [256]int32
+	bpeBuf     []string
+	bpeWork    []string
+	bpeWork2   []string
+	bpeByteBuf []byte
+	bpeRuneBuf []rune
 }
 
 func NewFromModelInfo(info gguf.ModelInfo) (*Tokenizer, error) {
@@ -405,14 +410,24 @@ func isASCIISpace(b byte) bool {
 }
 
 func (t *Tokenizer) encodeBPEWord(word string) []int32 {
-	syms := make([]string, 0, len(word))
-	for _, r := range word {
-		syms = append(syms, string(r))
-	}
-	if len(syms) == 0 {
+	if word == "" {
 		return nil
 	}
-
+	syms := t.bpeBuf[:0]
+	if isASCII(word) {
+		for i := 0; i < len(word); i++ {
+			syms = append(syms, word[i:i+1])
+		}
+	} else {
+		runes := t.bpeRuneBuf[:0]
+		for _, r := range word {
+			runes = append(runes, r)
+		}
+		t.bpeRuneBuf = runes[:0]
+		for i := range runes {
+			syms = append(syms, string(runes[i]))
+		}
+	}
 	for {
 		if len(syms) < 2 {
 			break
@@ -434,11 +449,12 @@ func (t *Tokenizer) encodeBPEWord(word string) []int32 {
 			break
 		}
 		merged := syms[bestIdx] + syms[bestIdx+1]
-		next := make([]string, 0, len(syms)-1)
+		next := t.bpeWork[:0]
 		next = append(next, syms[:bestIdx]...)
 		next = append(next, merged)
 		next = append(next, syms[bestIdx+2:]...)
-		syms = next
+		syms, next = next, syms
+		t.bpeWork = next[:0]
 	}
 
 	out := make([]int32, 0, len(syms))
@@ -455,17 +471,24 @@ func (t *Tokenizer) encodeBPEWord(word string) []int32 {
 			}
 		}
 	}
+	t.bpeBuf = syms[:0]
 	return out
 }
 
 func (t *Tokenizer) bpeByteMap(s string) string {
-	var b strings.Builder
-	b.Grow(len(s) * 2)
 	raw := []byte(s)
-	for _, x := range raw {
-		b.WriteString(t.byteEncode[x])
+	n := len(raw)
+	buf := t.bpeByteBuf
+	if cap(buf) < n*2 {
+		buf = make([]byte, 0, n*2)
+	} else {
+		buf = buf[:0]
 	}
-	return b.String()
+	for _, x := range raw {
+		buf = append(buf, t.byteEncode[x]...)
+	}
+	t.bpeByteBuf = buf[:0]
+	return string(buf)
 }
 
 func (t *Tokenizer) tokenizeGreedy(text string) []int32 {

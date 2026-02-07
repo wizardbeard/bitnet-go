@@ -130,6 +130,9 @@
 - update: softmax now dispatches to an unrolled implementation on amd64/arm64; benchmark shows ~1.05x improvement for 256 steps.
 - update: Q/K/V matvec now fuses when all three are f32 and share layout; benchmark shows ~1.19x speedup for 256x256 on i7-11800H.
 - update: tokenizer split prepass now uses an ASCII fast path; added tokenizer microbenchmarks (SplitGPT2/SplitLlama3/TokenizeBPE).
+- update: BPE encode reuses symbol buffers and bpeByteMap reuses byte buffer; TokenizeBPE allocs reduced (60 -> 39) and time improved (~3.0us -> ~2.4us on i7-11800H).
+- update: tried heap-based BPE merge selection; regressed perf on small merges, so retained linear scan (with buffer reuse).
+- update: encodeBPEWord now uses an ASCII fast path to avoid rune allocations; TokenizeBPE ~2.36us (allocs 39 -> 42, minor tradeoff).
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).
