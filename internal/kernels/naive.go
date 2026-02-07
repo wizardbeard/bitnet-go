@@ -40,6 +40,16 @@ func Argmax(v []float32) int {
 // MatVec computes dst = mat * vec where mat is GGML column-major [rows][cols]
 // with contiguous dimension ne0=rows.
 func MatVec(dst, mat []float32, rows, cols int, vec []float32) {
+	matVecImpl(dst, mat, rows, cols, vec)
+}
+
+// MatVecT computes dst = transpose(mat) * vec where mat is GGML column-major [rows][cols]
+// with contiguous dimension ne0=rows.
+func MatVecT(dst, mat []float32, rows, cols int, vec []float32) {
+	matVecTImpl(dst, mat, rows, cols, vec)
+}
+
+func matVecGeneric(dst, mat []float32, rows, cols int, vec []float32) {
 	if rows <= 0 || cols <= 0 {
 		return
 	}
@@ -55,9 +65,7 @@ func MatVec(dst, mat []float32, rows, cols int, vec []float32) {
 	}
 }
 
-// MatVecT computes dst = transpose(mat) * vec where mat is GGML column-major [rows][cols]
-// with contiguous dimension ne0=rows.
-func MatVecT(dst, mat []float32, rows, cols int, vec []float32) {
+func matVecTGeneric(dst, mat []float32, rows, cols int, vec []float32) {
 	if rows <= 0 || cols <= 0 {
 		return
 	}

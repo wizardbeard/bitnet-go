@@ -1,6 +1,3 @@
-//go:build arm64 && cgo
-// +build arm64,cgo
-
 package kernels
 
 import "testing"
@@ -89,12 +86,23 @@ func BenchmarkMatVec(b *testing.B) {
 					mat[r+s.rows*c] = float32((r+c)%23) * 0.02
 				}
 			}
-			b.ReportAllocs()
-			b.SetBytes(int64((s.rows*s.cols + s.cols + s.rows) * 4))
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				MatVec(dst, mat, s.rows, s.cols, vec)
-			}
+			b.Run("generic", func(b *testing.B) {
+				b.ReportAllocs()
+				b.SetBytes(int64((s.rows*s.cols + s.cols + s.rows) * 4))
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					matVecGeneric(dst, mat, s.rows, s.cols, vec)
+				}
+			})
+
+			b.Run("dispatch", func(b *testing.B) {
+				b.ReportAllocs()
+				b.SetBytes(int64((s.rows*s.cols + s.cols + s.rows) * 4))
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					MatVec(dst, mat, s.rows, s.cols, vec)
+				}
+			})
 		})
 	}
 }
@@ -123,12 +131,23 @@ func BenchmarkMatVecT(b *testing.B) {
 			for r := 0; r < s.rows; r++ {
 				vec[r] = float32(r%29) * 0.01
 			}
-			b.ReportAllocs()
-			b.SetBytes(int64((s.rows*s.cols + s.cols + s.rows) * 4))
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				MatVecT(dst, mat, s.rows, s.cols, vec)
-			}
+			b.Run("generic", func(b *testing.B) {
+				b.ReportAllocs()
+				b.SetBytes(int64((s.rows*s.cols + s.cols + s.rows) * 4))
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					matVecTGeneric(dst, mat, s.rows, s.cols, vec)
+				}
+			})
+
+			b.Run("dispatch", func(b *testing.B) {
+				b.ReportAllocs()
+				b.SetBytes(int64((s.rows*s.cols + s.cols + s.rows) * 4))
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					MatVecT(dst, mat, s.rows, s.cols, vec)
+				}
+			})
 		})
 	}
 }
