@@ -64,6 +64,27 @@ func BenchmarkArgmax(b *testing.B) {
 	}
 }
 
+func BenchmarkMulRelu2Into(b *testing.B) {
+	sizes := []int{256, 1024, 4096}
+	for _, n := range sizes {
+		b.Run("n="+itoa(n), func(b *testing.B) {
+			dst := make([]float32, n)
+			gate := make([]float32, n)
+			up := make([]float32, n)
+			for i := 0; i < n; i++ {
+				gate[i] = float32((i % 23) - 11)
+				up[i] = float32(i%19) * 0.01
+			}
+			b.ReportAllocs()
+			b.SetBytes(int64(n * 4 * 3))
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				MulRelu2Into(dst, gate, up)
+			}
+		})
+	}
+}
+
 func BenchmarkMatVec(b *testing.B) {
 	type shape struct {
 		rows int

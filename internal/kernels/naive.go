@@ -37,6 +37,11 @@ func Argmax(v []float32) int {
 	return best
 }
 
+// MulRelu2Into computes dst[i] = max(gate[i], 0)^2 * up[i].
+func MulRelu2Into(dst, gate, up []float32) {
+	mulReluImpl(dst, gate, up)
+}
+
 // MatVec computes dst = mat * vec where mat is GGML column-major [rows][cols]
 // with contiguous dimension ne0=rows.
 func MatVec(dst, mat []float32, rows, cols int, vec []float32) {

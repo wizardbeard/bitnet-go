@@ -29,6 +29,19 @@ func TestArgmax(t *testing.T) {
 	}
 }
 
+func TestMulRelu2Into(t *testing.T) {
+	dst := make([]float32, 2)
+	gate := []float32{-1, 2}
+	up := []float32{3, 4}
+	MulRelu2Into(dst, gate, up)
+	if dst[0] != 0 {
+		t.Fatalf("dst[0] = %f, want 0", dst[0])
+	}
+	if dst[1] != 16 {
+		t.Fatalf("dst[1] = %f, want 16", dst[1])
+	}
+}
+
 func TestMatVec(t *testing.T) {
 	// matrix:
 	// [1 2 3]

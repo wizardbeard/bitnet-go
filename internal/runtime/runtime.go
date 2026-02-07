@@ -1068,18 +1068,7 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 				debugVecStats("ffn_gate", st.gate)
 				debugVecStats("ffn_up", st.up)
 			}
-			n := len(st.gate)
-			if len(st.up) < n {
-				n = len(st.up)
-			}
-			for j := 0; j < n; j++ {
-				gg := st.gate[j]
-				if gg < 0 {
-					gg = 0
-				}
-				gg = gg * gg
-				st.ffnAct[j] = gg * st.up[j]
-			}
+			kernels.MulRelu2Into(st.ffnAct, st.gate, st.up)
 			if debugValues && shouldDebug(pos) && i == 0 {
 				debugVecValues("ffn_out", st.ffnAct, debugValuesN)
 			}
