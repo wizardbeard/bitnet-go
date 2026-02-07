@@ -85,6 +85,26 @@ func BenchmarkMulRelu2Into(b *testing.B) {
 	}
 }
 
+func BenchmarkRMSNormInto(b *testing.B) {
+	sizes := []int{256, 1024, 4096}
+	for _, n := range sizes {
+		b.Run("n="+itoa(n), func(b *testing.B) {
+			dst := make([]float32, n)
+			x := make([]float32, n)
+			w := make([]float32, n)
+			for i := 0; i < n; i++ {
+				x[i] = float32(i%97) * 0.01
+				w[i] = 1.0 + float32(i%13)*0.001
+			}
+			b.ReportAllocs()
+			b.SetBytes(int64(n * 4 * 3))
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				RMSNormInto(dst, x, w, 1e-5)
+			}
+		})
+	}
+}
 func BenchmarkMatVec(b *testing.B) {
 	type shape struct {
 		rows int

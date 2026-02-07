@@ -1320,30 +1320,11 @@ func expf32(x float32) float32 {
 }
 
 func storeCacheVector(cache []float32, pos int, vec []float32) {
-	base := pos * len(vec)
-	copy(cache[base:base+len(vec)], vec)
+	storeCacheVectorImpl(cache, pos, vec)
 }
 
 func storeCacheVectorV(cache []float32, pos int, vec []float32, kvHeads int) {
-	if kvHeads <= 0 || len(vec) == 0 {
-		return
-	}
-	if len(vec)%kvHeads != 0 {
-		kvHeads = 1
-	}
-	headDim := len(vec) / kvHeads
-	if headDim == 0 {
-		return
-	}
-	maxSeq := len(cache) / len(vec)
-	if maxSeq <= 0 || pos < 0 || pos >= maxSeq {
-		return
-	}
-	for h := 0; h < kvHeads; h++ {
-		for d := 0; d < headDim; d++ {
-			cache[h*headDim*maxSeq+d*maxSeq+pos] = vec[h*headDim+d]
-		}
-	}
+	storeCacheVectorVImpl(cache, pos, vec, kvHeads)
 }
 
 func seedToken(seed int64, vocab int) int32 {
@@ -1485,25 +1466,7 @@ func ropeYarnCorrDims(betaFast, betaSlow float32) (float32, float32) {
 }
 
 func rmsNormInto(dst, x, weight []float32, eps float32) {
-	n := len(dst)
-	if len(x) < n {
-		n = len(x)
-	}
-	if len(weight) < n {
-		n = len(weight)
-	}
-	if n == 0 {
-		return
-	}
-	var sum float64
-	for i := 0; i < n; i++ {
-		v := float64(x[i])
-		sum += v * v
-	}
-	inv := float32(1.0 / math.Sqrt(sum/float64(n)+float64(eps)))
-	for i := 0; i < n; i++ {
-		dst[i] = x[i] * inv * weight[i]
-	}
+	kernels.RMSNormInto(dst, x, weight, eps)
 }
 
 func debugVecStats(label string, v []float32) {

@@ -148,6 +148,47 @@ func BenchmarkCausalAttentionMultiHeadIntoCompare(b *testing.B) {
 	}
 }
 
+func BenchmarkKVCacheStore(b *testing.B) {
+	steps := 256
+	heads := 8
+	dim := 64
+	kvHeads := 4
+	kStepDim := heads * dim
+	vStepDim := heads * dim
+	keys := make([]float32, steps*kStepDim)
+	values := make([]float32, steps*vStepDim)
+	vecK := make([]float32, kStepDim)
+	vecV := make([]float32, vStepDim)
+	for i := range vecK {
+		vecK[i] = float32(i%31) * 0.01
+	}
+	for i := range vecV {
+		vecV[i] = float32(i%37) * 0.01
+	}
+
+	b.Run("generic", func(b *testing.B) {
+		b.ReportAllocs()
+		b.SetBytes(int64((len(vecK) + len(vecV)) * 4))
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			pos := i % steps
+			storeCacheVectorGeneric(keys, pos, vecK)
+			storeCacheVectorVGeneric(values, pos, vecV, kvHeads)
+		}
+	})
+
+	b.Run("dispatch", func(b *testing.B) {
+		b.ReportAllocs()
+		b.SetBytes(int64((len(vecK) + len(vecV)) * 4))
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			pos := i % steps
+			storeCacheVector(keys, pos, vecK)
+			storeCacheVectorV(values, pos, vecV, kvHeads)
+		}
+	})
+}
+
 func BenchmarkLinearApplyInto(b *testing.B) {
 	type cfg struct {
 		rows int

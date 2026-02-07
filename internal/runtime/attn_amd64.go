@@ -4,4 +4,6 @@ package runtime
 
 func init() {
 	causalAttentionMultiHeadIntoImpl = causalAttentionMultiHeadIntoOptimized
+	storeCacheVectorImpl = storeCacheVectorOpt
+	storeCacheVectorVImpl = storeCacheVectorVOpt
 }

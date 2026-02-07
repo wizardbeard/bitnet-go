@@ -42,6 +42,19 @@ func TestMulRelu2Into(t *testing.T) {
 	}
 }
 
+func TestRMSNormInto(t *testing.T) {
+	dst := make([]float32, 2)
+	x := []float32{3, 4}
+	w := []float32{1, 2}
+	RMSNormInto(dst, x, w, 1e-6)
+	if dst[0] <= 0 || dst[1] <= 0 {
+		t.Fatalf("unexpected RMSNorm output: %v", dst)
+	}
+	if dst[1] <= dst[0] {
+		t.Fatalf("expected weighted output to scale second element: %v", dst)
+	}
+}
+
 func TestMatVec(t *testing.T) {
 	// matrix:
 	// [1 2 3]
