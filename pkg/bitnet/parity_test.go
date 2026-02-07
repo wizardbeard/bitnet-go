@@ -503,6 +503,9 @@ func TestParityAgainstI2S2BSmoke(t *testing.T) {
 		t.Fatalf("read model_fixture_i2s_2b.txt: %v", err)
 	}
 	modelPath := filepath.Join(root, string(bytesTrimSpace(modelFixture)))
+	if _, err := os.Stat(modelPath); err != nil {
+		t.Skipf("i2_s 2B model not present: %s", modelPath)
+	}
 
 	session, err := LoadModel(context.Background(), modelPath)
 	if err != nil {
