@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -23,6 +24,16 @@ func TestIQModelSmoke(t *testing.T) {
 		t.Skipf("IQ fixture not present: %s", modelPath)
 	}
 
+	maxTokens := 1
+	if v := os.Getenv("BITNET_IQ_MAX_TOKENS"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed >= 0 {
+			maxTokens = parsed
+		}
+	}
+	if maxTokens > 1 {
+		maxTokens = 1
+	}
+
 	session, err := LoadModel(context.Background(), modelPath)
 	if err != nil {
 		t.Fatalf("LoadModel() error = %v", err)
@@ -30,12 +41,12 @@ func TestIQModelSmoke(t *testing.T) {
 	got, err := session.Generate(context.Background(), GenerateRequest{
 		Prompt:    "Hello",
 		Seed:      1,
-		MaxTokens: 1,
+		MaxTokens: maxTokens,
 	})
 	if err != nil {
 		t.Fatalf("Generate() error = %v", err)
 	}
-	if len(got.TokenIDs) != 1 {
-		t.Fatalf("token length mismatch: got=%d want=1", len(got.TokenIDs))
+	if len(got.TokenIDs) != maxTokens {
+		t.Fatalf("token length mismatch: got=%d want=%d", len(got.TokenIDs), maxTokens)
 	}
 }

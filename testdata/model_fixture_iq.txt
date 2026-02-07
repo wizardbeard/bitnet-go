@@ -1,1 +1,1 @@
-smollm2-135m-instruct-iq4_xs-imat.gguf
+bitnet_b1_58-large.IQ4_XS.gguf

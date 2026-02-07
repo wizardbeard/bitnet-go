@@ -1,5 +1,5 @@
 {
-  "tensor": "blk.0.attn_k.weight",
+  "tensor": "blk.0.ffn_gate.weight",
   "count": 4096,
-  "sha256": "a0cc267ba4c472f648081c9cedcab23f19547e7988147032f033a815fc5857f1"
+  "sha256": "c11fb6eda0db8188fc0a8dffe8d529979d750b5e1df36506c7087c0881ce0b96"
 }
