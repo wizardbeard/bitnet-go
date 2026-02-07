@@ -23,12 +23,28 @@ jobs:
       - name: fetch-gguf
         run: |
           sh ./scripts/fetch_testdata_gguf.sh
+      - name: fetch-gguf-2b
+        if: env.BITNET_I2S_2B_MODEL_URL != ''
+        env:
+          BITNET_FETCH_I2S_2B: "1"
+          BITNET_I2S_2B_MODEL_URL: ${{ env.BITNET_I2S_2B_MODEL_URL }}
+          BITNET_I2S_2B_MODEL_FILE: ${{ env.BITNET_I2S_2B_MODEL_FILE }}
+          BITNET_I2S_2B_MODEL_MIN_SIZE: ${{ env.BITNET_I2S_2B_MODEL_MIN_SIZE }}
+        run: |
+          sh ./scripts/fetch_testdata_gguf.sh
       - name: test
         run: |
           go test ./...
       - name: parity
         run: |
           go test ./... -run TestParity -count=1
+      - name: parity-2b-smoke
+        run: |
+          if [ -f testdata/model_fixture_i2s_2b.txt ]; then
+            BITNET_ENFORCE_I2S_2B_SMOKE=1 go test ./pkg/bitnet -run TestParityAgainstI2S2BSmoke -count=1
+          else
+            echo "Skipping i2_s 2B smoke parity (fixture missing)"
+          fi
       - name: bench-smoke
         run: |
           go test ./... -bench . -benchmem

@@ -470,6 +470,58 @@ func TestParityAgainstI2S2BVectors(t *testing.T) {
 	}
 }
 
+func TestParityAgainstI2S2BSmoke(t *testing.T) {
+	if os.Getenv("BITNET_ENFORCE_I2S_2B_SMOKE") != "1" {
+		t.Skip("set BITNET_ENFORCE_I2S_2B_SMOKE=1 to run i2_s 2B smoke parity")
+	}
+
+	root := filepath.Join("..", "..", "testdata")
+
+	tokenBytes, err := os.ReadFile(filepath.Join(root, "expected.i2s_2b.tokens.json"))
+	if err != nil {
+		t.Fatalf("read expected.i2s_2b.tokens.json: %v; run scripts/run_ref_i2s_2b.sh", err)
+	}
+	var want []int32
+	if err := json.Unmarshal(tokenBytes, &want); err != nil {
+		t.Fatalf("decode expected.i2s_2b.tokens.json: %v", err)
+	}
+	if len(want) == 0 {
+		t.Fatalf("expected.i2s_2b.tokens.json is empty; run scripts/run_ref_i2s_2b.sh to freeze vectors")
+	}
+
+	promptBytes, err := os.ReadFile(filepath.Join(root, "prompt.txt"))
+	if err != nil {
+		t.Fatalf("read prompt.txt: %v", err)
+	}
+	promptBytes = bytesTrimSpace(promptBytes)
+
+	modelFixture, err := os.ReadFile(filepath.Join(root, "model_fixture_i2s_2b.txt"))
+	if err != nil {
+		t.Fatalf("read model_fixture_i2s_2b.txt: %v", err)
+	}
+	modelPath := filepath.Join(root, string(bytesTrimSpace(modelFixture)))
+
+	session, err := LoadModel(context.Background(), modelPath)
+	if err != nil {
+		t.Fatalf("LoadModel() error = %v", err)
+	}
+
+	got, err := session.Generate(context.Background(), GenerateRequest{
+		Prompt:    string(promptBytes),
+		Seed:      1,
+		MaxTokens: 1,
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if len(got.TokenIDs) != 1 {
+		t.Fatalf("token length mismatch: got=%d want=1", len(got.TokenIDs))
+	}
+	if got.TokenIDs[0] != want[0] {
+		t.Fatalf("token mismatch at step 0: got=%d want=%d", got.TokenIDs[0], want[0])
+	}
+}
+
 func bytesTrimSpace(b []byte) []byte {
 	start := 0
 	for start < len(b) && (b[start] == ' ' || b[start] == '\t' || b[start] == '\n' || b[start] == '\r') {
