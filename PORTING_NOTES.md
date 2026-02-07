@@ -115,7 +115,9 @@
 - update: added amd64-only i2_s matvec fast path. Benchmarks on an i7-11800H show ~4x speedup vs generic for 256/512 shapes:
   - MatVecI2S: 256x256 ~161,482 ns -> 40,681 ns; 512x512 ~690,120 ns -> 161,985 ns.
   - MatVecTI2S: 256x256 ~152,724 ns -> 36,655 ns; 512x512 ~611,269 ns -> 147,892 ns.
-- update: added arm64+cgo matvec path (scalar C implementation) to establish the hook; NEON vectorization still TODO.
+- update: added arm64+cgo matvec path with NEON vectorization when available, falling back to scalar C.
+  - NEON fast path activates when `rows % 128 == 0`.
+- update: added arm64-only benchmark target (`BenchmarkMatVecI2SArm64`) behind `arm64 && cgo` build tags.
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).
