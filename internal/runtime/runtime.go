@@ -1135,7 +1135,7 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 	}
 }
 
-func causalAttentionMultiHeadInto(dst, scores, q, keys, values []float32, steps, qHeads, kvHeads, kStepDim, vStepDim int, pos int) {
+func causalAttentionMultiHeadIntoGeneric(dst, scores, q, keys, values []float32, steps, qHeads, kvHeads, kStepDim, vStepDim int, pos int) {
 	for i := range dst {
 		dst[i] = 0
 	}

@@ -118,6 +118,8 @@
 - update: added arm64+cgo matvec path with NEON vectorization when available, falling back to scalar C.
   - NEON fast path activates when `rows % 128 == 0`.
 - update: added arm64-only benchmark target (`BenchmarkMatVecI2SArm64`) behind `arm64 && cgo` build tags.
+- update: added optimized causal attention path (same math, fewer inner-loop stores) and dispatch on amd64/arm64.
+  - benchmark (i7-11800H): ~1.7x-1.9x faster than generic for 64/128 steps, ~1.6x for 256 steps.
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).
