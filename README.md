@@ -25,6 +25,12 @@ Overrides:
 - `BITNET_GPT2_VOCAB_URL`, `BITNET_FALCON_VOCAB_URL`, `BITNET_QWEN2_VOCAB_URL`
 - `BITNET_FETCH_YARN=1`, `BITNET_YARN_MODEL_URL`, `BITNET_YARN_MODEL_FILE`
 - `BITNET_FETCH_IQ=1`, `BITNET_IQ_MODEL_URL`, `BITNET_IQ_MODEL_FILE`
+- `BITNET_FETCH_I2S_2B=1`, `BITNET_I2S_2B_MODEL_URL`, `BITNET_I2S_2B_MODEL_FILE`
+
+CI note:
+- CI runs `./scripts/fetch_testdata_gguf.sh` with `BITNET_FETCH_I2S_2B=1` and
+  `BITNET_I2S_2B_MODEL_URL` set to the BitNet 2B i2_s GGUF, so the 2B smoke parity
+  test can run when enabled.
 
 Optional IQ fixture hash:
 - `BITNET_FETCH_IQ=1 ./scripts/fetch_testdata_gguf.sh`
