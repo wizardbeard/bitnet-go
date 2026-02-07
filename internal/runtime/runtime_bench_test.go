@@ -53,7 +53,7 @@ func BenchmarkApplyRoPEInPlace(b *testing.B) {
 			b.SetBytes(int64(n * 4))
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				applyRoPEInPlace(v, 64, c.heads, 10000, c.scale, c.mode, 0, 32, 1, 1, 1)
+				applyRoPEInPlace(v, 64, c.heads, 10000, c.scale, c.mode, c.dim, true, 1, 1, 1, 1)
 			}
 		})
 	}
@@ -92,7 +92,7 @@ func BenchmarkCausalAttentionMultiHeadInto(b *testing.B) {
 			b.SetBytes(int64((len(q) + len(keys) + len(values) + len(scores) + len(dst)) * 4))
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				causalAttentionMultiHeadInto(dst, scores, q, keys, values, c.steps, c.heads, c.heads, kStepDim, vStepDim)
+				causalAttentionMultiHeadInto(dst, scores, q, keys, values, c.steps, c.heads, c.heads, kStepDim, vStepDim, 0)
 			}
 		})
 	}
