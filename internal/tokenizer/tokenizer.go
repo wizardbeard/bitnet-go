@@ -33,6 +33,9 @@ type Tokenizer struct {
 	bpeChunkCacheCap int
 	spmChunkCache    *bpeChunkCache
 	spmChunkCacheCap int
+	spmSymbolPool    []spmSymbol
+	spmHeapPool      spmBigramHeap
+	spmMergePool     map[string][2]int
 }
 
 func NewFromModelInfo(info gguf.ModelInfo) (*Tokenizer, error) {
@@ -566,7 +569,10 @@ func (t *Tokenizer) tokenizeGreedy(text string) []int32 {
 }
 
 func (t *Tokenizer) tokenizeSPM(text string) []int32 {
-	syms := make([]spmSymbol, 0, len(text))
+	syms := t.spmSymbolPool[:0]
+	if cap(syms) < len(text) {
+		syms = make([]spmSymbol, 0, len(text))
+	}
 	for i := 0; i < len(text); {
 		_, size := utf8.DecodeRuneInString(text[i:])
 		if size <= 0 {
@@ -580,9 +586,17 @@ func (t *Tokenizer) tokenizeSPM(text string) []int32 {
 	}
 	syms[len(syms)-1].next = -1
 
-	q := &spmBigramHeap{}
-	heap.Init(q)
-	revMerge := make(map[string][2]int)
+	q := t.spmHeapPool[:0]
+	t.spmHeapPool = q[:0]
+	heap.Init(&q)
+	revMerge := t.spmMergePool
+	if revMerge == nil {
+		revMerge = make(map[string][2]int, len(syms))
+	} else {
+		for k := range revMerge {
+			delete(revMerge, k)
+		}
+	}
 
 	tryAddBigram := func(left, right int) {
 		if left < 0 || right < 0 || left >= len(syms) || right >= len(syms) {
@@ -596,7 +610,7 @@ func (t *Tokenizer) tokenizeSPM(text string) []int32 {
 		if !ok || int(id) >= len(t.scores) {
 			return
 		}
-		heap.Push(q, spmBigram{left: left, right: right, score: t.scores[id], size: len(piece)})
+		heap.Push(&q, spmBigram{left: left, right: right, score: t.scores[id], size: len(piece)})
 		revMerge[piece] = [2]int{left, right}
 	}
 
@@ -605,7 +619,7 @@ func (t *Tokenizer) tokenizeSPM(text string) []int32 {
 	}
 
 	for q.Len() > 0 {
-		bg := heap.Pop(q).(spmBigram)
+		bg := heap.Pop(&q).(spmBigram)
 		left := &syms[bg.left]
 		right := &syms[bg.right]
 		if left.n == 0 || right.n == 0 || left.n+right.n != bg.size {
@@ -646,6 +660,9 @@ func (t *Tokenizer) tokenizeSPM(text string) []int32 {
 		}
 		resegment(i)
 	}
+	t.spmSymbolPool = syms[:0]
+	t.spmHeapPool = q[:0]
+	t.spmMergePool = revMerge
 	return out
 }
 
