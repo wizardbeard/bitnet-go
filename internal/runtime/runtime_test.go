@@ -722,6 +722,62 @@ func TestRoPEScaledPosition(t *testing.T) {
 	}
 }
 
+func TestCausalAttentionMultiHeadIntoRandomized(t *testing.T) {
+	steps := 8
+	heads := 2
+	dim := 4
+	q := make([]float32, heads*dim)
+	keys := make([]float32, steps*heads*dim)
+	values := make([]float32, steps*heads*dim)
+	scores := make([]float32, steps*heads)
+	dst := make([]float32, len(q))
+
+	for i := range q {
+		q[i] = float32((i%7)-3) * 0.1
+	}
+	for i := range keys {
+		keys[i] = float32((i%11)-5) * 0.07
+		values[i] = float32((i%13)-6) * 0.05
+	}
+
+	causalAttentionMultiHeadIntoGeneric(dst, scores, q, keys, values, steps, heads, heads, heads*dim, heads*dim, 0)
+	for i := range dst {
+		if math.IsNaN(float64(dst[i])) || math.IsInf(float64(dst[i]), 0) {
+			t.Fatalf("non-finite attention output at %d: %v", i, dst[i])
+		}
+	}
+}
+
+func TestCausalAttentionMultiHeadIntoMatchesOptimized(t *testing.T) {
+	steps := 16
+	heads := 4
+	dim := 8
+	q := make([]float32, heads*dim)
+	keys := make([]float32, steps*heads*dim)
+	values := make([]float32, steps*heads*dim)
+	scoresA := make([]float32, steps*heads)
+	scoresB := make([]float32, steps*heads)
+	dstA := make([]float32, len(q))
+	dstB := make([]float32, len(q))
+
+	for i := range q {
+		q[i] = float32((i%9)-4) * 0.11
+	}
+	for i := range keys {
+		keys[i] = float32((i%17)-8) * 0.07
+		values[i] = float32((i%19)-9) * 0.05
+	}
+
+	causalAttentionMultiHeadIntoGeneric(dstA, scoresA, q, keys, values, steps, heads, heads, heads*dim, heads*dim, 0)
+	causalAttentionMultiHeadIntoOptimized(dstB, scoresB, q, keys, values, steps, heads, heads, heads*dim, heads*dim, 0)
+	for i := range dstA {
+		diff := math.Abs(float64(dstA[i] - dstB[i]))
+		if diff > 1e-5 {
+			t.Fatalf("mismatch at %d: got=%f want=%f", i, dstB[i], dstA[i])
+		}
+	}
+}
+
 func TestI2SLinearApplyUsesPacked(t *testing.T) {
 	rows, cols := 2, 3
 	vals := []int{1, -1, 0, 1, 1, 0}

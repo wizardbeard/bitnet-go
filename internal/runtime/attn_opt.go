@@ -124,11 +124,27 @@ func causalAttentionMultiHeadIntoOptimized(dst, scores, q, keys, values []float3
 		for j := 0; j < headDim; j++ {
 			rowBase := vHeadBase + j*maxSeq
 			row := values[rowBase : rowBase+steps]
-			var acc float32
-			for i := 0; i < steps; i++ {
-				acc += row[i] * weights[i]
-			}
-			dst[qBase+j] += acc
+			dst[qBase+j] += dotF32Fast(row, weights)
 		}
 	}
+}
+
+func dotF32Fast(a, b []float32) float32 {
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
+	}
+	var sum0, sum1, sum2, sum3 float32
+	i := 0
+	for ; i+3 < n; i += 4 {
+		sum0 += a[i] * b[i]
+		sum1 += a[i+1] * b[i+1]
+		sum2 += a[i+2] * b[i+2]
+		sum3 += a[i+3] * b[i+3]
+	}
+	sum := sum0 + sum1 + sum2 + sum3
+	for ; i < n; i++ {
+		sum += a[i] * b[i]
+	}
+	return sum
 }

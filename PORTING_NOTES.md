@@ -119,12 +119,14 @@
   - NEON fast path activates when `rows % 128 == 0`.
 - update: added arm64-only benchmark target (`BenchmarkMatVecI2SArm64`) behind `arm64 && cgo` build tags.
 - update: added optimized causal attention path (same math, fewer inner-loop stores) and dispatch on amd64/arm64.
-  - benchmark (i7-11800H): ~1.7x-1.9x faster than generic for 64/128 steps, ~1.6x for 256 steps.
+  - benchmark (i7-11800H): ~1.9x faster for 64 steps, ~1.9x for 128 steps, ~2.0x for 256 steps after unrolled KQV dot.
 - update: added matvec dispatch for f32 with unrolled optimized path on amd64/arm64; benchmarks now compare generic vs dispatch.
   - benchmark (i7-11800H): MatVec dispatch ~1.2x (256/512) and ~1.0x (1024), MatVecT dispatch ~1.1x-1.2x.
 - update: fused FFN gate+up activation into `MulRelu2Into` with amd64/arm64 unrolled path and runtime integration.
 - update: RMSNorm now uses a kernels dispatch with unrolled optimized path on amd64/arm64.
 - update: KV cache store now dispatches to arch-specific hooks; current fast path matches generic performance (benchmark shows parity on amd64).
+- update: added equivalence tests to ensure optimized MatVec, MatVecT, RMSNorm, and attention match generic outputs within tight tolerances.
+- update: added equivalence tests for MulRelu2Into and i2_s matvec dispatch vs generic.
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).

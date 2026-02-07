@@ -42,6 +42,28 @@ func TestMulRelu2Into(t *testing.T) {
 	}
 }
 
+func TestMulRelu2IntoMatchesOpt(t *testing.T) {
+	dstA := make([]float32, 8)
+	dstB := make([]float32, 8)
+	gate := make([]float32, 8)
+	up := make([]float32, 8)
+	for i := range gate {
+		gate[i] = float32((i%7)-3) * 0.2
+		up[i] = float32(i%5) * 0.3
+	}
+	mulReluGeneric(dstA, gate, up)
+	mulReluOpt(dstB, gate, up)
+	for i := range dstA {
+		diff := dstA[i] - dstB[i]
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff > 1e-6 {
+			t.Fatalf("mismatch at %d: got=%f want=%f", i, dstB[i], dstA[i])
+		}
+	}
+}
+
 func TestRMSNormInto(t *testing.T) {
 	dst := make([]float32, 2)
 	x := []float32{3, 4}
@@ -52,6 +74,28 @@ func TestRMSNormInto(t *testing.T) {
 	}
 	if dst[1] <= dst[0] {
 		t.Fatalf("expected weighted output to scale second element: %v", dst)
+	}
+}
+
+func TestRMSNormIntoMatchesOpt(t *testing.T) {
+	dstA := make([]float32, 16)
+	dstB := make([]float32, 16)
+	x := make([]float32, 16)
+	w := make([]float32, 16)
+	for i := range x {
+		x[i] = float32((i%7)-3) * 0.1
+		w[i] = 1.0 + float32(i%5)*0.01
+	}
+	rmsNormGeneric(dstA, x, w, 1e-5)
+	rmsNormOpt(dstB, x, w, 1e-5)
+	for i := range dstA {
+		diff := dstA[i] - dstB[i]
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff > 1e-6 {
+			t.Fatalf("mismatch at %d: got=%f want=%f", i, dstB[i], dstA[i])
+		}
 	}
 }
 
@@ -74,6 +118,33 @@ func TestMatVec(t *testing.T) {
 	}
 	if dst[1] != 6.0 {
 		t.Fatalf("dst[1] = %f, want 6", dst[1])
+	}
+}
+
+func TestMatVecMatchesOpt(t *testing.T) {
+	mat := make([]float32, 6)
+	// matrix:
+	// [1 2 3]
+	// [4 5 6]
+	mat[0] = 1
+	mat[1] = 4
+	mat[2] = 2
+	mat[3] = 5
+	mat[4] = 3
+	mat[5] = 6
+	vec := []float32{2, -1, 0.5}
+	dstA := make([]float32, 2)
+	dstB := make([]float32, 2)
+	matVecGeneric(dstA, mat, 2, 3, vec)
+	matVecOpt(dstB, mat, 2, 3, vec)
+	for i := range dstA {
+		diff := dstA[i] - dstB[i]
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff > 1e-6 {
+			t.Fatalf("mismatch at %d: got=%f want=%f", i, dstB[i], dstA[i])
+		}
 	}
 }
 
@@ -102,6 +173,29 @@ func TestMatVecT(t *testing.T) {
 	}
 }
 
+func TestMatVecTMatchesOpt(t *testing.T) {
+	mat := make([]float32, 6)
+	mat[0] = 1
+	mat[1] = 4
+	mat[2] = 2
+	mat[3] = 5
+	mat[4] = 3
+	mat[5] = 6
+	vec := []float32{2, -1}
+	dstA := make([]float32, 3)
+	dstB := make([]float32, 3)
+	matVecTGeneric(dstA, mat, 2, 3, vec)
+	matVecTOpt(dstB, mat, 2, 3, vec)
+	for i := range dstA {
+		diff := dstA[i] - dstB[i]
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff > 1e-6 {
+			t.Fatalf("mismatch at %d: got=%f want=%f", i, dstB[i], dstA[i])
+		}
+	}
+}
 func TestMatVecI2S(t *testing.T) {
 	// matrix:
 	// [1 0  1]
@@ -122,6 +216,26 @@ func TestMatVecI2S(t *testing.T) {
 	}
 }
 
+func TestMatVecI2SMatchesGeneric(t *testing.T) {
+	rows, cols := 4, 4
+	vals := []int{1, -1, 0, 1, 1, 0, -1, 1, 0, 1, -1, 0, 1, 0, 1, -1}
+	packed := packI2S(vals)
+	vec := []float32{0.2, -0.3, 0.4, -0.5}
+	dstA := make([]float32, rows)
+	dstB := make([]float32, rows)
+	matVecI2SGeneric(dstA, packed, rows, cols, vec, 1.0)
+	MatVecI2S(dstB, packed, rows, cols, vec, 1.0)
+	for i := range dstA {
+		diff := dstA[i] - dstB[i]
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff > 1e-6 {
+			t.Fatalf("mismatch at %d: got=%f want=%f", i, dstB[i], dstA[i])
+		}
+	}
+}
+
 func TestMatVecTI2S(t *testing.T) {
 	rows, cols := 2, 3
 	vals := []int{1, -1, 0, 1, 1, 0}
@@ -138,6 +252,26 @@ func TestMatVecTI2S(t *testing.T) {
 	}
 	if dst[2] != 2 {
 		t.Fatalf("dst[2] = %f, want 2", dst[2])
+	}
+}
+
+func TestMatVecTI2SMatchesGeneric(t *testing.T) {
+	rows, cols := 4, 4
+	vals := []int{1, -1, 0, 1, 1, 0, -1, 1, 0, 1, -1, 0, 1, 0, 1, -1}
+	packed := packI2S(vals)
+	vec := []float32{0.2, -0.3, 0.4, -0.5}
+	dstA := make([]float32, cols)
+	dstB := make([]float32, cols)
+	matVecTI2SGeneric(dstA, packed, rows, cols, vec, 1.0)
+	MatVecTI2S(dstB, packed, rows, cols, vec, 1.0)
+	for i := range dstA {
+		diff := dstA[i] - dstB[i]
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff > 1e-6 {
+			t.Fatalf("mismatch at %d: got=%f want=%f", i, dstB[i], dstA[i])
+		}
 	}
 }
 
