@@ -6,4 +6,5 @@ func init() {
 	causalAttentionMultiHeadIntoImpl = causalAttentionMultiHeadIntoOptimized
 	storeCacheVectorImpl = storeCacheVectorOpt
 	storeCacheVectorVImpl = storeCacheVectorVOpt
+	softmaxInPlaceImpl = softmaxInPlaceOpt
 }

@@ -189,6 +189,37 @@ func BenchmarkKVCacheStore(b *testing.B) {
 	})
 }
 
+func BenchmarkSoftmaxInPlace(b *testing.B) {
+	steps := 256
+	scores := make([]float32, steps)
+	for i := range scores {
+		scores[i] = float32((i%17)-8) * 0.01
+	}
+	maxScore := float32(0.05)
+
+	tmp := make([]float32, len(scores))
+
+	b.Run("generic", func(b *testing.B) {
+		b.ReportAllocs()
+		b.SetBytes(int64(len(scores) * 4))
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			copy(tmp, scores)
+			softmaxInPlaceGeneric(tmp, maxScore)
+		}
+	})
+
+	b.Run("dispatch", func(b *testing.B) {
+		b.ReportAllocs()
+		b.SetBytes(int64(len(scores) * 4))
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			copy(tmp, scores)
+			softmaxInPlace(tmp, maxScore)
+		}
+	})
+}
+
 func BenchmarkLinearApplyInto(b *testing.B) {
 	type cfg struct {
 		rows int

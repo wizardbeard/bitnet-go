@@ -778,6 +778,29 @@ func TestCausalAttentionMultiHeadIntoMatchesOptimized(t *testing.T) {
 	}
 }
 
+func TestSoftmaxInPlaceMatchesOpt(t *testing.T) {
+	scoresA := make([]float32, 16)
+	for i := range scoresA {
+		scoresA[i] = float32((i%9)-4) * 0.13
+	}
+	scoresB := append([]float32(nil), scoresA...)
+	maxScore := float32(0.2)
+	sumA := softmaxInPlaceGeneric(scoresA, maxScore)
+	sumB := softmaxInPlaceOpt(scoresB, maxScore)
+	if math.Abs(float64(sumA-sumB)) > 1e-6 {
+		t.Fatalf("sum mismatch: %f vs %f", sumA, sumB)
+	}
+	for i := range scoresA {
+		diff := scoresA[i] - scoresB[i]
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff > 1e-6 {
+			t.Fatalf("mismatch at %d: got=%f want=%f", i, scoresB[i], scoresA[i])
+		}
+	}
+}
+
 func TestI2SLinearApplyUsesPacked(t *testing.T) {
 	rows, cols := 2, 3
 	vals := []int{1, -1, 0, 1, 1, 0}

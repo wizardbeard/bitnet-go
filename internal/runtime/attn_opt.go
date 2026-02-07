@@ -66,19 +66,7 @@ func causalAttentionMultiHeadIntoOptimized(dst, scores, q, keys, values []float3
 			}
 		}
 
-		var sum float32
-		for i := 0; i < steps; i++ {
-			idx := scoreBase + i
-			diff := scores[idx] - maxScore
-			var w float32
-			if debugStrictExpf {
-				w = expf32(diff)
-			} else {
-				w = float32(math.Exp(float64(diff)))
-			}
-			scores[idx] = w
-			sum += w
-		}
+		sum := softmaxInPlace(scores[scoreBase:scoreBase+steps], maxScore)
 		if sum == 0 {
 			continue
 		}
