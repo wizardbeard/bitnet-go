@@ -148,6 +148,9 @@ func splitLlama3(s string) []string {
 }
 
 func splitByRules(s string, llama3 bool) []string {
+	if isASCII(s) {
+		return splitByRulesASCII(s, llama3)
+	}
 	rs := []rune(s)
 	out := make([]string, 0, len(rs))
 	for i := 0; i < len(rs); {
@@ -263,6 +266,142 @@ func splitByRules(s string, llama3 bool) []string {
 		i++
 	}
 	return out
+}
+
+func splitByRulesASCII(s string, llama3 bool) []string {
+	out := make([]string, 0, len(s))
+	for i := 0; i < len(s); {
+		if s[i] == '\'' && i+1 < len(s) {
+			next := s[i+1]
+			if llama3 && next >= 'A' && next <= 'Z' {
+				next = next - 'A' + 'a'
+			}
+			if next == 's' || next == 't' || next == 'm' || next == 'd' {
+				out = append(out, s[i:i+2])
+				i += 2
+				continue
+			}
+			if i+2 < len(s) {
+				n2 := s[i+2]
+				if llama3 && n2 >= 'A' && n2 <= 'Z' {
+					n2 = n2 - 'A' + 'a'
+				}
+				if (next == 'r' && n2 == 'e') || (next == 'v' && n2 == 'e') || (next == 'l' && n2 == 'l') {
+					out = append(out, s[i:i+3])
+					i += 3
+					continue
+				}
+			}
+		}
+
+		leadSpace := s[i] == ' '
+		j := i
+		if leadSpace {
+			j++
+		}
+
+		if j < len(s) && isASCIILetter(s[j]) {
+			k := j
+			for k < len(s) && isASCIILetter(s[k]) {
+				k++
+			}
+			out = append(out, s[i:k])
+			i = k
+			continue
+		}
+		if j < len(s) && isASCIIDigit(s[j]) {
+			k := j
+			if llama3 {
+				for k < len(s) && isASCIIDigit(s[k]) {
+					step := k + 3
+					if step > len(s) {
+						step = len(s)
+					}
+					out = append(out, s[k:step])
+					k = step
+				}
+				i = k
+				continue
+			}
+			for k < len(s) && isASCIIDigit(s[k]) {
+				k++
+			}
+			out = append(out, s[i:k])
+			i = k
+			continue
+		}
+		if j < len(s) && !isASCIISpace(s[j]) && !isASCIILetter(s[j]) && !isASCIIDigit(s[j]) {
+			k := j
+			for k < len(s) && !isASCIISpace(s[k]) && !isASCIILetter(s[k]) && !isASCIIDigit(s[k]) {
+				k++
+			}
+			if llama3 {
+				for k < len(s) && (s[k] == '\r' || s[k] == '\n') {
+					k++
+				}
+			}
+			out = append(out, s[i:k])
+			i = k
+			continue
+		}
+		if isASCIISpace(s[i]) {
+			k := i
+			for k < len(s) && isASCIISpace(s[k]) {
+				k++
+			}
+			if llama3 {
+				nl := -1
+				for p := i; p < k; p++ {
+					if s[p] == '\r' || s[p] == '\n' {
+						nl = p
+					}
+				}
+				if nl >= 0 {
+					out = append(out, s[i:nl+1])
+					i = nl + 1
+					continue
+				}
+			}
+			if k-i > 1 && k < len(s) {
+				out = append(out, s[i:k-1])
+				i = k - 1
+				continue
+			}
+			out = append(out, s[i:k])
+			i = k
+			continue
+		}
+
+		out = append(out, s[i:i+1])
+		i++
+	}
+	return out
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= utf8.RuneSelf {
+			return false
+		}
+	}
+	return true
+}
+
+func isASCIILetter(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
+}
+
+func isASCIIDigit(b byte) bool {
+	return b >= '0' && b <= '9'
+}
+
+func isASCIISpace(b byte) bool {
+	switch b {
+	case ' ', '\t', '\n', '\r', '\v', '\f':
+		return true
+	default:
+		return false
+	}
 }
 
 func (t *Tokenizer) encodeBPEWord(word string) []int32 {
