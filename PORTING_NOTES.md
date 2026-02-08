@@ -144,6 +144,7 @@
 - update: value accumulation in attention now uses a cache‑friendly dot loop in generic path (`BITNET_FAST_V_DOT=1`).
   - benchmark (i7-11800H): generic attention ~32/62/255 us for steps 64/128/256 (8/8/16 heads).
 - update: added GPT2 fixture tokenizer benchmark (gated by `BITNET_BENCH_TOKENIZER=1`).
+- update: GPT2 fixture tokenizer now uses pair-key map to reduce pair-key string allocations; benchmark ~23.0 s/op (prev ~24.6 s/op), allocs similar/slightly higher.
 - update: added optional column‑major matvec accumulation for f32 output projection.
   - auto-enabled in non‑parity runs via `BITNET_FAST_COL_MATVEC_AUTO=1` (default).
   - benchmark (i7-11800H, 65536x2048): default ~0.87 s/op; col‑accum ~0.087 s/op.

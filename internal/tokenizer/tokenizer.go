@@ -19,6 +19,7 @@ type Tokenizer struct {
 	vocab            map[string]int32
 	scores           []float32
 	bpeRanks         map[string]int
+	bpeRanksPair     map[bpePair]int
 	byteEncode       [256]string
 	trie             *trieNode
 	byteTok          [256]int32
@@ -37,6 +38,11 @@ type Tokenizer struct {
 	spmHeapPool      spmBigramHeap
 	spmMergePool     map[string][2]int
 	spmIndexStack    []int
+}
+
+type bpePair struct {
+	a string
+	b string
 }
 
 func NewFromModelInfo(info gguf.ModelInfo) (*Tokenizer, error) {
@@ -66,6 +72,7 @@ func NewFromModelInfo(info gguf.ModelInfo) (*Tokenizer, error) {
 		vocab:            make(map[string]int32, len(tokens)),
 		scores:           scores,
 		bpeRanks:         make(map[string]int),
+		bpeRanksPair:     make(map[bpePair]int),
 		trie:             newTrieNode(),
 		bpeChunkCacheCap: 256,
 		spmChunkCacheCap: 256,
@@ -103,6 +110,7 @@ func NewFromModelInfo(info gguf.ModelInfo) (*Tokenizer, error) {
 				continue
 			}
 			t.bpeRanks[parts[0]+"\x00"+parts[1]] = i
+			t.bpeRanksPair[bpePair{a: parts[0], b: parts[1]}] = i
 		}
 	}
 	if t.model == "" && len(t.bpeRanks) > 0 {
@@ -473,15 +481,28 @@ func (t *Tokenizer) encodeBPEWord(word string) []int32 {
 		}
 		bestRank := int(^uint(0) >> 1)
 		bestIdx := -1
-		for i := 0; i < len(syms)-1; i++ {
-			key := t.pairKey(syms[i], syms[i+1])
-			rank, ok := t.bpeRanks[key]
-			if !ok {
-				continue
+		if len(t.bpeRanksPair) > 0 {
+			for i := 0; i < len(syms)-1; i++ {
+				rank, ok := t.bpeRanksPair[bpePair{a: syms[i], b: syms[i+1]}]
+				if !ok {
+					continue
+				}
+				if rank < bestRank {
+					bestRank = rank
+					bestIdx = i
+				}
 			}
-			if rank < bestRank {
-				bestRank = rank
-				bestIdx = i
+		} else {
+			for i := 0; i < len(syms)-1; i++ {
+				key := t.pairKey(syms[i], syms[i+1])
+				rank, ok := t.bpeRanks[key]
+				if !ok {
+					continue
+				}
+				if rank < bestRank {
+					bestRank = rank
+					bestIdx = i
+				}
 			}
 		}
 		if bestIdx < 0 {
