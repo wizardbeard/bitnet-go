@@ -36,6 +36,7 @@ type Tokenizer struct {
 	spmSymbolPool    []spmSymbol
 	spmHeapPool      spmBigramHeap
 	spmMergePool     map[string][2]int
+	spmIndexStack    []int
 }
 
 func NewFromModelInfo(info gguf.ModelInfo) (*Tokenizer, error) {
@@ -160,7 +161,6 @@ func (t *Tokenizer) tokenizeBPE(prompt string) []int32 {
 	if len(chunks) == 0 {
 		chunks = []string{prompt}
 	}
-
 	out := make([]int32, 0, len(prompt))
 	for _, chunk := range chunks {
 		encoded := t.bpeChunkCache.get(chunk)
@@ -636,33 +636,45 @@ func (t *Tokenizer) tokenizeSPM(text string) []int32 {
 	}
 
 	out := make([]int32, 0, len(text))
-	var resegment func(idx int)
-	resegment = func(idx int) {
-		s := syms[idx]
-		piece := text[s.start : s.start+s.n]
-		if id, ok := t.vocab[piece]; ok {
-			out = append(out, id)
-			return
-		}
-		if pair, ok := revMerge[piece]; ok {
-			resegment(pair[0])
-			resegment(pair[1])
-			return
-		}
-		for i := s.start; i < s.start+s.n; i++ {
-			out = append(out, t.byteTok[text[i]])
-		}
+	intStack := t.spmIndexStack[:0]
+	if cap(intStack) < len(text) {
+		intStack = make([]int, 0, len(text))
 	}
-
 	for i := 0; i != -1; i = syms[i].next {
 		if syms[i].n == 0 {
 			continue
 		}
-		resegment(i)
+		intStack = append(intStack, i)
+		for len(intStack) > 0 {
+			idx := intStack[len(intStack)-1]
+			intStack = intStack[:len(intStack)-1]
+			if idx < 0 || idx >= len(syms) {
+				continue
+			}
+			s := syms[idx]
+			if s.n == 0 {
+				continue
+			}
+			piece := text[s.start : s.start+s.n]
+			if id, ok := t.vocab[piece]; ok {
+				out = append(out, id)
+				continue
+			}
+			if pair, ok := revMerge[piece]; ok {
+				// push right then left to preserve order
+				intStack = append(intStack, pair[1])
+				intStack = append(intStack, pair[0])
+				continue
+			}
+			for i := s.start; i < s.start+s.n; i++ {
+				out = append(out, t.byteTok[text[i]])
+			}
+		}
 	}
 	t.spmSymbolPool = syms[:0]
 	t.spmHeapPool = q[:0]
 	t.spmMergePool = revMerge
+	t.spmIndexStack = intStack[:0]
 	return out
 }
 

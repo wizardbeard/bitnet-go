@@ -5,6 +5,13 @@ func Dot(a, b []float32) float32 {
 	if len(b) < n {
 		n = len(b)
 	}
+	if matchGGML() {
+		var sum float32
+		for i := 0; i < n; i++ {
+			sum += a[i] * b[i]
+		}
+		return sum
+	}
 	var sum float64
 	for i := 0; i < n; i++ {
 		sum += float64(a[i]) * float64(b[i])

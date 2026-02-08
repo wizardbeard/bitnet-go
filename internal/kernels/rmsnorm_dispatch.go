@@ -21,9 +21,18 @@ func rmsNormGeneric(dst, x, weight []float32, eps float32) {
 		return
 	}
 	var sum float64
-	for i := 0; i < n; i++ {
-		v := float64(x[i])
-		sum += v * v
+	if matchGGML() {
+		var sum32 float32
+		for i := 0; i < n; i++ {
+			v := x[i]
+			sum32 += v * v
+		}
+		sum = float64(sum32)
+	} else {
+		for i := 0; i < n; i++ {
+			v := float64(x[i])
+			sum += v * v
+		}
 	}
 	inv := float32(1.0 / math.Sqrt(sum/float64(n)+float64(eps)))
 	for i := 0; i < n; i++ {

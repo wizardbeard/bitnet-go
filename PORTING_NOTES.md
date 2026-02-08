@@ -111,7 +111,7 @@
 - update: YaRN parity test now enforces only the first `BITNET_PARITY_TOPK_STRICT` entries (default 1 for YaRN, 3 for non-YaRN) to avoid tail-rank jitter while we investigate residual numeric drift.
 - update: aligned i8_s quantization with upstream ggml: `nearest_int` bit trick rounding, `act_scale = 127/max`, and i2_s matvec uses `(sum - act_sum) / act_scale * weight_scale`.
 - update: runtime now reads `bitnet-b1.58.*` KV metadata (head counts, rope params, vocab/context length) to support BitNet b1.58 GGUFs.
-- update: i2_s parity shows numeric drift in attention accumulation for later prompt positions, accumulating to ~5e-2 top-1 logit deltas and larger deltas for lower-ranked top-k entries. Token IDs still match. Defaults for the i2_s parity test now check only top-1 (`BITNET_PARITY_TOPK_STRICT=1`) and use `6e-2` atol/rtol; needs investigation into ggml matmul/softmax ordering to tighten.
+- update: i2_s parity shows numeric drift in attention accumulation for later prompt positions, accumulating to ~5e-2 top-1 logit deltas and larger deltas for lower-ranked top-k entries. Token IDs still match. Defaults for the i2_s parity test now check top-3 (`BITNET_PARITY_TOPK_STRICT=3`) and use `3e-2` atol/rtol; needs investigation into ggml matmul/softmax ordering to tighten further.
 - update: added amd64-only i2_s matvec fast path. Benchmarks on an i7-11800H show ~4x speedup vs generic for 256/512 shapes:
   - MatVecI2S: 256x256 ~161,482 ns -> 40,681 ns; 512x512 ~690,120 ns -> 161,985 ns.
   - MatVecTI2S: 256x256 ~152,724 ns -> 36,655 ns; 512x512 ~611,269 ns -> 147,892 ns.
@@ -136,8 +136,11 @@
 - update: BPE merge loop reuses a byte buffer for pair-key construction; TokenizeBPE ~1.85us with allocs still at 39 (before later merge experiments).
 - update: tried merge-pair interning; regressed perf/allocs, so kept simple concatenation and key buffer reuse (~2.12us, 42 allocs).
 - update: added a small per-tokenizer BPE chunk cache (default 256 entries, override via `bitnet.tokenizer.bpe_cache_size`); hot TokenizeBPE ~0.20us with 3 allocs (cold remains ~22us).
+- update: tried caching bpeByteMap results; regressed cold-path allocations/time, so reverted.
 - update: added SPM chunk cache (default 256, override via `bitnet.tokenizer.spm_cache_size`); hot TokenizeSPM ~0.11us with 3 allocs (cold ~23us).
 - update: SPM now reuses symbol slice, bigram heap, and merge map; hot TokenizeSPM ~0.12us with same allocs, cold unchanged.
+- update: replaced SPM recursive resegment closure with iterative stack; hot/cold timings unchanged but avoids closure allocation.
+- update: pooled SPM index stack to avoid per-call allocation; timings unchanged.
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).

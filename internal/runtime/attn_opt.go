@@ -56,8 +56,12 @@ func causalAttentionMultiHeadIntoOptimized(dst, scores, q, keys, values []float3
 		for i := 0; i < steps; i++ {
 			kb := i*kStepDim + kBase
 			var sum float32
-			for j := 0; j < headDim; j++ {
-				sum += qh[j] * keys[kb+j]
+			if debugStrictKQ {
+				sum = dotF32GGML(qh, keys[kb:kb+headDim])
+			} else {
+				for j := 0; j < headDim; j++ {
+					sum += qh[j] * keys[kb+j]
+				}
 			}
 			s := sum * scale
 			scores[scoreBase+i] = s
@@ -83,12 +87,16 @@ func causalAttentionMultiHeadIntoOptimized(dst, scores, q, keys, values []float3
 				limit = debugValuesN
 			}
 			if limit > 0 {
-				fmt.Fprint(os.Stderr, "debug_values kq_softmax values=")
+				fmt.Fprint(os.Stderr, "debug_values kq_soft_max_ext values=")
 				for i := 0; i < limit; i++ {
 					if i > 0 {
 						fmt.Fprint(os.Stderr, ",")
 					}
-					fmt.Fprintf(os.Stderr, "%.9g", scores[i])
+					val := scores[scoreBase+i]
+					if !debugStrictAttention {
+						val *= inv
+					}
+					fmt.Fprintf(os.Stderr, "%.9g", val)
 				}
 				fmt.Fprintln(os.Stderr)
 				debugSoftmaxPrinted = true
@@ -112,7 +120,11 @@ func causalAttentionMultiHeadIntoOptimized(dst, scores, q, keys, values []float3
 		for j := 0; j < headDim; j++ {
 			rowBase := vHeadBase + j*maxSeq
 			row := values[rowBase : rowBase+steps]
-			dst[qBase+j] += dotF32Fast(row, weights)
+			if debugAttnF64 {
+				dst[qBase+j] += dotF64(row, weights)
+			} else {
+				dst[qBase+j] += dotF32Fast(row, weights)
+			}
 		}
 	}
 }
@@ -135,4 +147,16 @@ func dotF32Fast(a, b []float32) float32 {
 		sum += a[i] * b[i]
 	}
 	return sum
+}
+
+func dotF64(a, b []float32) float32 {
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
+	}
+	var sum float64
+	for i := 0; i < n; i++ {
+		sum += float64(a[i]) * float64(b[i])
+	}
+	return float32(sum)
 }

@@ -59,10 +59,16 @@ var debugAttnMeta = os.Getenv("BITNET_DEBUG_ATTN_META") == "1"
 var debugValues = os.Getenv("BITNET_DEBUG_VALUES") == "1"
 var debugValuesN = parseDebugValuesN(os.Getenv("BITNET_DEBUG_VALUES_N"))
 var debugPos = parseDebugPos(os.Getenv("BITNET_DEBUG_POS"))
+var debugPosOffset = parseDebugPosOffset(os.Getenv("BITNET_DEBUG_POS_OFFSET"))
 var debugTokens = parseDebugTokens(os.Getenv("BITNET_DEBUG_TOKENS"))
 var debugSoftmaxPrinted bool
 var debugStrictAttention = os.Getenv("BITNET_STRICT_ATTENTION") == "1"
 var debugStrictExpf = os.Getenv("BITNET_STRICT_EXPF") == "1"
+var debugAttnF64 = os.Getenv("BITNET_ATTN_F64") == "1"
+var debugStrictKQ = os.Getenv("BITNET_STRICT_KQ") == "1"
+var debugMatchGGML = os.Getenv("BITNET_MATCH_GGML") == "1"
+var debugForceTokens = parseDebugForceTokens(os.Getenv("BITNET_FORCE_TOKENS"))
+var debugEmbedRowMajor = os.Getenv("BITNET_DEBUG_EMBD_ROW_MAJOR") == "1"
 var debugStep0Printed bool
 var debugI2SDisableActSum = os.Getenv("BITNET_I2S_DISABLE_ACTSUM") == "1"
 var debugI2SInvertActScale = os.Getenv("BITNET_I2S_INVERT_ACT_SCALE") == "1"
@@ -80,6 +86,17 @@ func parseDebugPos(v string) int {
 	n, err := strconv.Atoi(v)
 	if err != nil {
 		return -1
+	}
+	return n
+}
+
+func parseDebugPosOffset(v string) int {
+	if v == "" {
+		return 0
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return 0
 	}
 	return n
 }
@@ -104,6 +121,26 @@ func parseDebugTokens(v string) []int {
 	return out
 }
 
+func parseDebugForceTokens(v string) []int32 {
+	if v == "" {
+		return nil
+	}
+	parts := strings.Split(v, ",")
+	out := make([]int32, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		n, err := strconv.Atoi(part)
+		if err != nil {
+			continue
+		}
+		out = append(out, int32(n))
+	}
+	return out
+}
+
 func parseDebugValuesN(v string) int {
 	if v == "" {
 		return 8
@@ -120,7 +157,7 @@ func shouldDebug(pos int) bool {
 		return false
 	}
 	if debugPos >= 0 {
-		return pos == debugPos
+		return pos+debugPosOffset == debugPos
 	}
 	return pos == 0
 }
@@ -795,6 +832,12 @@ func embedToken(dst []float32, block *tensorBlock, token int32) bool {
 		return false
 	}
 	idx := int(token)
+	if debugEmbedRowMajor {
+		for r := 0; r < block.hiddenDim; r++ {
+			dst[r] = block.tokenEmbd[idx+block.tokenEmbdCols*r]
+		}
+		return true
+	}
 	for r := 0; r < block.hiddenDim; r++ {
 		dst[r] = block.tokenEmbd[r+block.tokenEmbdRows*idx]
 	}
@@ -839,6 +882,9 @@ func runForwardLlamaStack(block *tensorBlock, seed int64, promptTokens []int32, 
 			*topk = appendTopKStep(*topk, i, logits, 5)
 		}
 		next := kernels.Argmax(logits)
+		if i < len(debugForceTokens) {
+			next = int(debugForceTokens[i])
+		}
 		if next < 0 {
 			out[i] = 0
 			currentToken = 0
@@ -974,6 +1020,10 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 				debugVecStats("inp_embd", x)
 				debugVecStats("attn_norm-0", n1)
 			}
+			if debugValues && shouldDebug(pos) && i == 0 {
+				debugVecValues("inp_embd", x, debugValuesN)
+				debugVecValues("attn_norm", n1, debugValuesN)
+			}
 			linearApplyQKV(st.q, st.k, st.v, layer.attnQ, layer.attnK, layer.attnV, n1)
 			if debugAttnMeta && shouldDebug(pos) && i == 0 {
 				qHead := 0
@@ -1061,6 +1111,10 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 				debugFfnCompare("ffn_gate", st.gate, layer.ffnGate, layer.debugFFNGateF32, n2)
 				debugFfnCompare("ffn_up", st.up, layer.ffnUp, layer.debugFFNUpF32, n2)
 			}
+			if debugValues && shouldDebug(pos) && i == 0 {
+				debugVecValues("ffn_gate", st.gate, debugValuesN)
+				debugVecValues("ffn_up", st.up, debugValuesN)
+			}
 			if shouldDebug(pos) && i == 0 {
 				debugVecStats("ffn_norm", n2)
 				debugVecStats("ffn_gate", st.gate)
@@ -1068,7 +1122,7 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 			}
 			kernels.MulRelu2Into(st.ffnAct, st.gate, st.up)
 			if debugValues && shouldDebug(pos) && i == 0 {
-				debugVecValues("ffn_out", st.ffnAct, debugValuesN)
+				debugVecValues("ffn_act", st.ffnAct, debugValuesN)
 			}
 			rmsNormInto(st.up, st.ffnAct, layer.ffnSubNorm, block.rmsEps)
 			if debugStages && shouldDebug(pos) && i == 0 {
@@ -1084,6 +1138,9 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 			}
 			if debugFFNLoad && shouldDebug(pos) && i == 0 {
 				debugFfnCompare("ffn_down", st.ffnDown, layer.ffnDown, layer.debugFFNDownF32, st.up)
+			}
+			if debugValues && shouldDebug(pos) && i == 0 {
+				debugVecValues("ffn_down", st.ffnDown, debugValuesN)
 			}
 			kernels.AddScaled(x, st.ffnDown, 1.0)
 			if debugStages && shouldDebug(pos) && i == 0 {
@@ -1171,8 +1228,18 @@ func causalAttentionMultiHeadIntoGeneric(dst, scores, q, keys, values []float32,
 		for i := 0; i < steps; i++ {
 			kb := i*kStepDim + kBase
 			var sum float32
-			for j := 0; j < headDim; j++ {
-				sum += qh[j] * keys[kb+j]
+			if debugStrictKQ {
+				sum = dotF32GGML(qh, keys[kb:kb+headDim])
+			} else if debugAttnF64 {
+				var sum64 float64
+				for j := 0; j < headDim; j++ {
+					sum64 += float64(qh[j]) * float64(keys[kb+j])
+				}
+				sum = float32(sum64)
+			} else {
+				for j := 0; j < headDim; j++ {
+					sum += qh[j] * keys[kb+j]
+				}
 			}
 			s := sum * scale
 			scores[h*steps+i] = s
@@ -1198,12 +1265,16 @@ func causalAttentionMultiHeadIntoGeneric(dst, scores, q, keys, values []float32,
 				limit = debugValuesN
 			}
 			if limit > 0 {
-				fmt.Fprint(os.Stderr, "debug_values kq_softmax values=")
+				fmt.Fprint(os.Stderr, "debug_values kq_soft_max_ext values=")
 				for i := 0; i < limit; i++ {
 					if i > 0 {
 						fmt.Fprint(os.Stderr, ",")
 					}
-					fmt.Fprintf(os.Stderr, "%.9g", scores[i])
+					val := scores[i]
+					if !debugStrictAttention {
+						val *= inv
+					}
+					fmt.Fprintf(os.Stderr, "%.9g", val)
 				}
 				fmt.Fprintln(os.Stderr)
 				debugSoftmaxPrinted = true
@@ -1218,9 +1289,21 @@ func causalAttentionMultiHeadIntoGeneric(dst, scores, q, keys, values []float32,
 			}
 			continue
 		}
+		vHeadBase := kvHead * headDim * maxSeq
+		if debugAttnF64 {
+			for j := 0; j < headDim; j++ {
+				var sum64 float64
+				rowBase := vHeadBase + j*maxSeq
+				for i := 0; i < steps; i++ {
+					w := scores[h*steps+i] * inv
+					sum64 += float64(values[rowBase+i]) * float64(w)
+				}
+				dst[qBase+j] += float32(sum64)
+			}
+			continue
+		}
 		for i := 0; i < steps; i++ {
 			w := scores[h*steps+i] * inv
-			vHeadBase := kvHead * headDim * maxSeq
 			for j := 0; j < headDim; j++ {
 				vb := vHeadBase + j*maxSeq + i
 				dst[qBase+j] += values[vb] * w

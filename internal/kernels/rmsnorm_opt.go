@@ -13,6 +13,25 @@ func rmsNormOpt(dst, x, weight []float32, eps float32) {
 	if n == 0 {
 		return
 	}
+	if matchGGML() {
+		var sum float32
+		for i := 0; i < n; i++ {
+			v := x[i]
+			sum += v * v
+		}
+		inv := float32(1.0 / math.Sqrt(float64(sum)/float64(n)+float64(eps)))
+		i := 0
+		for ; i+3 < n; i += 4 {
+			dst[i] = x[i] * inv * weight[i]
+			dst[i+1] = x[i+1] * inv * weight[i+1]
+			dst[i+2] = x[i+2] * inv * weight[i+2]
+			dst[i+3] = x[i+3] * inv * weight[i+3]
+		}
+		for ; i < n; i++ {
+			dst[i] = x[i] * inv * weight[i]
+		}
+		return
+	}
 	var sum0, sum1, sum2, sum3 float64
 	i := 0
 	for ; i+3 < n; i += 4 {

@@ -8,6 +8,14 @@ func matVecOpt(dst, mat []float32, rows, cols int, vec []float32) {
 		return
 	}
 	for r := 0; r < rows; r++ {
+		if matchGGML() {
+			var sum float32
+			for c := 0; c < cols; c++ {
+				sum += mat[r+rows*c] * vec[c]
+			}
+			dst[r] = sum
+			continue
+		}
 		var sum0, sum1, sum2, sum3 float64
 		c := 0
 		for ; c+3 < cols; c += 4 {
@@ -36,6 +44,15 @@ func matVecTOpt(dst, mat []float32, rows, cols int, vec []float32) {
 		return
 	}
 	for c := 0; c < cols; c++ {
+		if matchGGML() {
+			var sum float32
+			base := rows * c
+			for r := 0; r < rows; r++ {
+				sum += mat[base+r] * vec[r]
+			}
+			dst[c] = sum
+			continue
+		}
 		var sum0, sum1, sum2, sum3 float64
 		r := 0
 		base := rows * c
