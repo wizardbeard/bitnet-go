@@ -271,6 +271,23 @@ func BenchmarkSoftmaxInPlace(b *testing.B) {
 	})
 }
 
+func BenchmarkAppendTopKStep(b *testing.B) {
+	const vocab = 128256
+	logits := make([]float32, vocab)
+	for i := range logits {
+		logits[i] = float32((i%97)-48) * 0.01
+	}
+	dst := make([]TopKStep, 0, 1)
+
+	b.ReportAllocs()
+	b.SetBytes(int64(vocab * 4))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		dst = dst[:0]
+		dst = appendTopKStep(dst, 0, logits, 5)
+	}
+}
+
 func BenchmarkQKVMatVecCompare(b *testing.B) {
 	rows := 256
 	cols := 256

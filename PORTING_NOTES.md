@@ -132,6 +132,8 @@
 - update: added QuantizeRowI8S benchmark (~5.0 us for 2560 elems on i7-11800H); loop unrolling did not improve and was reverted.
 - update: added KQV accumulation benchmarks.
   - benchmark (i7-11800H): fast dot ~1.7/3.4/6.4 us for steps 64/128/256; ggml dot ~3.3/6.2/13.0 us.
+- update: optimized top‑K selection for parity/logit capture; added benchmark.
+  - benchmark (i7-11800H): AppendTopKStep ~60.5 us/op (128,256 logits), 1 alloc.
 - update: fused FFN gate+up activation into `MulRelu2Into` with amd64/arm64 unrolled path and runtime integration.
 - update: RMSNorm now uses a kernels dispatch with unrolled optimized path on amd64/arm64.
 - update: KV cache store now dispatches to arch-specific hooks; current fast path matches generic performance (benchmark shows parity on amd64).

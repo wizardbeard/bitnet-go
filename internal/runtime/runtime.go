@@ -2198,32 +2198,55 @@ func appendTopKStep(dst []TopKStep, step int, logits []float32, k int) []TopKSte
 	if k > len(logits) {
 		k = len(logits)
 	}
-	entries := make([]TopKEntry, 0, k)
+	entries := make([]TopKEntry, k)
+	count := 0
+	minIdx := 0
+	minVal := float32(0)
 	for id, logit := range logits {
 		entry := TopKEntry{TokenID: int32(id), Logit: logit}
-		if len(entries) == 0 {
-			entries = append(entries, entry)
+		if count < k {
+			entries[count] = entry
+			if count == 0 || logit < minVal {
+				minVal = logit
+				minIdx = count
+			}
+			count++
+			if count == k {
+				minIdx = 0
+				minVal = entries[0].Logit
+				for i := 1; i < k; i++ {
+					if entries[i].Logit < minVal {
+						minVal = entries[i].Logit
+						minIdx = i
+					}
+				}
+			}
 			continue
 		}
-		insert := len(entries)
-		for i := 0; i < len(entries); i++ {
-			if entry.Logit > entries[i].Logit {
-				insert = i
-				break
+		if logit <= minVal {
+			continue
+		}
+		entries[minIdx] = entry
+		minIdx = 0
+		minVal = entries[0].Logit
+		for i := 1; i < k; i++ {
+			if entries[i].Logit < minVal {
+				minVal = entries[i].Logit
+				minIdx = i
 			}
 		}
-		if len(entries) < k {
-			entries = append(entries, TopKEntry{})
-			copy(entries[insert+1:], entries[insert:])
-			entries[insert] = entry
-			continue
-		}
-		if insert < k {
-			copy(entries[insert+1:], entries[insert:k-1])
-			entries[insert] = entry
-		}
 	}
-	return append(dst, TopKStep{Step: step, Entries: entries})
+	out := entries[:count]
+	for i := 1; i < len(out); i++ {
+		key := out[i]
+		j := i - 1
+		for j >= 0 && out[j].Logit < key.Logit {
+			out[j+1] = out[j]
+			j--
+		}
+		out[j+1] = key
+	}
+	return append(dst, TopKStep{Step: step, Entries: out})
 }
 
 func mixState(state, scratch []float32, token int32) {
