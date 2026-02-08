@@ -136,6 +136,8 @@
   - benchmark (i7-11800H): AppendTopKStep ~60.5 us/op (128,256 logits), 1 alloc.
 - update: added Generate benchmark with top‑K toggle (requires BITNET_BENCH_MODEL).
   - benchmark (i7-11800H, ggml-model-i2_s.gguf, 8 tokens): top‑K ~24.6 s/op vs no‑topK ~23.1 s/op; ~21k fewer allocs.
+- update: Argmax unrolled by 4; added benchmark.
+  - benchmark (i7-11800H): Argmax n=256 ~130 ns, n=1024 ~478 ns, n=4096 ~1.89 us.
 - update: fused FFN gate+up activation into `MulRelu2Into` with amd64/arm64 unrolled path and runtime integration.
 - update: RMSNorm now uses a kernels dispatch with unrolled optimized path on amd64/arm64.
 - update: KV cache store now dispatches to arch-specific hooks; current fast path matches generic performance (benchmark shows parity on amd64).

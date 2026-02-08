@@ -35,7 +35,30 @@ func Argmax(v []float32) int {
 	}
 	best := 0
 	bestVal := v[0]
-	for i := 1; i < len(v); i++ {
+	i := 1
+	for ; i+3 < len(v); i += 4 {
+		v0 := v[i]
+		if v0 > bestVal {
+			bestVal = v0
+			best = i
+		}
+		v1 := v[i+1]
+		if v1 > bestVal {
+			bestVal = v1
+			best = i + 1
+		}
+		v2 := v[i+2]
+		if v2 > bestVal {
+			bestVal = v2
+			best = i + 2
+		}
+		v3 := v[i+3]
+		if v3 > bestVal {
+			bestVal = v3
+			best = i + 3
+		}
+	}
+	for ; i < len(v); i++ {
 		if v[i] > bestVal {
 			bestVal = v[i]
 			best = i
