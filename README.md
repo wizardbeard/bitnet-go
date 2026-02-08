@@ -13,6 +13,19 @@ Initial Go scaffold for porting BitNet CPU inference.
 Note: `go test ./...` can take ~3 minutes because tokenizer fixture tests are slow; plan CI timeouts accordingly.
 - `go run ./cmd/bitnet --help`
 
+## Benchmarks (Snapshot)
+
+All results below were recorded on 2026-02-08 (i7-11800H, Linux, amd64).
+
+| Benchmark | Result | Notes |
+| --- | --- | --- |
+| Attention `steps=64/h=8/d=64` | row‑major `41.0us`, generic `42.9us` | row‑major faster |
+| Attention `steps=128/h=8/d=64` | row‑major `78.0us`, generic `86.2us` | row‑major faster |
+| Attention `steps=256/h=16/d=64` | row‑major `325.1us`, generic `365.1us` | row‑major faster |
+| i2_s MatVec `r=512/c=512` | dispatch `171,953ns`, generic `671,031ns` | dispatch faster |
+| Tokenize BPE (hot) | `~198ns/op`, 3 allocs | GPT2 fixture |
+| Tokenize SPM (hot) | `~117ns/op`, 3 allocs | Llama fixture |
+
 ## Reference harness (Phase 0)
 
 ## Testdata GGUFs
