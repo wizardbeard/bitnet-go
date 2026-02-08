@@ -23,6 +23,14 @@ All results below were recorded on 2026-02-08 (i7-11800H, Linux, amd64).
 | Attention `steps=128/h=8/d=64` | row‑major `78.0us`, generic `86.2us` | row‑major faster |
 | Attention `steps=256/h=16/d=64` | row‑major `325.1us`, generic `365.1us` | row‑major faster |
 | i2_s MatVec `r=512/c=512` | dispatch `171,953ns`, generic `671,031ns` | dispatch faster |
+| i2_s MatVecT `r=512/c=512` | dispatch `149,885ns`, generic `639,439ns` | dispatch faster |
+| f32 MatVec `r=1024/c=1024` | dispatch `625,111ns`, generic `1,999,773ns` | dispatch faster |
+| f32 MatVecT `r=1024/c=1024` | dispatch `778,114ns`, generic `974,746ns` | dispatch faster |
+| RMSNorm `n=4096` | `3379ns` | optimized dispatch |
+| Softmax `steps=256` | dispatch `1766ns`, generic `1784ns` | small gain |
+| KQV accumulation `steps=256/d=64` | fast `6518ns`, fast_n `8427ns`, ggml `14075ns` | fast wins |
+| Output projection (f32) | `87.9ms` | fast col‑accum path |
+| Llama layer step `h=1024/ffn=4096/heads=16/steps=128` | `27.9ms` | end‑to‑end kernel mix |
 | Tokenize BPE (hot) | `~198ns/op`, 3 allocs | GPT2 fixture |
 | Tokenize SPM (hot) | `~117ns/op`, 3 allocs | Llama fixture |
 
