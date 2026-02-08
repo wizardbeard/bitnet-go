@@ -108,6 +108,7 @@ var debugStrictAttention = os.Getenv("BITNET_STRICT_ATTENTION") == "1"
 var debugStrictExpf = os.Getenv("BITNET_STRICT_EXPF") == "1"
 var debugAttnF64 = os.Getenv("BITNET_ATTN_F64") == "1"
 var debugStrictKQ = os.Getenv("BITNET_STRICT_KQ") == "1" || debugParityStrict
+var debugFastKQ = os.Getenv("BITNET_FAST_KQ_DOT") != "0" && !debugParityStrict
 var debugMatchGGML = os.Getenv("BITNET_MATCH_GGML") == "1" || debugParityStrict
 var debugAttnRef = os.Getenv("BITNET_DEBUG_ATTN_REF") == "1"
 var debugFFNRef = os.Getenv("BITNET_DEBUG_FFN_REF") == "1"
@@ -1371,6 +1372,8 @@ func causalAttentionMultiHeadIntoGeneric(dst, scores, q, keys, values []float32,
 			var sum float32
 			if debugStrictKQ {
 				sum = dotF32GGML(qh, keys[kb:kb+headDim])
+			} else if debugFastKQ {
+				sum = dotF32Fast(qh, keys[kb:kb+headDim])
 			} else if debugAttnF64 {
 				var sum64 float64
 				for j := 0; j < headDim; j++ {

@@ -58,6 +58,8 @@ func causalAttentionMultiHeadIntoOptimized(dst, scores, q, keys, values []float3
 			var sum float32
 			if debugStrictKQ {
 				sum = dotF32GGML(qh, keys[kb:kb+headDim])
+			} else if debugFastKQ {
+				sum = dotF32Fast(qh, keys[kb:kb+headDim])
 			} else {
 				for j := 0; j < headDim; j++ {
 					sum += qh[j] * keys[kb+j]
