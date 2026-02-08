@@ -151,3 +151,14 @@
 - Add/confirm wrapper command (`BITNET_REF_RUN_CMD`) for upstream CLI output.
 - Confirm tokenizer behavior and seed handling against upstream reference.
 - Define logits tolerance policy from observed reference outputs.
+
+AGENTS.md progress snapshot:
+- Phase 0 (ground truth harness): reference runners, frozen vectors, and parity tests are in place for base, YaRN, and i2_s paths.
+- Phase 1 (CLI + scaffolding): `cmd/bitnet` and model loading/tokenization plumbing are implemented.
+- Phase 2 (CPU inference parity): naive end-to-end CPU path is wired (attention, FFN, KV cache, RoPE); i2_s quantized matvecs match ggml semantics; parity now enforced with i2_s-specific tolerances due to FFN activation amplification.
+- Phase 3 (performance): amd64/arm64 optimized matvec, RMSNorm, softmax, attention, and FFN paths added behind dispatch with equivalence tests and benchmarks.
+
+Next steps aligned to AGENTS.md:
+- Phase 2: tighten i2_s parity tolerances where possible (focus on logits/top‑K policy and remaining drift characterization).
+- Phase 2: extend parity vectors to cover 1.58B/2B i2_s fixtures with consistent teacher‑forced logits.
+- Phase 3: add kernel microbench coverage for i2_s + i8_s path and track regressions in CI.
