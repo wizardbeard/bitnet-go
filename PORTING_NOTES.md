@@ -170,7 +170,7 @@
 - update: replaced SPM recursive resegment closure with iterative stack; hot/cold timings unchanged but avoids closure allocation.
 - update: pooled SPM index stack to avoid per-call allocation; timings unchanged.
 - update: attention KQ/KQV dot paths now use `dotF32FastN` to avoid per-row slice creation; added `fast_n` KQV microbench variant and equivalence test.
-- update: optional KV V-cache row-major layout (`BITNET_KV_ROWMAJOR=1`) and row-major attention path to improve cache locality without changing outputs; added equivalence test and benchmark variant.
+- update: KV V-cache row-major layout is now default (`BITNET_KV_ROWMAJOR=1`), with opt‑out via `BITNET_KV_ROWMAJOR=0`; row‑major attention path improves cache locality without changing outputs; added equivalence test and benchmark variant.
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).

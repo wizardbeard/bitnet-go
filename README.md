@@ -148,3 +148,5 @@ If upstream CLI output differs, provide a wrapper command via `BITNET_REF_RUN_CM
   - `BITNET_FAST_COL_MATVEC_AUTO=1` (default) enables a faster column‑accumulation matvec for large f32 projections when not in parity‑strict mode.
     - Set `BITNET_FAST_COL_MATVEC=1` to force it on; set `BITNET_FAST_COL_MATVEC_AUTO=0` to disable auto behavior.
   - `BITNET_FAST_V_DOT=1` (default) uses a cache‑friendly value accumulation loop in attention when not in parity‑strict mode.
+  - `BITNET_KV_ROWMAJOR=1` (default) stores the V cache in row‑major `[head][pos][dim]` layout for faster attention accumulation.
+    - Set `BITNET_KV_ROWMAJOR=0` to use the legacy `[head][dim][pos]` layout.
