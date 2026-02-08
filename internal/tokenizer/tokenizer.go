@@ -104,6 +104,7 @@ func NewFromModelInfo(info gguf.ModelInfo) (*Tokenizer, error) {
 	t.byteEncode = buildByteEncoder()
 
 	if merges, ok := info.KeyValues["tokenizer.ggml.merges"].([]string); ok {
+		t.bpeRanksPair = make(map[bpePair]int, len(merges))
 		for i, m := range merges {
 			parts := strings.SplitN(m, " ", 2)
 			if len(parts) != 2 {

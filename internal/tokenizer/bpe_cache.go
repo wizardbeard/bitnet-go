@@ -43,6 +43,15 @@ func (c *bpeChunkCache) add(key string, val []int32) {
 		delete(c.values, old)
 	}
 	c.order[slot] = key
-	c.values[key] = append([]int32(nil), val...)
+	c.values[key] = cloneInt32(val)
 	c.index++
+}
+
+func cloneInt32(src []int32) []int32 {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make([]int32, len(src))
+	copy(dst, src)
+	return dst
 }
