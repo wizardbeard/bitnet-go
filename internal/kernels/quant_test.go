@@ -77,6 +77,31 @@ func TestMatVecTI2SI8S(t *testing.T) {
 	}
 }
 
+func TestMatVecTI2SI8SBlockDecode(t *testing.T) {
+	rows, cols := 128, 2
+	vals := make([]int, rows*cols)
+	for r := 0; r < rows; r++ {
+		vals[r+rows*0] = 1
+		vals[r+rows*1] = -1
+	}
+	packed := packI2SQuant(vals)
+	vec := make([]int8, rows)
+	for i := range vec {
+		vec[i] = 0
+	}
+	dst := make([]float32, cols)
+	MatVecTI2SI8S(dst, packed, rows, cols, vec, 2.0, 5.0, 5)
+
+	want0 := float32(-5) * (2.0 / 5.0)
+	want1 := float32(-5) * (2.0 / 5.0)
+	if dst[0] != want0 {
+		t.Fatalf("dst[0] = %f, want %f", dst[0], want0)
+	}
+	if dst[1] != want1 {
+		t.Fatalf("dst[1] = %f, want %f", dst[1], want1)
+	}
+}
+
 func packI2SQuant(vals []int) []byte {
 	const block = 128
 	const blockBytes = 32
