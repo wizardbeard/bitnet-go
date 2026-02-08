@@ -100,17 +100,17 @@ fi
 
 # Optional i2_s fixture for parity. Set BITNET_FETCH_I2S=1 to enable.
 if [ "${BITNET_FETCH_I2S:-0}" = "1" ]; then
-    if [ "${BITNET_I2S_MODEL_URL:-}" = "" ]; then
-        echo "BITNET_I2S_MODEL_URL is required when BITNET_FETCH_I2S=1." >&2
-        exit 1
-    fi
+    i2s_url_default="https://huggingface.co/microsoft/bitnet-b1.58-2B-4T-gguf/resolve/main/ggml-model-i2_s.gguf"
+    i2s_sha_default="4221b252fdd5fd25e15847adfeb5ee88886506ba50b8a34548374492884c2162"
+    i2s_url=${BITNET_I2S_MODEL_URL:-$i2s_url_default}
+    i2s_sha=${BITNET_I2S_MODEL_SHA256:-$i2s_sha_default}
     if [ "${BITNET_I2S_MODEL_FILE:-}" = "" ]; then
-        i2s_file=$(basename "$BITNET_I2S_MODEL_URL")
+        i2s_file=$(basename "$i2s_url")
     else
         i2s_file=$BITNET_I2S_MODEL_FILE
     fi
     i2s_min_size=${BITNET_I2S_MODEL_MIN_SIZE:-1000000}
-    fetch_url "$BITNET_I2S_MODEL_URL" "$TESTDATA_DIR/$i2s_file" "$i2s_min_size" "${BITNET_I2S_MODEL_SHA256:-}"
+    fetch_url "$i2s_url" "$TESTDATA_DIR/$i2s_file" "$i2s_min_size" "$i2s_sha"
     printf '%s\n' "$i2s_file" > "$TESTDATA_DIR/model_fixture_i2s.txt"
     echo "Updated fixture: $TESTDATA_DIR/model_fixture_i2s.txt"
 fi

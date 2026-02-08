@@ -25,6 +25,7 @@ Overrides:
 - `BITNET_GPT2_VOCAB_URL`, `BITNET_FALCON_VOCAB_URL`, `BITNET_QWEN2_VOCAB_URL`
 - `BITNET_FETCH_YARN=1`, `BITNET_YARN_MODEL_URL`, `BITNET_YARN_MODEL_FILE`
 - `BITNET_FETCH_IQ=1`, `BITNET_IQ_MODEL_URL`, `BITNET_IQ_MODEL_FILE`
+- `BITNET_FETCH_I2S=1`, `BITNET_I2S_MODEL_URL`, `BITNET_I2S_MODEL_FILE`, `BITNET_I2S_MODEL_SHA256`
 - `BITNET_FETCH_I2S_2B=1`, `BITNET_I2S_2B_MODEL_URL`, `BITNET_I2S_2B_MODEL_FILE`
 
 CI note:
@@ -141,7 +142,7 @@ If upstream CLI output differs, provide a wrapper command via `BITNET_REF_RUN_CM
     - `BITNET_I2S_LOGIT_ATOL` (default `2e-1`)
     - `BITNET_I2S_LOGIT_RTOL` (default `2e-1`)
     - `BITNET_I2S_TOPK_STRICT` (default `3`)
-    - `BITNET_I2S_RELAX_TOPK` (default `1`)
+    - `BITNET_I2S_RELAX_TOPK` (default `1`, compares top‑K as a set when enabled)
     - `BITNET_I2S_FORCE_LOGIT_ATOL` / `BITNET_I2S_FORCE_LOGIT_RTOL` (default `7e-1`)
   - CI will run i2_s parity only when the referenced model fixtures exist in `testdata/`.
   - Set `BITNET_DISABLE_TOPK=1` to skip top‑K capture (perf optimization outside parity runs).

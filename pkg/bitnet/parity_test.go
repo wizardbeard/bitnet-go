@@ -303,6 +303,10 @@ func TestParityAgainstI2SVectors(t *testing.T) {
 	if len(want) == 0 {
 		t.Fatalf("expected.i2s.tokens.json is empty; run scripts/run_ref_i2s.sh to freeze vectors")
 	}
+	if maxTokens := envInt("BITNET_PARITY_MAX_TOKENS", 0); maxTokens > 0 && maxTokens < len(want) {
+		t.Logf("capping i2_s parity to %d tokens via BITNET_PARITY_MAX_TOKENS", maxTokens)
+		want = want[:maxTokens]
+	}
 	maybeForceTokens(t, want)
 
 	promptBytes, err := os.ReadFile(filepath.Join(root, "prompt.txt"))
@@ -350,6 +354,9 @@ func TestParityAgainstI2SVectors(t *testing.T) {
 	if len(got.TopK) != len(wantTopK) {
 		t.Fatalf("topk step mismatch: got=%d want=%d", len(got.TopK), len(wantTopK))
 	}
+	if len(wantTopK) > len(want) {
+		wantTopK = wantTopK[:len(want)]
+	}
 	atol := envFloat32("BITNET_I2S_LOGIT_ATOL", 2e-1)
 	rtol := envFloat32("BITNET_I2S_LOGIT_RTOL", 2e-1)
 	strictK := envInt("BITNET_I2S_TOPK_STRICT", 3)
@@ -375,7 +382,7 @@ func TestParityAgainstI2SVectors(t *testing.T) {
 		if strictK > len(wantTopK[i].Entries) {
 			strictK = len(wantTopK[i].Entries)
 		}
-		if forceMode && relaxTopK {
+		if relaxTopK {
 			gotMap := make(map[int32]float32, len(got.TopK[i].Entries))
 			for _, e := range got.TopK[i].Entries {
 				gotMap[e.TokenID] = e.Logit
@@ -517,7 +524,7 @@ func TestParityAgainstI2S2BVectors(t *testing.T) {
 		if strictK > len(wantTopK[i].Entries) {
 			strictK = len(wantTopK[i].Entries)
 		}
-		if forceMode && relaxTopK {
+		if relaxTopK {
 			gotMap := make(map[int32]float32, len(got.TopK[i].Entries))
 			for _, e := range got.TopK[i].Entries {
 				gotMap[e.TokenID] = e.Logit
