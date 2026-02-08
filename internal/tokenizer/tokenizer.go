@@ -553,16 +553,15 @@ func (t *Tokenizer) mergePair(left, right string) string {
 }
 
 func (t *Tokenizer) bpeByteMap(s string) string {
-	raw := []byte(s)
-	n := len(raw)
+	n := len(s)
 	buf := t.bpeByteBuf
 	if cap(buf) < n*2 {
 		buf = make([]byte, 0, n*2)
 	} else {
 		buf = buf[:0]
 	}
-	for _, x := range raw {
-		buf = append(buf, t.byteEncode[x]...)
+	for i := 0; i < n; i++ {
+		buf = append(buf, t.byteEncode[s[i]]...)
 	}
 	t.bpeByteBuf = buf[:0]
 	return string(buf)

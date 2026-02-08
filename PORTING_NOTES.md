@@ -146,6 +146,7 @@
 - update: added GPT2 fixture tokenizer benchmark (gated by `BITNET_BENCH_TOKENIZER=1`).
 - update: GPT2 fixture tokenizer now uses pair-key map to reduce pair-key string allocations; benchmark ~23.0 s/op (prev ~24.6 s/op), allocs similar.
 - update: preallocated pair-key map and cache cloning helper; benchmark ~23.2 s/op, allocs slightly down (~718,775).
+- update: bpeByteMap now iterates string bytes directly (avoids []byte alloc); benchmark unchanged (~23.3 s/op).
 - update: added optional column‑major matvec accumulation for f32 output projection.
   - auto-enabled in non‑parity runs via `BITNET_FAST_COL_MATVEC_AUTO=1` (default).
   - benchmark (i7-11800H, 65536x2048): default ~0.87 s/op; col‑accum ~0.087 s/op.
