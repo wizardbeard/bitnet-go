@@ -145,3 +145,5 @@ If upstream CLI output differs, provide a wrapper command via `BITNET_REF_RUN_CM
     - `BITNET_I2S_FORCE_LOGIT_ATOL` / `BITNET_I2S_FORCE_LOGIT_RTOL` (default `7e-1`)
   - CI will run i2_s parity only when the referenced model fixtures exist in `testdata/`.
   - Set `BITNET_DISABLE_TOPK=1` to skip top‑K capture (perf optimization outside parity runs).
+  - `BITNET_FAST_COL_MATVEC_AUTO=1` (default) enables a faster column‑accumulation matvec for large f32 projections when not in parity‑strict mode.
+    - Set `BITNET_FAST_COL_MATVEC=1` to force it on; set `BITNET_FAST_COL_MATVEC_AUTO=0` to disable auto behavior.

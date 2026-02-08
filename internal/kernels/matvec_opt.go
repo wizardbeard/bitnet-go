@@ -7,6 +7,19 @@ func matVecOpt(dst, mat []float32, rows, cols int, vec []float32) {
 	if len(dst) < rows || len(vec) < cols || len(mat) < rows*cols {
 		return
 	}
+	if fastColMatVec() && !matchGGML() {
+		for r := 0; r < rows; r++ {
+			dst[r] = 0
+		}
+		for c := 0; c < cols; c++ {
+			scale := vec[c]
+			base := rows * c
+			for r := 0; r < rows; r++ {
+				dst[r] += mat[base+r] * scale
+			}
+		}
+		return
+	}
 	for r := 0; r < rows; r++ {
 		if matchGGML() {
 			var sum float32

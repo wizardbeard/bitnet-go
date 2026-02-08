@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"bitnet-go/internal/gguf"
+	"bitnet-go/internal/kernels"
 )
 
 func BenchmarkRMSNormInto(b *testing.B) {
@@ -315,6 +316,30 @@ func BenchmarkGenerateTopKToggle(b *testing.B) {
 			_, _ = rt.Generate(context.Background(), req)
 		}
 	})
+}
+
+func BenchmarkOutputProjectionF32(b *testing.B) {
+	const rows = 65536
+	const cols = 2048
+	mat := make([]float32, rows*cols)
+	vec := make([]float32, cols)
+	for i := range vec {
+		vec[i] = float32(i%31) * 0.01
+	}
+	for c := 0; c < cols; c++ {
+		base := rows * c
+		for r := 0; r < rows; r++ {
+			mat[base+r] = float32((r+c)%17) * 0.01
+		}
+	}
+	dst := make([]float32, rows)
+
+	b.ReportAllocs()
+	b.SetBytes(int64((rows*cols + cols + rows) * 4))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		kernels.MatVec(dst, mat, rows, cols, vec)
+	}
 }
 
 func BenchmarkQKVMatVecCompare(b *testing.B) {
