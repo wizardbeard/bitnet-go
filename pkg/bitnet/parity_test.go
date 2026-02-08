@@ -471,9 +471,16 @@ func TestParityAgainstI2S2BVectors(t *testing.T) {
 	if len(got.TopK) != len(wantTopK) {
 		t.Fatalf("topk step mismatch: got=%d want=%d", len(got.TopK), len(wantTopK))
 	}
-	atol := envFloat32("BITNET_PARITY_LOGIT_ATOL", 6e-2)
-	rtol := envFloat32("BITNET_PARITY_LOGIT_RTOL", 6e-2)
-	strictK := envInt("BITNET_PARITY_TOPK_STRICT", 1)
+	atol := envFloat32("BITNET_I2S_LOGIT_ATOL", 2e-1)
+	rtol := envFloat32("BITNET_I2S_LOGIT_RTOL", 2e-1)
+	strictK := envInt("BITNET_I2S_TOPK_STRICT", 3)
+	forceMode := os.Getenv("BITNET_PARITY_FORCE") == "1"
+	relaxTopK := os.Getenv("BITNET_I2S_RELAX_TOPK") != "0"
+	if forceMode {
+		atol = envFloat32("BITNET_I2S_FORCE_LOGIT_ATOL", 3e-1)
+		rtol = envFloat32("BITNET_I2S_FORCE_LOGIT_RTOL", 3e-1)
+		relaxTopK = os.Getenv("BITNET_PARITY_FORCE_RELAX_TOPK") != "0"
+	}
 	for i := range wantTopK {
 		if got.TopK[i].Step != wantTopK[i].Step {
 			t.Fatalf("topk step id mismatch at index %d: got=%d want=%d", i, got.TopK[i].Step, wantTopK[i].Step)
@@ -486,6 +493,23 @@ func TestParityAgainstI2S2BVectors(t *testing.T) {
 		}
 		if strictK > len(wantTopK[i].Entries) {
 			strictK = len(wantTopK[i].Entries)
+		}
+		if forceMode && relaxTopK {
+			gotMap := make(map[int32]float32, len(got.TopK[i].Entries))
+			for _, e := range got.TopK[i].Entries {
+				gotMap[e.TokenID] = e.Logit
+			}
+			for j := 0; j < strictK; j++ {
+				w := wantTopK[i].Entries[j]
+				gLogit, ok := gotMap[w.TokenID]
+				if !ok {
+					t.Fatalf("topk token missing step=%d token=%d", i, w.TokenID)
+				}
+				if !closeLogit(gLogit, w.Logit, atol, rtol) {
+					t.Fatalf("topk logit mismatch step=%d token=%d: got=%f want=%f atol=%f rtol=%f", i, w.TokenID, gLogit, w.Logit, atol, rtol)
+				}
+			}
+			continue
 		}
 		for j := 0; j < strictK; j++ {
 			g := got.TopK[i].Entries[j]

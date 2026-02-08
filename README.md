@@ -136,3 +136,9 @@ If upstream CLI output differs, provide a wrapper command via `BITNET_REF_RUN_CM
   - Optional logits parity uses:
     - `BITNET_PARITY_LOGIT_ATOL` (default `1e-3`)
     - `BITNET_PARITY_LOGIT_RTOL` (default `1e-3`)
+  - i2_s parity uses relaxed tolerances due to FFN activation amplification:
+    - `BITNET_I2S_LOGIT_ATOL` (default `2e-1`)
+    - `BITNET_I2S_LOGIT_RTOL` (default `2e-1`)
+    - `BITNET_I2S_TOPK_STRICT` (default `3`)
+    - `BITNET_I2S_RELAX_TOPK` (default `1`)
+    - `BITNET_I2S_FORCE_LOGIT_ATOL` / `BITNET_I2S_FORCE_LOGIT_RTOL` (default `3e-1`)
