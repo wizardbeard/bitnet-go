@@ -89,7 +89,22 @@ func MatVecI2SI8S(dst []float32, packed []byte, rows, cols int, vec []int8, weig
 	}
 	for r := 0; r < rows; r++ {
 		var sum int32
-		for c := 0; c < cols; c++ {
+		c := 0
+		for ; c+3 < cols; c += 4 {
+			idx0 := r + rows*c
+			idx1 := idx0 + rows
+			idx2 := idx1 + rows
+			idx3 := idx2 + rows
+			q0 := i2sPackedAt(packed, idx0)
+			q1 := i2sPackedAt(packed, idx1)
+			q2 := i2sPackedAt(packed, idx2)
+			q3 := i2sPackedAt(packed, idx3)
+			sum += int32(q0)*int32(vec[c]) +
+				int32(q1)*int32(vec[c+1]) +
+				int32(q2)*int32(vec[c+2]) +
+				int32(q3)*int32(vec[c+3])
+		}
+		for ; c < cols; c++ {
 			idx := r + rows*c
 			q := i2sPackedAt(packed, idx)
 			sum += int32(q) * int32(vec[c])

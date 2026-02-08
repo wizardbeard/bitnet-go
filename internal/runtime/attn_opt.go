@@ -135,14 +135,20 @@ func dotF32Fast(a, b []float32) float32 {
 		n = len(b)
 	}
 	var sum0, sum1, sum2, sum3 float32
+	var sum4, sum5, sum6, sum7 float32
 	i := 0
-	for ; i+3 < n; i += 4 {
+	for ; i+7 < n; i += 8 {
 		sum0 += a[i] * b[i]
 		sum1 += a[i+1] * b[i+1]
 		sum2 += a[i+2] * b[i+2]
 		sum3 += a[i+3] * b[i+3]
+		sum4 += a[i+4] * b[i+4]
+		sum5 += a[i+5] * b[i+5]
+		sum6 += a[i+6] * b[i+6]
+		sum7 += a[i+7] * b[i+7]
 	}
-	sum := sum0 + sum1 + sum2 + sum3
+	sum := (sum0 + sum1) + (sum2 + sum3)
+	sum += (sum4 + sum5) + (sum6 + sum7)
 	for ; i < n; i++ {
 		sum += a[i] * b[i]
 	}

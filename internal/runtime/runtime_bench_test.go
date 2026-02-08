@@ -189,6 +189,57 @@ func BenchmarkKVCacheStore(b *testing.B) {
 	})
 }
 
+func BenchmarkKQVAccumulation(b *testing.B) {
+	type cfg struct {
+		steps   int
+		headDim int
+	}
+	cases := []cfg{
+		{steps: 64, headDim: 64},
+		{steps: 128, headDim: 64},
+		{steps: 256, headDim: 64},
+	}
+	for _, c := range cases {
+		name := "steps=" + strconv.Itoa(c.steps) + "/d=" + strconv.Itoa(c.headDim)
+		b.Run(name, func(b *testing.B) {
+			maxSeq := c.steps
+			values := make([]float32, maxSeq*c.headDim)
+			weights := make([]float32, maxSeq)
+			for i := range values {
+				values[i] = float32(i%41) * 0.01
+			}
+			for i := range weights {
+				weights[i] = float32((i%31)-15) * 0.001
+			}
+			dst := make([]float32, c.headDim)
+
+			b.Run("fast", func(b *testing.B) {
+				b.ReportAllocs()
+				b.SetBytes(int64((len(values) + len(weights) + len(dst)) * 4))
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					for j := 0; j < c.headDim; j++ {
+						rowBase := j * maxSeq
+						dst[j] = dotF32Fast(values[rowBase:rowBase+maxSeq], weights)
+					}
+				}
+			})
+
+			b.Run("ggml", func(b *testing.B) {
+				b.ReportAllocs()
+				b.SetBytes(int64((len(values) + len(weights) + len(dst)) * 4))
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					for j := 0; j < c.headDim; j++ {
+						rowBase := j * maxSeq
+						dst[j] = dotF32GGML(values[rowBase:rowBase+maxSeq], weights)
+					}
+				}
+			})
+		})
+	}
+}
+
 func BenchmarkSoftmaxInPlace(b *testing.B) {
 	steps := 256
 	scores := make([]float32, steps)
