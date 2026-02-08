@@ -141,6 +141,8 @@
   - benchmark (i7-11800H): Argmax n=256 ~130 ns, n=1024 ~478 ns, n=4096 ~1.89 us.
 - update: KQ dot now uses fast dot path by default in non‑parity runs (`BITNET_FAST_KQ_DOT=1`).
   - benchmark (i7-11800H): attention dispatch ~35/72/320 us for steps 64/128/256 (8/8/16 heads).
+- update: value accumulation in attention now uses a cache‑friendly dot loop in generic path (`BITNET_FAST_V_DOT=1`).
+  - benchmark (i7-11800H): generic attention ~32/62/255 us for steps 64/128/256 (8/8/16 heads).
 - update: added GPT2 fixture tokenizer benchmark (gated by `BITNET_BENCH_TOKENIZER=1`).
 - update: added optional column‑major matvec accumulation for f32 output projection.
   - auto-enabled in non‑parity runs via `BITNET_FAST_COL_MATVEC_AUTO=1` (default).

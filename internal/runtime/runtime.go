@@ -109,6 +109,7 @@ var debugStrictExpf = os.Getenv("BITNET_STRICT_EXPF") == "1"
 var debugAttnF64 = os.Getenv("BITNET_ATTN_F64") == "1"
 var debugStrictKQ = os.Getenv("BITNET_STRICT_KQ") == "1" || debugParityStrict
 var debugFastKQ = os.Getenv("BITNET_FAST_KQ_DOT") != "0" && !debugParityStrict
+var debugFastV = os.Getenv("BITNET_FAST_V_DOT") != "0" && !debugParityStrict
 var debugMatchGGML = os.Getenv("BITNET_MATCH_GGML") == "1" || debugParityStrict
 var debugAttnRef = os.Getenv("BITNET_DEBUG_ATTN_REF") == "1"
 var debugFFNRef = os.Getenv("BITNET_DEBUG_FFN_REF") == "1"
@@ -1434,6 +1435,17 @@ func causalAttentionMultiHeadIntoGeneric(dst, scores, q, keys, values []float32,
 			continue
 		}
 		vHeadBase := kvHead * headDim * maxSeq
+		if debugFastV && !debugAttnF64 {
+			weights := scores[h*steps : h*steps+steps]
+			for i := 0; i < steps; i++ {
+				weights[i] *= inv
+			}
+			for j := 0; j < headDim; j++ {
+				rowBase := vHeadBase + j*maxSeq
+				dst[qBase+j] += dotF32Fast(values[rowBase:rowBase+steps], weights)
+			}
+			continue
+		}
 		if debugAttnF64 {
 			for j := 0; j < headDim; j++ {
 				var sum64 float64

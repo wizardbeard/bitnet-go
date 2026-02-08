@@ -15,8 +15,8 @@ import (
 func TestRunForwardStubDeterministic(t *testing.T) {
 	a := make([]int32, 8)
 	b := make([]int32, 8)
-runForwardStub(32000, 42, []int32{1, 2, 3}, a, nil)
-runForwardStub(32000, 42, []int32{1, 2, 3}, b, nil)
+	runForwardStub(32000, 42, []int32{1, 2, 3}, a, nil)
+	runForwardStub(32000, 42, []int32{1, 2, 3}, b, nil)
 	for i := range a {
 		if a[i] != b[i] {
 			t.Fatalf("token[%d] mismatch: %d vs %d", i, a[i], b[i])
@@ -27,8 +27,8 @@ runForwardStub(32000, 42, []int32{1, 2, 3}, b, nil)
 func TestRunForwardStubPromptAffectsOutput(t *testing.T) {
 	a := make([]int32, 8)
 	b := make([]int32, 8)
-runForwardStub(32000, 42, []int32{1, 2, 3}, a, nil)
-runForwardStub(32000, 42, []int32{1, 2, 4}, b, nil)
+	runForwardStub(32000, 42, []int32{1, 2, 3}, a, nil)
+	runForwardStub(32000, 42, []int32{1, 2, 4}, b, nil)
 	same := true
 	for i := range a {
 		if a[i] != b[i] {
