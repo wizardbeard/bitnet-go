@@ -80,6 +80,7 @@ var debugI2SFloat = os.Getenv("BITNET_I2S_F32") == "1" || debugParityStrict
 var debugI2SForceQuant = os.Getenv("BITNET_I2S_FORCE_Q") == "1"
 var debugI2SMatvecRef = os.Getenv("BITNET_DEBUG_I2S_MATVEC_REF") == "1"
 var debugI2SMatvecPrinted bool
+var disableTopK = os.Getenv("BITNET_DISABLE_TOPK") == "1"
 var i8ScratchPool = sync.Pool{
 	New: func() any {
 		return make([]int8, 0)
@@ -275,12 +276,23 @@ func (r *Runtime) Generate(_ context.Context, req GenerateRequest) (struct {
 	// procedural weights. If model carries bitnet_go.* f32 tensors, use a first
 	// tensor-backed block path instead.
 	tokens := make([]int32, req.MaxTokens)
-	topk := make([]TopKStep, 0, req.MaxTokens)
+	var topk []TopKStep
+	if !disableTopK {
+		topk = make([]TopKStep, 0, req.MaxTokens)
+	}
 	forceTokens := forceTokensFromEnv()
 	if r.block != nil {
-		runForwardTensorBlock(r.block, req.Seed, promptTokens, tokens, &topk, forceTokens)
+		if disableTopK {
+			runForwardTensorBlock(r.block, req.Seed, promptTokens, tokens, nil, forceTokens)
+		} else {
+			runForwardTensorBlock(r.block, req.Seed, promptTokens, tokens, &topk, forceTokens)
+		}
 	} else {
-		runForwardStub(r.meta.VocabSize, req.Seed, promptTokens, tokens, &topk)
+		if disableTopK {
+			runForwardStub(r.meta.VocabSize, req.Seed, promptTokens, tokens, nil)
+		} else {
+			runForwardStub(r.meta.VocabSize, req.Seed, promptTokens, tokens, &topk)
+		}
 	}
 
 	return struct {

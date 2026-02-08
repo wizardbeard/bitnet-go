@@ -31,6 +31,7 @@ CI note:
 - CI runs `./scripts/fetch_testdata_gguf.sh` with `BITNET_FETCH_I2S_2B=1` and
   `BITNET_I2S_2B_MODEL_URL` set to the BitNet 2B i2_s GGUF, so the 2B smoke parity
   test can run when enabled.
+- CI also runs non-gating benchmark jobs (`bench-smoke`, `bench-kernels`, `bench-runtime`) to track perf regressions.
 
 Optional IQ fixture hash:
 - `BITNET_FETCH_IQ=1 ./scripts/fetch_testdata_gguf.sh`
@@ -143,3 +144,4 @@ If upstream CLI output differs, provide a wrapper command via `BITNET_REF_RUN_CM
     - `BITNET_I2S_RELAX_TOPK` (default `1`)
     - `BITNET_I2S_FORCE_LOGIT_ATOL` / `BITNET_I2S_FORCE_LOGIT_RTOL` (default `7e-1`)
   - CI will run i2_s parity only when the referenced model fixtures exist in `testdata/`.
+  - Set `BITNET_DISABLE_TOPK=1` to skip top‑K capture (perf optimization outside parity runs).

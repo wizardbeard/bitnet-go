@@ -100,6 +100,28 @@ func MatVecI2SI8S(dst []float32, packed []byte, rows, cols int, vec []int8, weig
 	if rows*cols == 0 || len(packed) < i2sPackedLen(rows*cols) {
 		return
 	}
+	if rows%128 == 0 {
+		var block [128]int8
+		var sums [128]int32
+		for rb := 0; rb < rows; rb += 128 {
+			for i := range sums {
+				sums[i] = 0
+			}
+			for c := 0; c < cols; c++ {
+				idx := rb + rows*c
+				bi := idx / 128
+				decodeI2SBlock(block[:], packed[bi*32:bi*32+32])
+				v := int32(vec[c])
+				for i := 0; i < 128; i++ {
+					sums[i] += int32(block[i]) * v
+				}
+			}
+			for i := 0; i < 128; i++ {
+				dst[rb+i] = float32(sums[i]-actSum) * (weightScale / actScale)
+			}
+		}
+		return
+	}
 	for r := 0; r < rows; r++ {
 		var sum int32
 		c := 0

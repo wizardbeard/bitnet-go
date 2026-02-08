@@ -1,6 +1,8 @@
 package runtime
 
 import (
+	"context"
+	"os"
 	"strconv"
 	"testing"
 
@@ -286,6 +288,33 @@ func BenchmarkAppendTopKStep(b *testing.B) {
 		dst = dst[:0]
 		dst = appendTopKStep(dst, 0, logits, 5)
 	}
+}
+
+func BenchmarkGenerateTopKToggle(b *testing.B) {
+	modelPath := os.Getenv("BITNET_BENCH_MODEL")
+	if modelPath == "" {
+		b.Skip("set BITNET_BENCH_MODEL to run Generate benchmark")
+	}
+	rt, err := New(context.Background(), modelPath)
+	if err != nil {
+		b.Fatalf("New() error: %v", err)
+	}
+	req := GenerateRequest{Prompt: "Hello", Seed: 1, MaxTokens: 8}
+
+	b.Run("topk", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			_, _ = rt.Generate(context.Background(), req)
+		}
+	})
+
+	b.Run("no-topk", func(b *testing.B) {
+		b.ReportAllocs()
+		b.Setenv("BITNET_DISABLE_TOPK", "1")
+		for i := 0; i < b.N; i++ {
+			_, _ = rt.Generate(context.Background(), req)
+		}
+	})
 }
 
 func BenchmarkQKVMatVecCompare(b *testing.B) {

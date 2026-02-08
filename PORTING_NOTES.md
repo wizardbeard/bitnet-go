@@ -127,13 +127,15 @@
 - update: added matvec dispatch for f32 with unrolled optimized path on amd64/arm64; benchmarks now compare generic vs dispatch.
   - benchmark (i7-11800H): MatVec dispatch ~1.2x (256/512) and ~1.0x (1024), MatVecT dispatch ~1.1x-1.2x.
 - update: added i2_s+i8_s quantized matvec benchmarks.
-  - benchmark (i7-11800H): MatVecI2SI8S ~16.13 ms/op (unrolled); MatVecTI2SI8S ~7.26 ms/op (block decode when rows%128==0).
+  - benchmark (i7-11800H): MatVecI2SI8S ~5.50 ms/op (block decode for rows%128==0); MatVecTI2SI8S ~7.26 ms/op (block decode when rows%128==0).
 - update: added TI2S block‑decode equivalence test to lock correctness for the optimized path.
 - update: added QuantizeRowI8S benchmark (~5.0 us for 2560 elems on i7-11800H); loop unrolling did not improve and was reverted.
 - update: added KQV accumulation benchmarks.
   - benchmark (i7-11800H): fast dot ~1.7/3.4/6.4 us for steps 64/128/256; ggml dot ~3.3/6.2/13.0 us.
 - update: optimized top‑K selection for parity/logit capture; added benchmark.
   - benchmark (i7-11800H): AppendTopKStep ~60.5 us/op (128,256 logits), 1 alloc.
+- update: added Generate benchmark with top‑K toggle (requires BITNET_BENCH_MODEL).
+  - benchmark (i7-11800H, ggml-model-i2_s.gguf, 8 tokens): top‑K ~24.6 s/op vs no‑topK ~23.1 s/op; ~21k fewer allocs.
 - update: fused FFN gate+up activation into `MulRelu2Into` with amd64/arm64 unrolled path and runtime integration.
 - update: RMSNorm now uses a kernels dispatch with unrolled optimized path on amd64/arm64.
 - update: KV cache store now dispatches to arch-specific hooks; current fast path matches generic performance (benchmark shows parity on amd64).
