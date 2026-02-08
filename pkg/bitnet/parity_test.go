@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -302,6 +303,7 @@ func TestParityAgainstI2SVectors(t *testing.T) {
 	if len(want) == 0 {
 		t.Fatalf("expected.i2s.tokens.json is empty; run scripts/run_ref_i2s.sh to freeze vectors")
 	}
+	maybeForceTokens(t, want)
 
 	promptBytes, err := os.ReadFile(filepath.Join(root, "prompt.txt"))
 	if err != nil {
@@ -348,9 +350,15 @@ func TestParityAgainstI2SVectors(t *testing.T) {
 	if len(got.TopK) != len(wantTopK) {
 		t.Fatalf("topk step mismatch: got=%d want=%d", len(got.TopK), len(wantTopK))
 	}
-	atol := envFloat32("BITNET_PARITY_LOGIT_ATOL", 3e-2)
-	rtol := envFloat32("BITNET_PARITY_LOGIT_RTOL", 3e-2)
-	strictK := envInt("BITNET_PARITY_TOPK_STRICT", 3)
+	atol := envFloat32("BITNET_PARITY_LOGIT_ATOL", 2e-2)
+	rtol := envFloat32("BITNET_PARITY_LOGIT_RTOL", 2e-2)
+	strictK := envInt("BITNET_PARITY_TOPK_STRICT", 5)
+	forceMode := os.Getenv("BITNET_PARITY_FORCE") == "1"
+	relaxTopK := os.Getenv("BITNET_PARITY_FORCE_RELAX_TOPK") != "0"
+	if forceMode {
+		atol = envFloat32("BITNET_PARITY_FORCE_LOGIT_ATOL", 5e-2)
+		rtol = envFloat32("BITNET_PARITY_FORCE_LOGIT_RTOL", 5e-2)
+	}
 	for i := range wantTopK {
 		if got.TopK[i].Step != wantTopK[i].Step {
 			t.Fatalf("topk step id mismatch at index %d: got=%d want=%d", i, got.TopK[i].Step, wantTopK[i].Step)
@@ -363,6 +371,23 @@ func TestParityAgainstI2SVectors(t *testing.T) {
 		}
 		if strictK > len(wantTopK[i].Entries) {
 			strictK = len(wantTopK[i].Entries)
+		}
+		if forceMode && relaxTopK {
+			gotMap := make(map[int32]float32, len(got.TopK[i].Entries))
+			for _, e := range got.TopK[i].Entries {
+				gotMap[e.TokenID] = e.Logit
+			}
+			for j := 0; j < strictK; j++ {
+				w := wantTopK[i].Entries[j]
+				gLogit, ok := gotMap[w.TokenID]
+				if !ok {
+					t.Fatalf("topk token missing step=%d token=%d", i, w.TokenID)
+				}
+				if !closeLogit(gLogit, w.Logit, atol, rtol) {
+					t.Fatalf("topk logit mismatch step=%d token=%d: got=%f want=%f atol=%f rtol=%f", i, w.TokenID, gLogit, w.Logit, atol, rtol)
+				}
+			}
+			continue
 		}
 		for j := 0; j < strictK; j++ {
 			g := got.TopK[i].Entries[j]
@@ -395,6 +420,7 @@ func TestParityAgainstI2S2BVectors(t *testing.T) {
 	if len(want) == 0 {
 		t.Fatalf("expected.i2s_2b.tokens.json is empty; run scripts/run_ref_i2s_2b.sh to freeze vectors")
 	}
+	maybeForceTokens(t, want)
 
 	promptBytes, err := os.ReadFile(filepath.Join(root, "prompt.txt"))
 	if err != nil {
@@ -491,6 +517,7 @@ func TestParityAgainstI2S2BSmoke(t *testing.T) {
 	if len(want) == 0 {
 		t.Fatalf("expected.i2s_2b.tokens.json is empty; run scripts/run_ref_i2s_2b.sh to freeze vectors")
 	}
+	maybeForceTokens(t, want)
 
 	promptBytes, err := os.ReadFile(filepath.Join(root, "prompt.txt"))
 	if err != nil {
@@ -526,6 +553,24 @@ func TestParityAgainstI2S2BSmoke(t *testing.T) {
 	if got.TokenIDs[0] != want[0] {
 		t.Fatalf("token mismatch at step 0: got=%d want=%d", got.TokenIDs[0], want[0])
 	}
+}
+
+func maybeForceTokens(t *testing.T, want []int32) {
+	t.Helper()
+	if os.Getenv("BITNET_PARITY_FORCE_TOKENS") != "" {
+		return
+	}
+	if os.Getenv("BITNET_PARITY_FORCE") != "1" {
+		return
+	}
+	var b strings.Builder
+	for i, tok := range want {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(strconv.FormatInt(int64(tok), 10))
+	}
+	t.Setenv("BITNET_PARITY_FORCE_TOKENS", b.String())
 }
 
 func bytesTrimSpace(b []byte) []byte {

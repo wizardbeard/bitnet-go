@@ -62,17 +62,21 @@ var debugPos = parseDebugPos(os.Getenv("BITNET_DEBUG_POS"))
 var debugPosOffset = parseDebugPosOffset(os.Getenv("BITNET_DEBUG_POS_OFFSET"))
 var debugTokens = parseDebugTokens(os.Getenv("BITNET_DEBUG_TOKENS"))
 var debugSoftmaxPrinted bool
+var debugParityStrict = os.Getenv("BITNET_PARITY_STRICT") == "1"
 var debugStrictAttention = os.Getenv("BITNET_STRICT_ATTENTION") == "1"
 var debugStrictExpf = os.Getenv("BITNET_STRICT_EXPF") == "1"
 var debugAttnF64 = os.Getenv("BITNET_ATTN_F64") == "1"
-var debugStrictKQ = os.Getenv("BITNET_STRICT_KQ") == "1"
-var debugMatchGGML = os.Getenv("BITNET_MATCH_GGML") == "1"
-var debugForceTokens = parseDebugForceTokens(os.Getenv("BITNET_FORCE_TOKENS"))
+var debugStrictKQ = os.Getenv("BITNET_STRICT_KQ") == "1" || debugParityStrict
+var debugMatchGGML = os.Getenv("BITNET_MATCH_GGML") == "1" || debugParityStrict
+var debugAttnRef = os.Getenv("BITNET_DEBUG_ATTN_REF") == "1"
+var debugFFNRef = os.Getenv("BITNET_DEBUG_FFN_REF") == "1"
+var debugFfnActRef = os.Getenv("BITNET_DEBUG_FFN_ACT_REF") == "1"
+var debugFFNRefF32 = os.Getenv("BITNET_DEBUG_FFN_REF_F32") == "1"
 var debugEmbedRowMajor = os.Getenv("BITNET_DEBUG_EMBD_ROW_MAJOR") == "1"
 var debugStep0Printed bool
 var debugI2SDisableActSum = os.Getenv("BITNET_I2S_DISABLE_ACTSUM") == "1"
 var debugI2SInvertActScale = os.Getenv("BITNET_I2S_INVERT_ACT_SCALE") == "1"
-var debugI2SFloat = os.Getenv("BITNET_I2S_F32") == "1"
+var debugI2SFloat = os.Getenv("BITNET_I2S_F32") == "1" || debugParityStrict
 var i8ScratchPool = sync.Pool{
 	New: func() any {
 		return make([]int8, 0)
@@ -121,7 +125,7 @@ func parseDebugTokens(v string) []int {
 	return out
 }
 
-func parseDebugForceTokens(v string) []int32 {
+func parseForceTokens(v string) []int32 {
 	if v == "" {
 		return nil
 	}
@@ -139,6 +143,13 @@ func parseDebugForceTokens(v string) []int32 {
 		out = append(out, int32(n))
 	}
 	return out
+}
+
+func forceTokensFromEnv() []int32 {
+	if v := os.Getenv("BITNET_PARITY_FORCE_TOKENS"); v != "" {
+		return parseForceTokens(v)
+	}
+	return parseForceTokens(os.Getenv("BITNET_FORCE_TOKENS"))
 }
 
 func parseDebugValuesN(v string) int {
@@ -262,8 +273,9 @@ func (r *Runtime) Generate(_ context.Context, req GenerateRequest) (struct {
 	// tensor-backed block path instead.
 	tokens := make([]int32, req.MaxTokens)
 	topk := make([]TopKStep, 0, req.MaxTokens)
+	forceTokens := forceTokensFromEnv()
 	if r.block != nil {
-		runForwardTensorBlock(r.block, req.Seed, promptTokens, tokens, &topk)
+		runForwardTensorBlock(r.block, req.Seed, promptTokens, tokens, &topk, forceTokens)
 	} else {
 		runForwardStub(r.meta.VocabSize, req.Seed, promptTokens, tokens, &topk)
 	}
@@ -738,14 +750,14 @@ func loadLlamaLayer(path string, info gguf.ModelInfo, layerIdx int, prefix strin
 	return l, nil
 }
 
-func runForwardTensorBlock(block *tensorBlock, seed int64, promptTokens []int32, out []int32, topk *[]TopKStep) {
+func runForwardTensorBlock(block *tensorBlock, seed int64, promptTokens []int32, out []int32, topk *[]TopKStep, forceTokens []int32) {
 	switch block.mode {
 	case tensorBlockModeProjection:
 		runForwardProjectionBlock(block, seed, promptTokens, out, topk)
 	case tensorBlockModeEmbeddingOutput:
 		runForwardEmbeddingOutputBlock(block, seed, promptTokens, out, topk)
 	case tensorBlockModeLlamaStack:
-		runForwardLlamaStack(block, seed, promptTokens, out, topk)
+		runForwardLlamaStack(block, seed, promptTokens, out, topk, forceTokens)
 	default:
 		runForwardStub(uint32(block.vocabDim), seed, promptTokens, out, topk)
 	}
@@ -844,7 +856,7 @@ func embedToken(dst []float32, block *tensorBlock, token int32) bool {
 	return true
 }
 
-func runForwardLlamaStack(block *tensorBlock, seed int64, promptTokens []int32, out []int32, topk *[]TopKStep) {
+func runForwardLlamaStack(block *tensorBlock, seed int64, promptTokens []int32, out []int32, topk *[]TopKStep, forceTokens []int32) {
 	if len(out) == 0 {
 		return
 	}
@@ -882,8 +894,8 @@ func runForwardLlamaStack(block *tensorBlock, seed int64, promptTokens []int32, 
 			*topk = appendTopKStep(*topk, i, logits, 5)
 		}
 		next := kernels.Argmax(logits)
-		if i < len(debugForceTokens) {
-			next = int(debugForceTokens[i])
+		if i < len(forceTokens) {
+			next = int(forceTokens[i])
 		}
 		if next < 0 {
 			out[i] = 0
@@ -1093,6 +1105,11 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 		}
 
 		if !disableFFN {
+			var gateRef []float32
+			var upRef []float32
+			var actRef []float32
+			var haveFfnRef bool
+
 			rmsNormInto(n2, x, layer.ffnNorm, block.rmsEps)
 			if debugStages && shouldDebug(pos) && i == 0 {
 				debugStage("stage.ffn_norm", n2, block, stageNormBuf, false)
@@ -1100,7 +1117,28 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 			if debugValues && shouldDebug(pos) && i == 0 {
 				debugVecValues("ffn_norm", n2, debugValuesN)
 			}
-			if debugFFNTranspose {
+			if debugFFNRefF32 && shouldDebug(pos) && i == 0 {
+				if len(layer.debugFFNGateF32) == 0 || len(layer.debugFFNUpF32) == 0 {
+					fmt.Fprintln(os.Stderr, "debug ffn_ref_f32: missing f32 weights (set BITNET_DEBUG_FFN_LOAD=1)")
+				} else {
+					wGate := linearWeight{
+						data:       layer.debugFFNGateF32,
+						rows:       layer.ffnGate.rows,
+						cols:       layer.ffnGate.cols,
+						transposed: layer.ffnGate.transposed,
+						qtype:      gguf.GGMLTypeF32,
+					}
+					wUp := linearWeight{
+						data:       layer.debugFFNUpF32,
+						rows:       layer.ffnUp.rows,
+						cols:       layer.ffnUp.cols,
+						transposed: layer.ffnUp.transposed,
+						qtype:      gguf.GGMLTypeF32,
+					}
+					linearApplyIntoWeight(st.gate, wGate, n2)
+					linearApplyIntoWeight(st.up, wUp, n2)
+				}
+			} else if debugFFNTranspose {
 				linearApplyIntoWeightTransposed(st.gate, layer.ffnGate, n2, !layer.ffnGate.transposed)
 				linearApplyIntoWeightTransposed(st.up, layer.ffnUp, n2, !layer.ffnUp.transposed)
 			} else {
@@ -1110,6 +1148,33 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 			if debugFFNLoad && shouldDebug(pos) && i == 0 {
 				debugFfnCompare("ffn_gate", st.gate, layer.ffnGate, layer.debugFFNGateF32, n2)
 				debugFfnCompare("ffn_up", st.up, layer.ffnUp, layer.debugFFNUpF32, n2)
+			}
+			if debugFFNRef && shouldDebug(pos) && i == 0 {
+				if len(layer.debugFFNGateF32) == 0 || len(layer.debugFFNUpF32) == 0 || len(layer.debugFFNDownF32) == 0 {
+					fmt.Fprintln(os.Stderr, "debug ffn_ref: missing f32 weights (set BITNET_DEBUG_FFN_LOAD=1)")
+				} else {
+					gateRef = make([]float32, len(st.gate))
+					upRef = make([]float32, len(st.up))
+					wGate := linearWeight{
+						data:       layer.debugFFNGateF32,
+						rows:       layer.ffnGate.rows,
+						cols:       layer.ffnGate.cols,
+						transposed: layer.ffnGate.transposed,
+						qtype:      gguf.GGMLTypeF32,
+					}
+					wUp := linearWeight{
+						data:       layer.debugFFNUpF32,
+						rows:       layer.ffnUp.rows,
+						cols:       layer.ffnUp.cols,
+						transposed: layer.ffnUp.transposed,
+						qtype:      gguf.GGMLTypeF32,
+					}
+					linearApplyIntoWeight(gateRef, wGate, n2)
+					linearApplyIntoWeight(upRef, wUp, n2)
+					debugVecDiff("ffn_gate.ref.diff", st.gate, gateRef)
+					debugVecDiff("ffn_up.ref.diff", st.up, upRef)
+					haveFfnRef = true
+				}
 			}
 			if debugValues && shouldDebug(pos) && i == 0 {
 				debugVecValues("ffn_gate", st.gate, debugValuesN)
@@ -1121,10 +1186,26 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 				debugVecStats("ffn_up", st.up)
 			}
 			kernels.MulRelu2Into(st.ffnAct, st.gate, st.up)
+			if debugFfnActRef && shouldDebug(pos) && i == 0 {
+				refAct := make([]float32, len(st.ffnAct))
+				mulRelu2Reference(refAct, st.gate, st.up)
+				debugVecDiff("ffn_act.kernel_ref.diff", st.ffnAct, refAct)
+			}
+			if haveFfnRef {
+				actRef = make([]float32, len(st.ffnAct))
+				kernels.MulRelu2Into(actRef, gateRef, upRef)
+				debugVecDiff("ffn_act.ref.diff", st.ffnAct, actRef)
+			}
 			if debugValues && shouldDebug(pos) && i == 0 {
 				debugVecValues("ffn_act", st.ffnAct, debugValuesN)
+				debugVecValues("ffn_out", st.ffnAct, debugValuesN)
 			}
 			rmsNormInto(st.up, st.ffnAct, layer.ffnSubNorm, block.rmsEps)
+			if haveFfnRef {
+				upNormRef := make([]float32, len(st.up))
+				rmsNormInto(upNormRef, actRef, layer.ffnSubNorm, block.rmsEps)
+				debugVecDiff("ffn_sub_norm.ref.diff", st.up, upNormRef)
+			}
 			if debugStages && shouldDebug(pos) && i == 0 {
 				debugStage("stage.ffn_sub_norm", st.up, block, stageNormBuf, false)
 			}
@@ -1135,6 +1216,18 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 				linearApplyIntoWeightTransposed(st.ffnDown, layer.ffnDown, st.up, !layer.ffnDown.transposed)
 			} else {
 				linearApplyIntoWeight(st.ffnDown, layer.ffnDown, st.up)
+			}
+			if haveFfnRef {
+				downRef := make([]float32, len(st.ffnDown))
+				wDown := linearWeight{
+					data:       layer.debugFFNDownF32,
+					rows:       layer.ffnDown.rows,
+					cols:       layer.ffnDown.cols,
+					transposed: layer.ffnDown.transposed,
+					qtype:      gguf.GGMLTypeF32,
+				}
+				linearApplyIntoWeight(downRef, wDown, st.up)
+				debugVecDiff("ffn_down.ref.diff", st.ffnDown, downRef)
 			}
 			if debugFFNLoad && shouldDebug(pos) && i == 0 {
 				debugFfnCompare("ffn_down", st.ffnDown, layer.ffnDown, layer.debugFFNDownF32, st.up)
@@ -1312,6 +1405,89 @@ func causalAttentionMultiHeadIntoGeneric(dst, scores, q, keys, values []float32,
 	}
 }
 
+func causalAttentionMultiHeadIntoReference(dst, q, keys, values []float32, steps, qHeads, kvHeads, kStepDim, vStepDim int) {
+	for i := range dst {
+		dst[i] = 0
+	}
+	if steps <= 0 || len(q) == 0 {
+		return
+	}
+
+	if qHeads <= 0 {
+		qHeads = 1
+	}
+	if kvHeads <= 0 {
+		kvHeads = qHeads
+	}
+	if len(q)%qHeads != 0 {
+		qHeads = 1
+		kvHeads = 1
+	}
+	if kStepDim <= 0 || vStepDim <= 0 || kStepDim%kvHeads != 0 || vStepDim%kvHeads != 0 {
+		return
+	}
+	headDim := len(q) / qHeads
+	if headDim == 0 {
+		return
+	}
+	if kStepDim/kvHeads != headDim || vStepDim/kvHeads != headDim {
+		return
+	}
+	maxSeq := 0
+	if vStepDim > 0 {
+		maxSeq = len(values) / vStepDim
+	}
+	if maxSeq <= 0 {
+		return
+	}
+
+	scores := make([]float32, steps)
+	for h := 0; h < qHeads; h++ {
+		qBase := h * headDim
+		qh := q[qBase : qBase+headDim]
+		kvHead := h * kvHeads / qHeads
+		kBase := kvHead * headDim
+		scale := float32(1.0 / math.Sqrt(float64(headDim)))
+		maxScore := float32(-math.MaxFloat32)
+		for i := 0; i < steps; i++ {
+			kb := i*kStepDim + kBase
+			sum := dotF32GGML(qh, keys[kb:kb+headDim])
+			s := sum * scale
+			scores[i] = s
+			if s > maxScore {
+				maxScore = s
+			}
+		}
+
+		var sum float32
+		for i := 0; i < steps; i++ {
+			diff := scores[i] - maxScore
+			var w float32
+			if debugStrictExpf {
+				w = expf32(diff)
+			} else {
+				w = float32(math.Exp(float64(diff)))
+			}
+			scores[i] = w
+			sum += w
+		}
+		if sum == 0 {
+			continue
+		}
+		inv := 1 / sum
+		for i := 0; i < steps; i++ {
+			scores[i] *= inv
+		}
+
+		vHeadBase := kvHead * headDim * maxSeq
+		weights := scores[:steps]
+		for j := 0; j < headDim; j++ {
+			rowBase := vHeadBase + j*maxSeq
+			dst[qBase+j] += dotF32GGML(weights, values[rowBase:rowBase+steps])
+		}
+	}
+}
+
 func dotF32GGML(a, b []float32) float32 {
 	n := len(a)
 	if len(b) < n {
@@ -1346,6 +1522,26 @@ func dotF32GGML(a, b []float32) float32 {
 		sum += a[i] * b[i]
 	}
 	return sum
+}
+
+func mulRelu2Reference(dst, gate, up []float32) {
+	n := len(dst)
+	if len(gate) < n {
+		n = len(gate)
+	}
+	if len(up) < n {
+		n = len(up)
+	}
+	for i := 0; i < n; i++ {
+		g := gate[i]
+		if g < 0 {
+			g = 0
+		}
+		dst[i] = g * g * up[i]
+	}
+	for i := n; i < len(dst); i++ {
+		dst[i] = 0
+	}
 }
 
 func expf32(x float32) float32 {
@@ -1807,7 +2003,8 @@ func linearApplyQKV(dstQ, dstK, dstV []float32, wQ, wK, wV linearWeight, x []flo
 		wQ.cols == wK.cols && wQ.cols == wV.cols &&
 		len(dstQ) >= wQ.rows && len(dstK) >= wQ.rows && len(dstV) >= wQ.rows &&
 		len(x) >= wQ.cols &&
-		len(wQ.data) >= wQ.rows*wQ.cols && len(wK.data) >= wQ.rows*wQ.cols && len(wV.data) >= wQ.rows*wQ.cols {
+		len(wQ.data) >= wQ.rows*wQ.cols && len(wK.data) >= wQ.rows*wQ.cols && len(wV.data) >= wQ.rows*wQ.cols &&
+		!debugParityStrict {
 		matVec3F32(dstQ, dstK, dstV, wQ.data, wK.data, wV.data, wQ.rows, wQ.cols, x)
 		return
 	}

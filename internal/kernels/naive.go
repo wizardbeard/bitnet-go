@@ -69,6 +69,14 @@ func matVecGeneric(dst, mat []float32, rows, cols int, vec []float32) {
 		return
 	}
 	for r := 0; r < rows; r++ {
+		if matchGGML() {
+			var sum float32
+			for c := 0; c < cols; c++ {
+				sum += mat[r+rows*c] * vec[c]
+			}
+			dst[r] = sum
+			continue
+		}
 		var sum float64
 		for c := 0; c < cols; c++ {
 			sum += float64(mat[r+rows*c]) * float64(vec[c])
@@ -85,9 +93,19 @@ func matVecTGeneric(dst, mat []float32, rows, cols int, vec []float32) {
 		return
 	}
 	for c := 0; c < cols; c++ {
+		if matchGGML() {
+			var sum float32
+			base := rows * c
+			for r := 0; r < rows; r++ {
+				sum += mat[base+r] * vec[r]
+			}
+			dst[c] = sum
+			continue
+		}
 		var sum float64
+		base := rows * c
 		for r := 0; r < rows; r++ {
-			sum += float64(mat[r+rows*c]) * float64(vec[r])
+			sum += float64(mat[base+r]) * float64(vec[r])
 		}
 		dst[c] = float32(sum)
 	}

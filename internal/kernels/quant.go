@@ -27,7 +27,7 @@ func QuantizeRowI8S(dst []int8, src []float32) (scale float32, sum int32) {
 		maxAbs = 1e-5
 	}
 
-	scale = float32(127.0 / maxAbs)
+	scale = 127.0 / float32(maxAbs)
 	for i := 0; i < n; i++ {
 		q := nearestInt(src[i] * scale)
 		if q < -128 {
