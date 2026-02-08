@@ -142,3 +142,4 @@ If upstream CLI output differs, provide a wrapper command via `BITNET_REF_RUN_CM
     - `BITNET_I2S_TOPK_STRICT` (default `3`)
     - `BITNET_I2S_RELAX_TOPK` (default `1`)
     - `BITNET_I2S_FORCE_LOGIT_ATOL` / `BITNET_I2S_FORCE_LOGIT_RTOL` (default `3e-1`)
+  - CI will run i2_s parity only when the referenced model fixtures exist in `testdata/`.
