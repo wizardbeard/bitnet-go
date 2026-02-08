@@ -75,6 +75,19 @@ func i2sPackedLen(count int) int {
 	return (count + block - 1) / block * blockBytes
 }
 
+func decodeI2SBlock(dst []int8, packed []byte) {
+	if len(dst) < 128 || len(packed) < 32 {
+		return
+	}
+	for gp := 0; gp < 32; gp++ {
+		b := packed[gp]
+		dst[gp] = int8((b >> 6) & 0x3)
+		dst[32+gp] = int8((b >> 4) & 0x3)
+		dst[64+gp] = int8((b >> 2) & 0x3)
+		dst[96+gp] = int8(b & 0x3)
+	}
+}
+
 // MatVecI2SI8S computes dst = mat * vec where mat is GGML column-major [rows][cols]
 // stored in packed i2_s format with a global weight scale, and vec is quantized i8_s.
 func MatVecI2SI8S(dst []float32, packed []byte, rows, cols int, vec []int8, weightScale, actScale float32, actSum int32) {
@@ -125,9 +138,22 @@ func MatVecTI2SI8S(dst []float32, packed []byte, rows, cols int, vec []int8, wei
 	if rows*cols == 0 || len(packed) < i2sPackedLen(rows*cols) {
 		return
 	}
+	var block [128]int8
+	blockAligned := rows%128 == 0
 	for c := 0; c < cols; c++ {
 		var sum int32
-		for r := 0; r < rows; r++ {
+		r := 0
+		if blockAligned && (rows*c)%128 == 0 {
+			for ; r+127 < rows; r += 128 {
+				idx0 := r + rows*c
+				bi := idx0 / 128
+				decodeI2SBlock(block[:], packed[bi*32:bi*32+32])
+				for i := 0; i < 128; i++ {
+					sum += int32(block[i]) * int32(vec[r+i])
+				}
+			}
+		}
+		for ; r < rows; r++ {
 			idx := r + rows*c
 			q := i2sPackedAt(packed, idx)
 			sum += int32(q) * int32(vec[r])
