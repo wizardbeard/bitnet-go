@@ -111,7 +111,7 @@
 - update: YaRN parity test now enforces only the first `BITNET_PARITY_TOPK_STRICT` entries (default 1 for YaRN, 3 for non-YaRN) to avoid tail-rank jitter while we investigate residual numeric drift.
 - update: aligned i8_s quantization with upstream ggml: `nearest_int` bit trick rounding, `act_scale = 127/max`, and i2_s matvec uses `(sum - act_sum) / act_scale * weight_scale`.
 - update: runtime now reads `bitnet-b1.58.*` KV metadata (head counts, rope params, vocab/context length) to support BitNet b1.58 GGUFs.
-- update: i2_s parity drift is dominated by FFN activation amplification (`gate^2 * up`) from tiny quantized matvec differences. Attention/KQV order matches ggml. Defaults for the i2_s parity test now use relaxed top‑K and looser logit tolerances via `BITNET_I2S_*` envs (including `BITNET_I2S_FORCE_LOGIT_ATOL/RTOL` under teacher‑forcing).
+- update: i2_s parity drift is dominated by FFN activation amplification (`gate^2 * up`) from tiny quantized matvec differences. Attention/KQV order matches ggml. Defaults for the i2_s parity test now use relaxed top‑K and looser logit tolerances via `BITNET_I2S_*` envs (including `BITNET_I2S_FORCE_LOGIT_ATOL/RTOL=7e-1` under teacher‑forcing).
 - update: frozen i2_s 2B vectors regenerated via `scripts/run_ref_i2s_2b.sh`; parity test now uses i2_s tolerance defaults and passes under teacher‑forced mode.
 - update: frozen i2_s vectors regenerated via `scripts/run_ref_i2s.sh`; parity test passes under teacher‑forced mode with i2_s tolerances.
 - update: added `BITNET_PARITY_STRICT=1` to force ggml-like float32 accumulation and strict KQ path for parity runs (still investigating step-12 top-1 swap).

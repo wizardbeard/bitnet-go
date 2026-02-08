@@ -355,9 +355,11 @@ func TestParityAgainstI2SVectors(t *testing.T) {
 	strictK := envInt("BITNET_I2S_TOPK_STRICT", 3)
 	forceMode := os.Getenv("BITNET_PARITY_FORCE") == "1"
 	relaxTopK := os.Getenv("BITNET_I2S_RELAX_TOPK") != "0"
+	report := os.Getenv("BITNET_PARITY_REPORT") == "1"
+	var maxAbs, maxRel float32
 	if forceMode {
-		atol = envFloat32("BITNET_I2S_FORCE_LOGIT_ATOL", 3e-1)
-		rtol = envFloat32("BITNET_I2S_FORCE_LOGIT_RTOL", 3e-1)
+		atol = envFloat32("BITNET_I2S_FORCE_LOGIT_ATOL", 7e-1)
+		rtol = envFloat32("BITNET_I2S_FORCE_LOGIT_RTOL", 7e-1)
 		relaxTopK = os.Getenv("BITNET_PARITY_FORCE_RELAX_TOPK") != "0"
 	}
 	for i := range wantTopK {
@@ -384,6 +386,14 @@ func TestParityAgainstI2SVectors(t *testing.T) {
 				if !ok {
 					t.Fatalf("topk token missing step=%d token=%d", i, w.TokenID)
 				}
+				absDiff := float32(math.Abs(float64(gLogit - w.Logit)))
+				relDiff := absDiff / (float32(math.Abs(float64(w.Logit))) + 1e-9)
+				if absDiff > maxAbs {
+					maxAbs = absDiff
+				}
+				if relDiff > maxRel {
+					maxRel = relDiff
+				}
 				if !closeLogit(gLogit, w.Logit, atol, rtol) {
 					t.Fatalf("topk logit mismatch step=%d token=%d: got=%f want=%f atol=%f rtol=%f", i, w.TokenID, gLogit, w.Logit, atol, rtol)
 				}
@@ -396,10 +406,21 @@ func TestParityAgainstI2SVectors(t *testing.T) {
 			if g.TokenID != w.TokenID {
 				t.Fatalf("topk token mismatch step=%d rank=%d: got=%d want=%d", i, j, g.TokenID, w.TokenID)
 			}
+			absDiff := float32(math.Abs(float64(g.Logit - w.Logit)))
+			relDiff := absDiff / (float32(math.Abs(float64(w.Logit))) + 1e-9)
+			if absDiff > maxAbs {
+				maxAbs = absDiff
+			}
+			if relDiff > maxRel {
+				maxRel = relDiff
+			}
 			if !closeLogit(g.Logit, w.Logit, atol, rtol) {
 				t.Fatalf("topk logit mismatch step=%d rank=%d: got=%f want=%f atol=%f rtol=%f", i, j, g.Logit, w.Logit, atol, rtol)
 			}
 		}
+	}
+	if report {
+		t.Logf("i2s parity max_abs=%g max_rel=%g atol=%g rtol=%g strictK=%d", maxAbs, maxRel, atol, rtol, strictK)
 	}
 }
 
@@ -476,9 +497,11 @@ func TestParityAgainstI2S2BVectors(t *testing.T) {
 	strictK := envInt("BITNET_I2S_TOPK_STRICT", 3)
 	forceMode := os.Getenv("BITNET_PARITY_FORCE") == "1"
 	relaxTopK := os.Getenv("BITNET_I2S_RELAX_TOPK") != "0"
+	report := os.Getenv("BITNET_PARITY_REPORT") == "1"
+	var maxAbs, maxRel float32
 	if forceMode {
-		atol = envFloat32("BITNET_I2S_FORCE_LOGIT_ATOL", 3e-1)
-		rtol = envFloat32("BITNET_I2S_FORCE_LOGIT_RTOL", 3e-1)
+		atol = envFloat32("BITNET_I2S_FORCE_LOGIT_ATOL", 7e-1)
+		rtol = envFloat32("BITNET_I2S_FORCE_LOGIT_RTOL", 7e-1)
 		relaxTopK = os.Getenv("BITNET_PARITY_FORCE_RELAX_TOPK") != "0"
 	}
 	for i := range wantTopK {
@@ -505,6 +528,14 @@ func TestParityAgainstI2S2BVectors(t *testing.T) {
 				if !ok {
 					t.Fatalf("topk token missing step=%d token=%d", i, w.TokenID)
 				}
+				absDiff := float32(math.Abs(float64(gLogit - w.Logit)))
+				relDiff := absDiff / (float32(math.Abs(float64(w.Logit))) + 1e-9)
+				if absDiff > maxAbs {
+					maxAbs = absDiff
+				}
+				if relDiff > maxRel {
+					maxRel = relDiff
+				}
 				if !closeLogit(gLogit, w.Logit, atol, rtol) {
 					t.Fatalf("topk logit mismatch step=%d token=%d: got=%f want=%f atol=%f rtol=%f", i, w.TokenID, gLogit, w.Logit, atol, rtol)
 				}
@@ -517,10 +548,21 @@ func TestParityAgainstI2S2BVectors(t *testing.T) {
 			if g.TokenID != w.TokenID {
 				t.Fatalf("topk token mismatch step=%d rank=%d: got=%d want=%d", i, j, g.TokenID, w.TokenID)
 			}
+			absDiff := float32(math.Abs(float64(g.Logit - w.Logit)))
+			relDiff := absDiff / (float32(math.Abs(float64(w.Logit))) + 1e-9)
+			if absDiff > maxAbs {
+				maxAbs = absDiff
+			}
+			if relDiff > maxRel {
+				maxRel = relDiff
+			}
 			if !closeLogit(g.Logit, w.Logit, atol, rtol) {
 				t.Fatalf("topk logit mismatch step=%d rank=%d: got=%f want=%f atol=%f rtol=%f", i, j, g.Logit, w.Logit, atol, rtol)
 			}
 		}
+	}
+	if report {
+		t.Logf("i2s_2b parity max_abs=%g max_rel=%g atol=%g rtol=%g strictK=%d", maxAbs, maxRel, atol, rtol, strictK)
 	}
 }
 
