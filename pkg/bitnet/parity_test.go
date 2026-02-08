@@ -358,7 +358,7 @@ func TestParityAgainstI2SVectors(t *testing.T) {
 		wantTopK = wantTopK[:len(want)]
 	}
 	atol := envFloat32("BITNET_I2S_LOGIT_ATOL", 2e-1)
-	rtol := envFloat32("BITNET_I2S_LOGIT_RTOL", 2e-1)
+	rtol := envFloat32("BITNET_I2S_LOGIT_RTOL", 1e-1)
 	strictK := envInt("BITNET_I2S_TOPK_STRICT", 3)
 	forceMode := os.Getenv("BITNET_PARITY_FORCE") == "1"
 	relaxTopK := os.Getenv("BITNET_I2S_RELAX_TOPK") != "0"
@@ -500,7 +500,7 @@ func TestParityAgainstI2S2BVectors(t *testing.T) {
 		t.Fatalf("topk step mismatch: got=%d want=%d", len(got.TopK), len(wantTopK))
 	}
 	atol := envFloat32("BITNET_I2S_LOGIT_ATOL", 2e-1)
-	rtol := envFloat32("BITNET_I2S_LOGIT_RTOL", 2e-1)
+	rtol := envFloat32("BITNET_I2S_LOGIT_RTOL", 1e-1)
 	strictK := envInt("BITNET_I2S_TOPK_STRICT", 3)
 	forceMode := os.Getenv("BITNET_PARITY_FORCE") == "1"
 	relaxTopK := os.Getenv("BITNET_I2S_RELAX_TOPK") != "0"
