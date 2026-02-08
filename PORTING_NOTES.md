@@ -138,6 +138,7 @@
   - benchmark (i7-11800H, ggml-model-i2_s.gguf, 8 tokens): top‑K ~24.6 s/op vs no‑topK ~23.1 s/op; ~21k fewer allocs.
 - update: Argmax unrolled by 4; added benchmark.
   - benchmark (i7-11800H): Argmax n=256 ~130 ns, n=1024 ~478 ns, n=4096 ~1.89 us.
+- update: added GPT2 fixture tokenizer benchmark (gated by `BITNET_BENCH_TOKENIZER=1`).
 - update: added optional column‑major matvec accumulation for f32 output projection.
   - auto-enabled in non‑parity runs via `BITNET_FAST_COL_MATVEC_AUTO=1` (default).
   - benchmark (i7-11800H, 65536x2048): default ~0.87 s/op; col‑accum ~0.087 s/op.

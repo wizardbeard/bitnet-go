@@ -1,6 +1,7 @@
 package tokenizer
 
 import (
+	"os"
 	"testing"
 
 	"bitnet-go/internal/gguf"
@@ -96,6 +97,24 @@ func BenchmarkTokenizeSPMCold(b *testing.B) {
 		if err != nil {
 			b.Fatalf("NewFromModelInfo: %v", err)
 		}
+		_ = tok.Tokenize(text)
+	}
+}
+
+func BenchmarkTokenizeGPT2Fixture(b *testing.B) {
+	if os.Getenv("BITNET_BENCH_TOKENIZER") != "1" {
+		b.Skip("set BITNET_BENCH_TOKENIZER=1 to run GPT2 fixture tokenizer benchmark")
+	}
+	info, err := gguf.ReadModelInfo("../../testdata/ggml-vocab-gpt-2.gguf")
+	if err != nil {
+		b.Skipf("missing ggml-vocab-gpt-2.gguf: %v", err)
+	}
+	tok, err := NewFromModelInfo(info)
+	if err != nil {
+		b.Fatalf("NewFromModelInfo: %v", err)
+	}
+	text := "Hello, world! This is a longer benchmark string to stress the tokenizer."
+	for i := 0; i < b.N; i++ {
 		_ = tok.Tokenize(text)
 	}
 }
