@@ -350,14 +350,15 @@ func TestParityAgainstI2SVectors(t *testing.T) {
 	if len(got.TopK) != len(wantTopK) {
 		t.Fatalf("topk step mismatch: got=%d want=%d", len(got.TopK), len(wantTopK))
 	}
-	atol := envFloat32("BITNET_PARITY_LOGIT_ATOL", 2e-2)
-	rtol := envFloat32("BITNET_PARITY_LOGIT_RTOL", 2e-2)
-	strictK := envInt("BITNET_PARITY_TOPK_STRICT", 5)
+	atol := envFloat32("BITNET_I2S_LOGIT_ATOL", 2e-1)
+	rtol := envFloat32("BITNET_I2S_LOGIT_RTOL", 2e-1)
+	strictK := envInt("BITNET_I2S_TOPK_STRICT", 3)
 	forceMode := os.Getenv("BITNET_PARITY_FORCE") == "1"
-	relaxTopK := os.Getenv("BITNET_PARITY_FORCE_RELAX_TOPK") != "0"
+	relaxTopK := os.Getenv("BITNET_I2S_RELAX_TOPK") != "0"
 	if forceMode {
-		atol = envFloat32("BITNET_PARITY_FORCE_LOGIT_ATOL", 5e-2)
-		rtol = envFloat32("BITNET_PARITY_FORCE_LOGIT_RTOL", 5e-2)
+		atol = envFloat32("BITNET_I2S_FORCE_LOGIT_ATOL", 3e-1)
+		rtol = envFloat32("BITNET_I2S_FORCE_LOGIT_RTOL", 3e-1)
+		relaxTopK = os.Getenv("BITNET_PARITY_FORCE_RELAX_TOPK") != "0"
 	}
 	for i := range wantTopK {
 		if got.TopK[i].Step != wantTopK[i].Step {

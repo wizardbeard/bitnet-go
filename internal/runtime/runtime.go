@@ -77,6 +77,9 @@ var debugStep0Printed bool
 var debugI2SDisableActSum = os.Getenv("BITNET_I2S_DISABLE_ACTSUM") == "1"
 var debugI2SInvertActScale = os.Getenv("BITNET_I2S_INVERT_ACT_SCALE") == "1"
 var debugI2SFloat = os.Getenv("BITNET_I2S_F32") == "1" || debugParityStrict
+var debugI2SForceQuant = os.Getenv("BITNET_I2S_FORCE_Q") == "1"
+var debugI2SMatvecRef = os.Getenv("BITNET_DEBUG_I2S_MATVEC_REF") == "1"
+var debugI2SMatvecPrinted bool
 var i8ScratchPool = sync.Pool{
 	New: func() any {
 		return make([]int8, 0)
@@ -1955,7 +1958,7 @@ func linearOutputLen(w linearWeight) int {
 
 func linearApplyIntoWeight(dst []float32, w linearWeight, x []float32) {
 	if w.qtype == gguf.GGMLTypeI2_S && len(w.i2sPacked) > 0 {
-		if debugI2SFloat {
+		if debugI2SFloat && !debugI2SForceQuant {
 			if w.transposed {
 				kernels.MatVecTI2S(dst, w.i2sPacked, w.rows, w.cols, x, w.i2sScale)
 			} else {
@@ -1980,6 +1983,16 @@ func linearApplyIntoWeight(dst []float32, w linearWeight, x []float32) {
 			kernels.MatVecTI2SI8S(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
 		} else {
 			kernels.MatVecI2SI8S(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
+		}
+		if debugI2SMatvecRef && !debugI2SMatvecPrinted {
+			ref := make([]float32, len(dst))
+			if w.transposed {
+				kernels.MatVecTI2SI8SRef(ref, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale)
+			} else {
+				kernels.MatVecI2SI8SRef(ref, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale)
+			}
+			debugVecDiff("i2s_matvec.ref.diff", dst, ref)
+			debugI2SMatvecPrinted = true
 		}
 		i8ScratchPool.Put(scratch[:0])
 		return

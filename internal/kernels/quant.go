@@ -120,3 +120,65 @@ func MatVecTI2SI8S(dst []float32, packed []byte, rows, cols int, vec []int8, wei
 		dst[c] = float32(sum-actSum) * (weightScale / actScale)
 	}
 }
+
+// MatVecI2SI8SRef matches ggml i2_s map2bit semantics (q=3 maps to 0) and ignores actSum.
+func MatVecI2SI8SRef(dst []float32, packed []byte, rows, cols int, vec []int8, weightScale, actScale float32) {
+	if rows <= 0 || cols <= 0 {
+		return
+	}
+	if len(dst) < rows || len(vec) < cols {
+		return
+	}
+	if rows*cols == 0 || len(packed) < i2sPackedLen(rows*cols) {
+		return
+	}
+	for r := 0; r < rows; r++ {
+		var sum int32
+		for c := 0; c < cols; c++ {
+			idx := r + rows*c
+			q := i2sPackedAt(packed, idx)
+			var w int32
+			switch q {
+			case 0:
+				w = -1
+			case 2:
+				w = 1
+			default:
+				w = 0
+			}
+			sum += w * int32(vec[c])
+		}
+		dst[r] = float32(sum) * (weightScale / actScale)
+	}
+}
+
+// MatVecTI2SI8SRef matches ggml i2_s map2bit semantics (q=3 maps to 0) and ignores actSum.
+func MatVecTI2SI8SRef(dst []float32, packed []byte, rows, cols int, vec []int8, weightScale, actScale float32) {
+	if rows <= 0 || cols <= 0 {
+		return
+	}
+	if len(dst) < cols || len(vec) < rows {
+		return
+	}
+	if rows*cols == 0 || len(packed) < i2sPackedLen(rows*cols) {
+		return
+	}
+	for c := 0; c < cols; c++ {
+		var sum int32
+		for r := 0; r < rows; r++ {
+			idx := r + rows*c
+			q := i2sPackedAt(packed, idx)
+			var w int32
+			switch q {
+			case 0:
+				w = -1
+			case 2:
+				w = 1
+			default:
+				w = 0
+			}
+			sum += w * int32(vec[r])
+		}
+		dst[c] = float32(sum) * (weightScale / actScale)
+	}
+}
