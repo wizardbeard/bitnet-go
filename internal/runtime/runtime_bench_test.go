@@ -127,6 +127,16 @@ func BenchmarkCausalAttentionMultiHeadIntoCompare(b *testing.B) {
 				keys[i] = float32(i%37) * 0.01
 				values[i] = float32(i%41) * 0.01
 			}
+			valuesRow := make([]float32, len(values))
+			for h := 0; h < c.heads; h++ {
+				for d := 0; d < c.dim; d++ {
+					for i := 0; i < c.steps; i++ {
+						src := h*c.dim*c.steps + d*c.steps + i
+						dst := h*c.steps*c.dim + i*c.dim + d
+						valuesRow[dst] = values[src]
+					}
+				}
+			}
 			dst := make([]float32, len(q))
 			scores := make([]float32, c.steps*c.heads)
 
@@ -136,6 +146,15 @@ func BenchmarkCausalAttentionMultiHeadIntoCompare(b *testing.B) {
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
 					causalAttentionMultiHeadIntoGeneric(dst, scores, q, keys, values, c.steps, c.heads, c.heads, kStepDim, vStepDim, 0)
+				}
+			})
+
+			b.Run("row_major", func(b *testing.B) {
+				b.ReportAllocs()
+				b.SetBytes(int64((len(q) + len(keys) + len(valuesRow) + len(scores) + len(dst)) * 4))
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					causalAttentionMultiHeadIntoRowMajor(dst, scores, q, keys, valuesRow, c.steps, c.heads, c.heads, kStepDim, vStepDim, 0)
 				}
 			})
 
@@ -224,6 +243,18 @@ func BenchmarkKQVAccumulation(b *testing.B) {
 					for j := 0; j < c.headDim; j++ {
 						rowBase := j * maxSeq
 						dst[j] = dotF32Fast(values[rowBase:rowBase+maxSeq], weights)
+					}
+				}
+			})
+
+			b.Run("fast_n", func(b *testing.B) {
+				b.ReportAllocs()
+				b.SetBytes(int64((len(values) + len(weights) + len(dst)) * 4))
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					for j := 0; j < c.headDim; j++ {
+						rowBase := j * maxSeq
+						dst[j] = dotF32FastN(values, rowBase, weights, 0, maxSeq)
 					}
 				}
 			})

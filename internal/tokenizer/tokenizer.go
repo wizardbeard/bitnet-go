@@ -26,6 +26,7 @@ type Tokenizer struct {
 	bpeBuf           []string
 	bpeWork          []string
 	bpeWork2         []string
+	bpeRankBuf       []int
 	bpeByteBuf       []byte
 	bpeRuneBuf       []rune
 	bpeByteSym       [256]string
@@ -475,49 +476,58 @@ func (t *Tokenizer) encodeBPEWord(word string) []int32 {
 			syms = append(syms, string(runes[i]))
 		}
 	}
-	keyBuf := t.bpeKeyBuf
+	ranks := t.bpeRankBuf[:0]
+	if cap(ranks) < len(syms)-1 {
+		ranks = make([]int, len(syms)-1)
+	} else {
+		ranks = ranks[:len(syms)-1]
+	}
+	rankFor := func(a, b string) int {
+		if len(t.bpeRanksPair) > 0 {
+			if r, ok := t.bpeRanksPair[bpePair{a: a, b: b}]; ok {
+				return r
+			}
+			return -1
+		}
+		key := t.pairKey(a, b)
+		if r, ok := t.bpeRanks[key]; ok {
+			return r
+		}
+		return -1
+	}
+	for i := 0; i < len(syms)-1; i++ {
+		ranks[i] = rankFor(syms[i], syms[i+1])
+	}
 	for {
 		if len(syms) < 2 {
 			break
 		}
 		bestRank := int(^uint(0) >> 1)
 		bestIdx := -1
-		if len(t.bpeRanksPair) > 0 {
-			for i := 0; i < len(syms)-1; i++ {
-				rank, ok := t.bpeRanksPair[bpePair{a: syms[i], b: syms[i+1]}]
-				if !ok {
-					continue
-				}
-				if rank < bestRank {
-					bestRank = rank
-					bestIdx = i
-				}
-			}
-		} else {
-			for i := 0; i < len(syms)-1; i++ {
-				key := t.pairKey(syms[i], syms[i+1])
-				rank, ok := t.bpeRanks[key]
-				if !ok {
-					continue
-				}
-				if rank < bestRank {
-					bestRank = rank
-					bestIdx = i
-				}
+		for i := 0; i < len(ranks); i++ {
+			r := ranks[i]
+			if r >= 0 && r < bestRank {
+				bestRank = r
+				bestIdx = i
 			}
 		}
 		if bestIdx < 0 {
 			break
 		}
 		merged := t.mergePair(syms[bestIdx], syms[bestIdx+1])
-		next := t.bpeWork[:0]
-		next = append(next, syms[:bestIdx]...)
-		next = append(next, merged)
-		next = append(next, syms[bestIdx+2:]...)
-		syms, next = next, syms
-		t.bpeWork = next[:0]
+		syms[bestIdx] = merged
+		copy(syms[bestIdx+1:], syms[bestIdx+2:])
+		syms = syms[:len(syms)-1]
+		copy(ranks[bestIdx:], ranks[bestIdx+1:])
+		ranks = ranks[:len(syms)-1]
+		if bestIdx-1 >= 0 {
+			ranks[bestIdx-1] = rankFor(syms[bestIdx-1], syms[bestIdx])
+		}
+		if bestIdx < len(ranks) {
+			ranks[bestIdx] = rankFor(syms[bestIdx], syms[bestIdx+1])
+		}
 	}
-	t.bpeKeyBuf = keyBuf[:0]
+	t.bpeRankBuf = ranks[:0]
 
 	out := make([]int32, 0, len(syms))
 	for _, s := range syms {

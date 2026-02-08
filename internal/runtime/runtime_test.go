@@ -778,6 +778,74 @@ func TestCausalAttentionMultiHeadIntoMatchesOptimized(t *testing.T) {
 	}
 }
 
+func TestCausalAttentionMultiHeadIntoRowMajorMatchesGeneric(t *testing.T) {
+	steps := 16
+	heads := 4
+	dim := 8
+	q := make([]float32, heads*dim)
+	keys := make([]float32, steps*heads*dim)
+	values := make([]float32, steps*heads*dim)
+	scoresA := make([]float32, steps*heads)
+	scoresB := make([]float32, steps*heads)
+	dstA := make([]float32, len(q))
+	dstB := make([]float32, len(q))
+
+	for i := range q {
+		q[i] = float32((i%9)-4) * 0.11
+	}
+	for i := range keys {
+		keys[i] = float32((i%17)-8) * 0.07
+		values[i] = float32((i%19)-9) * 0.05
+	}
+
+	valuesRow := make([]float32, len(values))
+	for h := 0; h < heads; h++ {
+		for d := 0; d < dim; d++ {
+			for i := 0; i < steps; i++ {
+				src := h*dim*steps + d*steps + i
+				dst := h*steps*dim + i*dim + d
+				valuesRow[dst] = values[src]
+			}
+		}
+	}
+
+	causalAttentionMultiHeadIntoGeneric(dstA, scoresA, q, keys, values, steps, heads, heads, heads*dim, heads*dim, 0)
+	causalAttentionMultiHeadIntoRowMajor(dstB, scoresB, q, keys, valuesRow, steps, heads, heads, heads*dim, heads*dim, 0)
+	for i := range dstA {
+		diff := math.Abs(float64(dstA[i] - dstB[i]))
+		if diff > 1e-5 {
+			t.Fatalf("mismatch at %d: got=%f want=%f", i, dstB[i], dstA[i])
+		}
+	}
+}
+
+func TestDotF32FastNMatches(t *testing.T) {
+	a := make([]float32, 64)
+	b := make([]float32, 64)
+	for i := range a {
+		a[i] = float32((i%17)-8) * 0.03
+		b[i] = float32((i%19)-9) * 0.05
+	}
+	cases := []struct {
+		aOff int
+		bOff int
+		n    int
+	}{
+		{aOff: 0, bOff: 0, n: 16},
+		{aOff: 3, bOff: 2, n: 21},
+		{aOff: 8, bOff: 8, n: 32},
+		{aOff: 15, bOff: 7, n: 17},
+	}
+	for _, c := range cases {
+		ref := dotF32Fast(a[c.aOff:c.aOff+c.n], b[c.bOff:c.bOff+c.n])
+		got := dotF32FastN(a, c.aOff, b, c.bOff, c.n)
+		diff := math.Abs(float64(ref - got))
+		if diff > 1e-6 {
+			t.Fatalf("dotF32FastN mismatch aOff=%d bOff=%d n=%d: got=%f want=%f", c.aOff, c.bOff, c.n, got, ref)
+		}
+	}
+}
+
 func TestSoftmaxInPlaceMatchesOpt(t *testing.T) {
 	scoresA := make([]float32, 16)
 	for i := range scoresA {

@@ -110,6 +110,7 @@ var debugAttnF64 = os.Getenv("BITNET_ATTN_F64") == "1"
 var debugStrictKQ = os.Getenv("BITNET_STRICT_KQ") == "1" || debugParityStrict
 var debugFastKQ = os.Getenv("BITNET_FAST_KQ_DOT") != "0" && !debugParityStrict
 var debugFastV = os.Getenv("BITNET_FAST_V_DOT") != "0" && !debugParityStrict
+var debugKVRowMajor = os.Getenv("BITNET_KV_ROWMAJOR") == "1"
 var debugMatchGGML = os.Getenv("BITNET_MATCH_GGML") == "1" || debugParityStrict
 var debugAttnRef = os.Getenv("BITNET_DEBUG_ATTN_REF") == "1"
 var debugFFNRef = os.Getenv("BITNET_DEBUG_FFN_REF") == "1"
@@ -1121,8 +1122,13 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 			}
 
 			storeCacheVector(st.keys, pos, st.k)
-			storeCacheVectorV(st.values, pos, st.v, block.kvHeads)
-			causalAttentionMultiHeadInto(st.attnAcc, st.scores, st.q, st.keys, st.values, pos+1, block.attnHeads, block.kvHeads, len(st.k), len(st.v), pos)
+			if debugKVRowMajor {
+				storeCacheVectorVRowMajor(st.values, pos, st.v, block.kvHeads)
+				causalAttentionMultiHeadIntoRowMajor(st.attnAcc, st.scores, st.q, st.keys, st.values, pos+1, block.attnHeads, block.kvHeads, len(st.k), len(st.v), pos)
+			} else {
+				storeCacheVectorV(st.values, pos, st.v, block.kvHeads)
+				causalAttentionMultiHeadInto(st.attnAcc, st.scores, st.q, st.keys, st.values, pos+1, block.attnHeads, block.kvHeads, len(st.k), len(st.v), pos)
+			}
 
 			rmsNormInto(n2, st.attnAcc, layer.attnSubNorm, block.rmsEps)
 			if debugStages && shouldDebug(pos) && i == 0 {
@@ -1374,7 +1380,7 @@ func causalAttentionMultiHeadIntoGeneric(dst, scores, q, keys, values []float32,
 			if debugStrictKQ {
 				sum = dotF32GGML(qh, keys[kb:kb+headDim])
 			} else if debugFastKQ {
-				sum = dotF32Fast(qh, keys[kb:kb+headDim])
+				sum = dotF32FastN(keys, kb, qh, 0, headDim)
 			} else if debugAttnF64 {
 				var sum64 float64
 				for j := 0; j < headDim; j++ {
@@ -1442,7 +1448,7 @@ func causalAttentionMultiHeadIntoGeneric(dst, scores, q, keys, values []float32,
 			}
 			for j := 0; j < headDim; j++ {
 				rowBase := vHeadBase + j*maxSeq
-				dst[qBase+j] += dotF32Fast(values[rowBase:rowBase+steps], weights)
+				dst[qBase+j] += dotF32FastN(values, rowBase, weights, 0, steps)
 			}
 			continue
 		}
