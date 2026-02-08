@@ -846,6 +846,42 @@ func TestDotF32FastNMatches(t *testing.T) {
 	}
 }
 
+func TestMatVec3F32ColMatches(t *testing.T) {
+	rows := 32
+	cols := 48
+	matA := make([]float32, rows*cols)
+	matB := make([]float32, rows*cols)
+	matC := make([]float32, rows*cols)
+	vec := make([]float32, cols)
+	for c := 0; c < cols; c++ {
+		vec[c] = float32(c%7) * 0.05
+		for r := 0; r < rows; r++ {
+			idx := r + rows*c
+			matA[idx] = float32((r+c)%11) * 0.01
+			matB[idx] = float32((r+c)%13) * 0.02
+			matC[idx] = float32((r+c)%17) * 0.03
+		}
+	}
+	dstA := make([]float32, rows)
+	dstB := make([]float32, rows)
+	dstC := make([]float32, rows)
+	refA := make([]float32, rows)
+	refB := make([]float32, rows)
+	refC := make([]float32, rows)
+
+	matVec3F32(refA, refB, refC, matA, matB, matC, rows, cols, vec)
+	matVec3F32Col(dstA, dstB, dstC, matA, matB, matC, rows, cols, vec)
+
+	for i := 0; i < rows; i++ {
+		diffA := math.Abs(float64(refA[i] - dstA[i]))
+		diffB := math.Abs(float64(refB[i] - dstB[i]))
+		diffC := math.Abs(float64(refC[i] - dstC[i]))
+		if diffA > 1e-4 || diffB > 1e-4 || diffC > 1e-4 {
+			t.Fatalf("mismatch at %d: got=(%f,%f,%f) want=(%f,%f,%f)", i, dstA[i], dstB[i], dstC[i], refA[i], refB[i], refC[i])
+		}
+	}
+}
+
 func TestSoftmaxInPlaceMatchesOpt(t *testing.T) {
 	scoresA := make([]float32, 16)
 	for i := range scoresA {

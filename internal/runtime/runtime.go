@@ -111,6 +111,8 @@ var debugStrictKQ = os.Getenv("BITNET_STRICT_KQ") == "1" || debugParityStrict
 var debugFastKQ = os.Getenv("BITNET_FAST_KQ_DOT") != "0" && !debugParityStrict
 var debugFastV = os.Getenv("BITNET_FAST_V_DOT") != "0" && !debugParityStrict
 var debugKVRowMajor = os.Getenv("BITNET_KV_ROWMAJOR") != "0"
+var debugFastQKVCol = os.Getenv("BITNET_FAST_QKV_COL") == "1" && !debugParityStrict
+var debugQKVFusedMax = parseEnvInt("BITNET_QKV_FUSED_MAX", 256*256)
 var debugMatchGGML = os.Getenv("BITNET_MATCH_GGML") == "1" || debugParityStrict
 var debugAttnRef = os.Getenv("BITNET_DEBUG_ATTN_REF") == "1"
 var debugFFNRef = os.Getenv("BITNET_DEBUG_FFN_REF") == "1"
@@ -207,6 +209,18 @@ func parseDebugValuesN(v string) int {
 	n, err := strconv.Atoi(v)
 	if err != nil || n <= 0 {
 		return 8
+	}
+	return n
+}
+
+func parseEnvInt(key string, fallback int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return fallback
 	}
 	return n
 }
@@ -2084,8 +2098,15 @@ func linearApplyQKV(dstQ, dstK, dstV []float32, wQ, wK, wV linearWeight, x []flo
 		len(x) >= wQ.cols &&
 		len(wQ.data) >= wQ.rows*wQ.cols && len(wK.data) >= wQ.rows*wQ.cols && len(wV.data) >= wQ.rows*wQ.cols &&
 		!debugParityStrict {
-		matVec3F32(dstQ, dstK, dstV, wQ.data, wK.data, wV.data, wQ.rows, wQ.cols, x)
-		return
+		size := wQ.rows * wQ.cols
+		if debugQKVFusedMax > 0 && size <= debugQKVFusedMax {
+			if debugFastQKVCol {
+				matVec3F32Col(dstQ, dstK, dstV, wQ.data, wK.data, wV.data, wQ.rows, wQ.cols, x)
+			} else {
+				matVec3F32(dstQ, dstK, dstV, wQ.data, wK.data, wV.data, wQ.rows, wQ.cols, x)
+			}
+			return
+		}
 	}
 	linearApplyIntoWeight(dstQ, wQ, x)
 	linearApplyIntoWeight(dstK, wK, x)
@@ -2114,6 +2135,32 @@ func matVec3F32(dstA, dstB, dstC []float32, matA, matB, matC []float32, rows, co
 		dstA[r] = float32(sumA)
 		dstB[r] = float32(sumB)
 		dstC[r] = float32(sumC)
+	}
+}
+
+func matVec3F32Col(dstA, dstB, dstC []float32, matA, matB, matC []float32, rows, cols int, vec []float32) {
+	if rows <= 0 || cols <= 0 {
+		return
+	}
+	if len(dstA) < rows || len(dstB) < rows || len(dstC) < rows || len(vec) < cols {
+		return
+	}
+	if len(matA) < rows*cols || len(matB) < rows*cols || len(matC) < rows*cols {
+		return
+	}
+	for r := 0; r < rows; r++ {
+		dstA[r] = 0
+		dstB[r] = 0
+		dstC[r] = 0
+	}
+	for c := 0; c < cols; c++ {
+		scale := vec[c]
+		base := rows * c
+		for r := 0; r < rows; r++ {
+			dstA[r] += matA[base+r] * scale
+			dstB[r] += matB[base+r] * scale
+			dstC[r] += matC[base+r] * scale
+		}
 	}
 }
 

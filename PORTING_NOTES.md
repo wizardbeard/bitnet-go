@@ -176,6 +176,8 @@
   - attention row‑major wins: `steps=64` 41.0us vs 42.9us, `steps=128` 78.0us vs 86.2us, `steps=256` 325.1us vs 365.1us.
   - i2_s matvec dispatch: r=512/c=512 `171,953ns` vs `671,031ns` (dispatch vs generic).
   - tokenizer hot path: BPE `~198ns/op` (3 allocs), SPM `~117ns/op` (3 allocs).
+- update: added fused Q/K/V column‑accumulation path (`BITNET_FAST_QKV_COL=1`, opt‑in) with equivalence test and benchmark variant; initial bench shows near‑parity with existing fused path.
+- update: fused Q/K/V is now gated by `BITNET_QKV_FUSED_MAX` (default `256*256`) to avoid large‑matrix regressions; large shapes fall back to separate matvecs.
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).

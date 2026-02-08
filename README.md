@@ -31,6 +31,7 @@ All results below were recorded on 2026-02-08 (i7-11800H, Linux, amd64).
 | KQV accumulation `steps=256/d=64` | fast `6518ns`, fast_n `8427ns`, ggml `14075ns` | fast wins |
 | Output projection (f32) | `87.9ms` | fast col‑accum path |
 | Llama layer step `h=1024/ffn=4096/heads=16/steps=128` | `27.9ms` | end‑to‑end kernel mix |
+| QKV matvec `r=1024/c=1024` | separate `1,969,612ns`, fused `1,920,684ns`, fused_col `2,387,984ns` | fused gated to separate |
 | Tokenize BPE (hot) | `~198ns/op`, 3 allocs | GPT2 fixture |
 | Tokenize SPM (hot) | `~117ns/op`, 3 allocs | Llama fixture |
 
@@ -172,3 +173,5 @@ If upstream CLI output differs, provide a wrapper command via `BITNET_REF_RUN_CM
   - `BITNET_FAST_V_DOT=1` (default) uses a cache‑friendly value accumulation loop in attention when not in parity‑strict mode.
   - `BITNET_KV_ROWMAJOR=1` (default) stores the V cache in row‑major `[head][pos][dim]` layout for faster attention accumulation.
     - Set `BITNET_KV_ROWMAJOR=0` to use the legacy `[head][dim][pos]` layout.
+  - `BITNET_FAST_QKV_COL=1` enables a column‑accumulation path for fused f32 Q/K/V projection (opt‑in).
+  - `BITNET_QKV_FUSED_MAX` caps fused Q/K/V projection by `rows*cols` (default `65536`); larger sizes fall back to separate matvecs.

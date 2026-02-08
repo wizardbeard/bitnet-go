@@ -374,50 +374,72 @@ func BenchmarkOutputProjectionF32(b *testing.B) {
 }
 
 func BenchmarkQKVMatVecCompare(b *testing.B) {
-	rows := 256
-	cols := 256
-	matA := make([]float32, rows*cols)
-	matB := make([]float32, rows*cols)
-	matC := make([]float32, rows*cols)
-	vec := make([]float32, cols)
-	for c := 0; c < cols; c++ {
-		vec[c] = float32(c%31) * 0.01
-		for r := 0; r < rows; r++ {
-			idx := r + rows*c
-			matA[idx] = float32((r+c)%23) * 0.01
-			matB[idx] = float32((r+c)%19) * 0.02
-			matC[idx] = float32((r+c)%17) * 0.03
-		}
+	type cfg struct {
+		rows int
+		cols int
 	}
-	dstA := make([]float32, rows)
-	dstB := make([]float32, rows)
-	dstC := make([]float32, rows)
+	cases := []cfg{
+		{rows: 256, cols: 256},
+		{rows: 1024, cols: 1024},
+	}
+	for _, c := range cases {
+		name := "r=" + strconv.Itoa(c.rows) + "/c=" + strconv.Itoa(c.cols)
+		b.Run(name, func(b *testing.B) {
+			rows := c.rows
+			cols := c.cols
+			matA := make([]float32, rows*cols)
+			matB := make([]float32, rows*cols)
+			matC := make([]float32, rows*cols)
+			vec := make([]float32, cols)
+			for c := 0; c < cols; c++ {
+				vec[c] = float32(c%31) * 0.01
+				for r := 0; r < rows; r++ {
+					idx := r + rows*c
+					matA[idx] = float32((r+c)%23) * 0.01
+					matB[idx] = float32((r+c)%19) * 0.02
+					matC[idx] = float32((r+c)%17) * 0.03
+				}
+			}
+			dstA := make([]float32, rows)
+			dstB := make([]float32, rows)
+			dstC := make([]float32, rows)
 
-	b.Run("separate", func(b *testing.B) {
-		b.ReportAllocs()
-		b.SetBytes(int64((rows*cols*3 + cols + rows*3) * 4))
-		b.ResetTimer()
-		wA := linearWeight{data: matA, rows: rows, cols: cols, qtype: gguf.GGMLTypeF32}
-		wB := linearWeight{data: matB, rows: rows, cols: cols, qtype: gguf.GGMLTypeF32}
-		wC := linearWeight{data: matC, rows: rows, cols: cols, qtype: gguf.GGMLTypeF32}
-		for i := 0; i < b.N; i++ {
-			linearApplyIntoWeight(dstA, wA, vec)
-			linearApplyIntoWeight(dstB, wB, vec)
-			linearApplyIntoWeight(dstC, wC, vec)
-		}
-	})
+			b.Run("separate", func(b *testing.B) {
+				b.ReportAllocs()
+				b.SetBytes(int64((rows*cols*3 + cols + rows*3) * 4))
+				b.ResetTimer()
+				wA := linearWeight{data: matA, rows: rows, cols: cols, qtype: gguf.GGMLTypeF32}
+				wB := linearWeight{data: matB, rows: rows, cols: cols, qtype: gguf.GGMLTypeF32}
+				wC := linearWeight{data: matC, rows: rows, cols: cols, qtype: gguf.GGMLTypeF32}
+				for i := 0; i < b.N; i++ {
+					linearApplyIntoWeight(dstA, wA, vec)
+					linearApplyIntoWeight(dstB, wB, vec)
+					linearApplyIntoWeight(dstC, wC, vec)
+				}
+			})
 
-	b.Run("fused", func(b *testing.B) {
-		b.ReportAllocs()
-		b.SetBytes(int64((rows*cols*3 + cols + rows*3) * 4))
-		b.ResetTimer()
-		wA := linearWeight{data: matA, rows: rows, cols: cols, qtype: gguf.GGMLTypeF32}
-		wB := linearWeight{data: matB, rows: rows, cols: cols, qtype: gguf.GGMLTypeF32}
-		wC := linearWeight{data: matC, rows: rows, cols: cols, qtype: gguf.GGMLTypeF32}
-		for i := 0; i < b.N; i++ {
-			linearApplyQKV(dstA, dstB, dstC, wA, wB, wC, vec)
-		}
-	})
+			b.Run("fused", func(b *testing.B) {
+				b.ReportAllocs()
+				b.SetBytes(int64((rows*cols*3 + cols + rows*3) * 4))
+				b.ResetTimer()
+				wA := linearWeight{data: matA, rows: rows, cols: cols, qtype: gguf.GGMLTypeF32}
+				wB := linearWeight{data: matB, rows: rows, cols: cols, qtype: gguf.GGMLTypeF32}
+				wC := linearWeight{data: matC, rows: rows, cols: cols, qtype: gguf.GGMLTypeF32}
+				for i := 0; i < b.N; i++ {
+					linearApplyQKV(dstA, dstB, dstC, wA, wB, wC, vec)
+				}
+			})
+
+			b.Run("fused_col", func(b *testing.B) {
+				b.ReportAllocs()
+				b.SetBytes(int64((rows*cols*3 + cols + rows*3) * 4))
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					matVec3F32Col(dstA, dstB, dstC, matA, matB, matC, rows, cols, vec)
+				}
+			})
+		})
+	}
 }
 
 func BenchmarkLinearApplyInto(b *testing.B) {
