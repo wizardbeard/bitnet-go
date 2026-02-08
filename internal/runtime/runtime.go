@@ -40,6 +40,47 @@ type TopKStep struct {
 	Entries []TopKEntry
 }
 
+type topKWriter struct {
+	steps   []TopKStep
+	entries []TopKEntry
+	next    int
+	k       int
+}
+
+func newTopKWriter(steps, k int) *topKWriter {
+	if steps <= 0 || k <= 0 {
+		return &topKWriter{steps: nil, entries: nil, next: 0, k: k}
+	}
+	return &topKWriter{
+		steps:   make([]TopKStep, 0, steps),
+		entries: make([]TopKEntry, steps*k),
+		next:    0,
+		k:       k,
+	}
+}
+
+func (w *topKWriter) append(step int, logits []float32) {
+	if w == nil || w.k <= 0 {
+		return
+	}
+	if w.next+w.k > len(w.entries) {
+		// Fallback to allocating if the buffer is exhausted.
+		w.steps = appendTopKStep(w.steps, step, logits, w.k)
+		return
+	}
+	slice := w.entries[w.next : w.next+w.k]
+	n := fillTopK(slice, logits, w.k)
+	w.steps = append(w.steps, TopKStep{Step: step, Entries: slice[:n]})
+	w.next += w.k
+}
+
+func (w *topKWriter) result() []TopKStep {
+	if w == nil {
+		return nil
+	}
+	return w.steps
+}
+
 type Runtime struct {
 	meta      Metadata
 	tokenizer *tokenizer.Tokenizer
@@ -276,23 +317,15 @@ func (r *Runtime) Generate(_ context.Context, req GenerateRequest) (struct {
 	// procedural weights. If model carries bitnet_go.* f32 tensors, use a first
 	// tensor-backed block path instead.
 	tokens := make([]int32, req.MaxTokens)
-	var topk []TopKStep
+	var topkWriter *topKWriter
 	if !disableTopK {
-		topk = make([]TopKStep, 0, req.MaxTokens)
+		topkWriter = newTopKWriter(req.MaxTokens, 5)
 	}
 	forceTokens := forceTokensFromEnv()
 	if r.block != nil {
-		if disableTopK {
-			runForwardTensorBlock(r.block, req.Seed, promptTokens, tokens, nil, forceTokens)
-		} else {
-			runForwardTensorBlock(r.block, req.Seed, promptTokens, tokens, &topk, forceTokens)
-		}
+		runForwardTensorBlock(r.block, req.Seed, promptTokens, tokens, topkWriter, forceTokens)
 	} else {
-		if disableTopK {
-			runForwardStub(r.meta.VocabSize, req.Seed, promptTokens, tokens, nil)
-		} else {
-			runForwardStub(r.meta.VocabSize, req.Seed, promptTokens, tokens, &topk)
-		}
+		runForwardStub(r.meta.VocabSize, req.Seed, promptTokens, tokens, topkWriter)
 	}
 
 	return struct {
@@ -302,7 +335,7 @@ func (r *Runtime) Generate(_ context.Context, req GenerateRequest) (struct {
 	}{
 		TokenIDs: tokens,
 		Text:     req.Prompt,
-		TopK:     topk,
+		TopK:     topkWriter.result(),
 	}, nil
 }
 
@@ -765,7 +798,7 @@ func loadLlamaLayer(path string, info gguf.ModelInfo, layerIdx int, prefix strin
 	return l, nil
 }
 
-func runForwardTensorBlock(block *tensorBlock, seed int64, promptTokens []int32, out []int32, topk *[]TopKStep, forceTokens []int32) {
+func runForwardTensorBlock(block *tensorBlock, seed int64, promptTokens []int32, out []int32, topk *topKWriter, forceTokens []int32) {
 	switch block.mode {
 	case tensorBlockModeProjection:
 		runForwardProjectionBlock(block, seed, promptTokens, out, topk)
@@ -778,7 +811,7 @@ func runForwardTensorBlock(block *tensorBlock, seed int64, promptTokens []int32,
 	}
 }
 
-func runForwardProjectionBlock(block *tensorBlock, seed int64, promptTokens []int32, out []int32, topk *[]TopKStep) {
+func runForwardProjectionBlock(block *tensorBlock, seed int64, promptTokens []int32, out []int32, topk *topKWriter) {
 	state := make([]float32, block.hiddenDim)
 	tokenVec := make([]float32, block.hiddenDim)
 	nextState := make([]float32, block.hiddenDim)
@@ -799,7 +832,7 @@ func runForwardProjectionBlock(block *tensorBlock, seed int64, promptTokens []in
 			kernels.MatVec(logits, block.logitsProj, block.vocabDim, block.hiddenDim, state)
 		}
 		if topk != nil {
-			*topk = appendTopKStep(*topk, i, logits, 5)
+			topk.append(i, logits)
 		}
 
 		next := kernels.Argmax(logits)
@@ -814,7 +847,7 @@ func runForwardProjectionBlock(block *tensorBlock, seed int64, promptTokens []in
 	}
 }
 
-func runForwardEmbeddingOutputBlock(block *tensorBlock, seed int64, promptTokens []int32, out []int32, topk *[]TopKStep) {
+func runForwardEmbeddingOutputBlock(block *tensorBlock, seed int64, promptTokens []int32, out []int32, topk *topKWriter) {
 	state := make([]float32, block.hiddenDim)
 	logits := make([]float32, block.vocabDim)
 	scratch := make([]float32, block.hiddenDim)
@@ -838,7 +871,7 @@ func runForwardEmbeddingOutputBlock(block *tensorBlock, seed int64, promptTokens
 			i2sScale:   block.outputWeightScale,
 		}, state)
 		if topk != nil {
-			*topk = appendTopKStep(*topk, i, logits, 5)
+			topk.append(i, logits)
 		}
 
 		next := kernels.Argmax(logits)
@@ -871,7 +904,7 @@ func embedToken(dst []float32, block *tensorBlock, token int32) bool {
 	return true
 }
 
-func runForwardLlamaStack(block *tensorBlock, seed int64, promptTokens []int32, out []int32, topk *[]TopKStep, forceTokens []int32) {
+func runForwardLlamaStack(block *tensorBlock, seed int64, promptTokens []int32, out []int32, topk *topKWriter, forceTokens []int32) {
 	if len(out) == 0 {
 		return
 	}
@@ -906,7 +939,7 @@ func runForwardLlamaStack(block *tensorBlock, seed int64, promptTokens []int32, 
 	for i := range out {
 		runLlamaStackStep(block, layerStates, currentToken, startPos+i, x, n1, n2, logits)
 		if topk != nil {
-			*topk = appendTopKStep(*topk, i, logits, 5)
+			topk.append(i, logits)
 		}
 		next := kernels.Argmax(logits)
 		if i < len(forceTokens) {
@@ -2164,7 +2197,7 @@ func firstString(values ...any) string {
 	return ""
 }
 
-func runForwardStub(vocabSize uint32, seed int64, promptTokens []int32, out []int32, topk *[]TopKStep) {
+func runForwardStub(vocabSize uint32, seed int64, promptTokens []int32, out []int32, topk *topKWriter) {
 	const hiddenDim = 32
 	state := make([]float32, hiddenDim)
 	tokenVec := make([]float32, hiddenDim)
@@ -2188,7 +2221,7 @@ func runForwardStub(vocabSize uint32, seed int64, promptTokens []int32, out []in
 			logits[id] = kernels.Dot(state, tokenVec)
 		}
 		if topk != nil {
-			*topk = appendTopKStep(*topk, i, logits, 5)
+			topk.append(i, logits)
 		}
 
 		next := kernels.Argmax(logits)
@@ -2259,6 +2292,66 @@ func appendTopKStep(dst []TopKStep, step int, logits []float32, k int) []TopKSte
 		out[j+1] = key
 	}
 	return append(dst, TopKStep{Step: step, Entries: out})
+}
+
+func fillTopK(entries []TopKEntry, logits []float32, k int) int {
+	if k <= 0 || len(logits) == 0 || len(entries) == 0 {
+		return 0
+	}
+	if k > len(logits) {
+		k = len(logits)
+	}
+	if k > len(entries) {
+		k = len(entries)
+	}
+	count := 0
+	minIdx := 0
+	minVal := float32(0)
+	for id, logit := range logits {
+		entry := TopKEntry{TokenID: int32(id), Logit: logit}
+		if count < k {
+			entries[count] = entry
+			if count == 0 || logit < minVal {
+				minVal = logit
+				minIdx = count
+			}
+			count++
+			if count == k {
+				minIdx = 0
+				minVal = entries[0].Logit
+				for i := 1; i < k; i++ {
+					if entries[i].Logit < minVal {
+						minVal = entries[i].Logit
+						minIdx = i
+					}
+				}
+			}
+			continue
+		}
+		if logit <= minVal {
+			continue
+		}
+		entries[minIdx] = entry
+		minIdx = 0
+		minVal = entries[0].Logit
+		for i := 1; i < k; i++ {
+			if entries[i].Logit < minVal {
+				minVal = entries[i].Logit
+				minIdx = i
+			}
+		}
+	}
+	out := entries[:count]
+	for i := 1; i < len(out); i++ {
+		key := out[i]
+		j := i - 1
+		for j >= 0 && out[j].Logit < key.Logit {
+			out[j+1] = out[j]
+			j--
+		}
+		out[j+1] = key
+	}
+	return count
 }
 
 func mixState(state, scratch []float32, token int32) {
