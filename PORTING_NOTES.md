@@ -129,6 +129,7 @@
 - update: added i2_s+i8_s quantized matvec benchmarks.
   - benchmark (i7-11800H): MatVecI2SI8S ~16.13 ms/op (unrolled); MatVecTI2SI8S ~7.26 ms/op (block decode when rows%128==0).
 - update: added TI2S block‑decode equivalence test to lock correctness for the optimized path.
+- update: added QuantizeRowI8S benchmark (~5.0 us for 2560 elems on i7-11800H); loop unrolling did not improve and was reverted.
 - update: added KQV accumulation benchmarks.
   - benchmark (i7-11800H): fast dot ~1.7/3.4/6.4 us for steps 64/128/256; ggml dot ~3.3/6.2/13.0 us.
 - update: fused FFN gate+up activation into `MulRelu2Into` with amd64/arm64 unrolled path and runtime integration.

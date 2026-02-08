@@ -60,3 +60,19 @@ func BenchmarkMatVecTI2SI8S(b *testing.B) {
 		MatVecTI2SI8S(dst, packed, rows, cols, vec, 1.0, 1.0, 0)
 	}
 }
+
+func BenchmarkQuantizeRowI8S(b *testing.B) {
+	const n = 2560
+	src := make([]float32, n)
+	for i := range src {
+		src[i] = float32((i%97)-48) * 0.01
+	}
+	dst := make([]int8, n)
+
+	b.ReportAllocs()
+	b.SetBytes(int64(n * 4))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		QuantizeRowI8S(dst, src)
+	}
+}
