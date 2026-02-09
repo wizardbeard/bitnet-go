@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"strings"
+	"sync"
 
 	"bitnet-go/pkg/bitnet"
 )
@@ -27,6 +28,7 @@ func main() {
 		cpuProf   = flag.String("cpuprofile", "", "Write CPU profile to file")
 		seed      = flag.Int64("seed", 1, "Deterministic seed")
 		maxTokens = flag.Int("max-tokens", 32, "Maximum tokens to generate")
+		batch     = flag.Int("batch", 1, "Batch size (parallel sequences)")
 		temp      = flag.Float64("temp", 0, "Sampling temperature (0 = greedy)")
 		topP      = flag.Float64("top-p", 1, "Top-p nucleus sampling")
 		topK      = flag.Int("top-k", 0, "Top-k sampling (0 = disabled)")
@@ -85,21 +87,70 @@ func main() {
 		finalPrompt = formatLlamaChatWithHistory(*systemMsg, *userMsg, *assistant, combinedHistory)
 	}
 
-	result, err := session.Generate(context.Background(), bitnet.GenerateRequest{
-		Prompt:    finalPrompt,
-		Seed:      *seed,
-		MaxTokens: *maxTokens,
-		Temp:      float32(*temp),
-		TopP:      float32(*topP),
-		TopK:      *topK,
-	})
-	if err != nil {
-		log.Fatalf("generate: %v", err)
+	if *batch < 1 {
+		*batch = 1
+	}
+	if *batch == 1 {
+		result, err := session.Generate(context.Background(), bitnet.GenerateRequest{
+			Prompt:    finalPrompt,
+			Seed:      *seed,
+			MaxTokens: *maxTokens,
+			Temp:      float32(*temp),
+			TopP:      float32(*topP),
+			TopK:      *topK,
+		})
+		if err != nil {
+			log.Fatalf("generate: %v", err)
+		}
+
+		info := session.ModelInfo()
+		fmt.Printf(
+			"model=%s arch=%s gguf_version=%d tensors=%d kv=%d ctx=%d vocab=%d tokens=%d output=%q\n",
+			info.Path,
+			info.Architecture,
+			info.GGUFVersion,
+			info.Tensors,
+			info.KVCount,
+			info.ContextLength,
+			info.VocabSize,
+			len(result.TokenIDs),
+			result.Text,
+		)
+		return
 	}
 
+	type batchResult struct {
+		res bitnet.GenerateResult
+		err error
+	}
+	results := make([]batchResult, *batch)
+	var wg sync.WaitGroup
+	for i := 0; i < *batch; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			res, err := session.Generate(context.Background(), bitnet.GenerateRequest{
+				Prompt:    finalPrompt,
+				Seed:      *seed + int64(idx),
+				MaxTokens: *maxTokens,
+				Temp:      float32(*temp),
+				TopP:      float32(*topP),
+				TopK:      *topK,
+			})
+			results[idx] = batchResult{res: res, err: err}
+		}(i)
+	}
+	wg.Wait()
+	totalTokens := 0
+	for _, r := range results {
+		if r.err != nil {
+			log.Fatalf("generate: %v", r.err)
+		}
+		totalTokens += len(r.res.TokenIDs)
+	}
 	info := session.ModelInfo()
 	fmt.Printf(
-		"model=%s arch=%s gguf_version=%d tensors=%d kv=%d ctx=%d vocab=%d tokens=%d output=%q\n",
+		"model=%s arch=%s gguf_version=%d tensors=%d kv=%d ctx=%d vocab=%d tokens=%d batch=%d output=%q\n",
 		info.Path,
 		info.Architecture,
 		info.GGUFVersion,
@@ -107,8 +158,9 @@ func main() {
 		info.KVCount,
 		info.ContextLength,
 		info.VocabSize,
-		len(result.TokenIDs),
-		result.Text,
+		totalTokens,
+		*batch,
+		results[0].res.Text,
 	)
 }
 

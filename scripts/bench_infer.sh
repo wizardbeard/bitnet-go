@@ -7,6 +7,7 @@ SYSTEM=${BITNET_BENCH_SYSTEM:-You are a concise assistant.}
 MAX_TOKENS=${BITNET_BENCH_TOKENS:-64}
 TEMP=${BITNET_BENCH_TEMP:-0}
 PROCS=${BITNET_BENCH_PROCS:-0}
+BATCH=${BITNET_BENCH_BATCH:-1}
 
 if [ -n "${BITNET_BENCH_PROMPT_FILE:-}" ]; then
   PROMPT=$(cat "$BITNET_BENCH_PROMPT_FILE")
@@ -20,7 +21,8 @@ out=$(GOCACHE=/tmp/go-build go run ./cmd/bitnet \
   --user "$PROMPT" \
   --max-tokens "$MAX_TOKENS" \
   --temp "$TEMP" \
-  --procs "$PROCS")
+  --procs "$PROCS" \
+  --batch "$BATCH")
 end=$(date +%s%N)
 
 elapsed=$(awk "BEGIN{printf \"%.3f\", ($end-$start)/1e9}")

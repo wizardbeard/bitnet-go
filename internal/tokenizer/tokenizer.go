@@ -4,6 +4,7 @@ import (
 	"container/heap"
 	"fmt"
 	"strings"
+	"sync"
 	"unicode"
 	"unicode/utf8"
 
@@ -11,6 +12,7 @@ import (
 )
 
 type Tokenizer struct {
+	mu               sync.Mutex
 	addBOS           bool
 	bosTokenID       int32
 	unkTokenID       int32
@@ -154,15 +156,20 @@ func (t *Tokenizer) Tokenize(prompt string) []int32 {
 
 	if t.model == "llama" {
 		normalized := normalizeSPM(prompt)
+		t.mu.Lock()
 		if t.spmChunkCache == nil {
 			t.spmChunkCache = newBPEChunkCache(t.spmChunkCacheCap)
 		}
-		if cached := t.spmChunkCache.get(normalized); cached != nil {
+		cached := t.spmChunkCache.get(normalized)
+		t.mu.Unlock()
+		if cached != nil {
 			out = append(out, cached...)
 			return out
 		}
 		encoded := t.tokenizeSPM(normalized)
+		t.mu.Lock()
 		t.spmChunkCache.add(normalized, encoded)
+		t.mu.Unlock()
 		out = append(out, encoded...)
 		return out
 	}
@@ -235,19 +242,25 @@ func (t *Tokenizer) tokenizeBPE(prompt string) []int32 {
 	if prompt == "" {
 		return nil
 	}
+	t.mu.Lock()
 	if t.bpeChunkCache == nil {
 		t.bpeChunkCache = newBPEChunkCache(t.bpeChunkCacheCap)
 	}
+	t.mu.Unlock()
 	chunks := t.splitBPEPieces(prompt)
 	if len(chunks) == 0 {
 		chunks = []string{prompt}
 	}
 	out := make([]int32, 0, len(prompt))
 	for _, chunk := range chunks {
+		t.mu.Lock()
 		encoded := t.bpeChunkCache.get(chunk)
+		t.mu.Unlock()
 		if encoded == nil {
 			encoded = t.encodeBPEWord(t.bpeByteMap(chunk))
+			t.mu.Lock()
 			t.bpeChunkCache.add(chunk, encoded)
+			t.mu.Unlock()
 		}
 		out = append(out, encoded...)
 	}
@@ -654,6 +667,8 @@ func (t *Tokenizer) mergePair(left, right string) string {
 	if t.bpeMergeCacheCap <= 0 {
 		return left + right
 	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	if t.bpeMergeCache == nil {
 		t.bpeMergeCache = make(map[bpePair]string, t.bpeMergeCacheCap)
 	} else if len(t.bpeMergeCache) >= t.bpeMergeCacheCap {
