@@ -10,6 +10,7 @@ Training support (diverges from upstream) will live in this same repo so we can 
 - `go test ./... -bench . -benchmem`
 - `BITNET_ENFORCE_YARN=1 go test ./... -run TestParityAgainstYarnVectors -count=1`
 - `./scripts/fetch_testdata_gguf.sh`
+- `sh ./scripts/bench_infer.sh`
 - Chat prompt template (Llama):
 `go run ./cmd/bitnet --chat-template --system "You are helpful." --user "Hello"`
 - Chat history (repeatable):
@@ -34,6 +35,16 @@ See `MODEL_TRAINING.md` for decisions, model spec targets, and the export/intero
 ## Benchmarks (Snapshot)
 
 All results below were recorded on 2026-02-08 (i7-11800H, Linux, amd64).
+
+Quick inference benchmark (wall time and tok/s):
+`sh ./scripts/bench_infer.sh`
+Overrides:
+- `BITNET_BENCH_MODEL`
+- `BITNET_BENCH_PROMPT` or `BITNET_BENCH_PROMPT_FILE`
+- `BITNET_BENCH_SYSTEM`
+- `BITNET_BENCH_TOKENS`
+- `BITNET_BENCH_TEMP`
+- `BITNET_BENCH_PROCS`
 
 | Benchmark | Result | Notes |
 | --- | --- | --- |
