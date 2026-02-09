@@ -40,8 +40,8 @@ All results below were recorded on 2026-02-08 (i7-11800H, Linux, amd64).
 | Attention `steps=256/h=16/d=64` | row‑major `275.5us`, generic `326.1us` | row‑major faster |
 | i2_s MatVec `r=512/c=512` | dispatch `88,960ns`, generic `660,277ns` | AVX2 path ~7.4x faster |
 | i2_s MatVecT `r=512/c=512` | dispatch `149,885ns`, generic `639,439ns` | dispatch faster |
-| f32 MatVec `r=1024/c=1024` | dispatch `625,111ns`, generic `1,999,773ns` | dispatch faster |
-| f32 MatVecT `r=1024/c=1024` | dispatch `778,114ns`, generic `974,746ns` | dispatch faster |
+| f32 MatVec `r=1024/c=1024` | dispatch `553,173ns`, generic `2,147,608ns` | dispatch faster |
+| f32 MatVecT `r=1024/c=1024` | dispatch `774,732ns`, generic `977,864ns` | dispatch faster |
 | RMSNorm `n=4096` | `3379ns` | optimized dispatch |
 | Softmax `steps=256` | dispatch `1506ns` (with `BITNET_FAST_EXPF=1`) | expf approximation |
 | RoPE `h=8/d=64` | `~2986ns` | `math.Sincos` fast path |

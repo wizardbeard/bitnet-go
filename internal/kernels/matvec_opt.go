@@ -14,7 +14,18 @@ func matVecOpt(dst, mat []float32, rows, cols int, vec []float32) {
 		for c := 0; c < cols; c++ {
 			scale := vec[c]
 			base := rows * c
-			for r := 0; r < rows; r++ {
+			r := 0
+			for ; r+7 < rows; r += 8 {
+				dst[r] += mat[base+r] * scale
+				dst[r+1] += mat[base+r+1] * scale
+				dst[r+2] += mat[base+r+2] * scale
+				dst[r+3] += mat[base+r+3] * scale
+				dst[r+4] += mat[base+r+4] * scale
+				dst[r+5] += mat[base+r+5] * scale
+				dst[r+6] += mat[base+r+6] * scale
+				dst[r+7] += mat[base+r+7] * scale
+			}
+			for ; r < rows; r++ {
 				dst[r] += mat[base+r] * scale
 			}
 		}
