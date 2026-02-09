@@ -9,6 +9,15 @@ Initial Go scaffold for porting BitNet CPU inference.
 - `go test ./... -bench . -benchmem`
 - `BITNET_ENFORCE_YARN=1 go test ./... -run TestParityAgainstYarnVectors -count=1`
 - `./scripts/fetch_testdata_gguf.sh`
+- Chat prompt template (Llama):
+`go run ./cmd/bitnet --chat-template --system "You are helpful." --user "Hello"`
+- Chat history (repeatable):
+`go run ./cmd/bitnet --chat "system:You are helpful." --chat "user:Hello" --chat "assistant:Hi!" --chat "user:What is BitNet?" --chat-template`
+- Chat history file:
+`go run ./cmd/bitnet --chat-history testdata/chat_history.txt --chat-template`
+Format: `role:content` per line. Blank lines and `#` comments are ignored.
+- Sampling controls:
+`go run ./cmd/bitnet --prompt "Hello" --temp 0.8 --top-p 0.9 --top-k 40`
 
 Note: `go test ./...` can take ~3 minutes because tokenizer fixture tests are slow; plan CI timeouts accordingly.
 - `go run ./cmd/bitnet --help`
@@ -175,3 +184,11 @@ If upstream CLI output differs, provide a wrapper command via `BITNET_REF_RUN_CM
     - Set `BITNET_KV_ROWMAJOR=0` to use the legacy `[head][dim][pos]` layout.
   - `BITNET_FAST_QKV_COL=1` enables a column‑accumulation path for fused f32 Q/K/V projection (opt‑in).
   - `BITNET_QKV_FUSED_MAX` caps fused Q/K/V projection by `rows*cols` (default `65536`); larger sizes fall back to separate matvecs.
+  - `BITNET_STRICT_ATTENTION_REF=1` routes attention through the ggml-order reference accumulation (debug/analysis).
+  - `BITNET_STRICT_FFN_REF=1` routes FFN through the reference activation path (debug/analysis).
+  - `BITNET_I2S_REF_DOT=1` uses the map‑to‑{-1,0,1} reference dot for i2_s (ignores actSum; debug/analysis).
+  - `BITNET_I2S_REF_ONCE=1` runs a one‑off i2_s ref‑dot comparison and prints max abs/rel deltas.
+  - `BITNET_I2S_MAP3_TO1=1` maps i2_s q=3 to 1 before actSum (debug/analysis).
+  - `BITNET_I2S_ALT_LAYOUT=1` treats packed i2_s weights as row‑major for debug/layout comparison.
+  - `BITNET_I2S_SCALAR=1` forces scalar i2_s dot (no block decode) for drift analysis.
+  - `BITNET_REF_I2S_DOT=1` (ref tracer) emits a ggml i2_s dot for `ffn_norm-0` against `BITNET_REF_I2S_DOT_TENSOR` and `BITNET_REF_I2S_DOT_ROW`.

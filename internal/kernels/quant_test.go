@@ -102,6 +102,44 @@ func TestMatVecTI2SI8SBlockDecode(t *testing.T) {
 	}
 }
 
+func TestMatVecI2SI8SMapMatchesRef(t *testing.T) {
+	rows, cols := 1, 4
+	qvals := []byte{0, 1, 2, 3}
+	packed := packI2SRaw(qvals)
+	vec := []int8{1, -2, 3, -4}
+	actSum := int32(0)
+	for _, v := range vec {
+		actSum += int32(v)
+	}
+	dst := make([]float32, rows)
+	ref := make([]float32, rows)
+
+	MatVecI2SI8SMap(dst, packed, rows, cols, vec, 1.0, 1.0, actSum)
+	MatVecI2SI8SRef(ref, packed, rows, cols, vec, 1.0, 1.0)
+	if dst[0] != ref[0] {
+		t.Fatalf("dst[0] = %f, want %f", dst[0], ref[0])
+	}
+}
+
+func TestMatVecTI2SI8SMapMatchesRef(t *testing.T) {
+	rows, cols := 4, 1
+	qvals := []byte{0, 1, 2, 3}
+	packed := packI2SRaw(qvals)
+	vec := []int8{1, -2, 3, -4}
+	actSum := int32(0)
+	for _, v := range vec {
+		actSum += int32(v)
+	}
+	dst := make([]float32, cols)
+	ref := make([]float32, cols)
+
+	MatVecTI2SI8SMap(dst, packed, rows, cols, vec, 1.0, 1.0, actSum)
+	MatVecTI2SI8SRef(ref, packed, rows, cols, vec, 1.0, 1.0)
+	if dst[0] != ref[0] {
+		t.Fatalf("dst[0] = %f, want %f", dst[0], ref[0])
+	}
+}
+
 func packI2SQuant(vals []int) []byte {
 	const block = 128
 	const blockBytes = 32
@@ -125,6 +163,21 @@ func packI2SQuant(vals []int) []byte {
 		group := off / 32
 		shift := uint(6 - 2*group)
 		packed[blk*blockBytes+gp] |= q << shift
+	}
+	return packed
+}
+
+func packI2SRaw(vals []byte) []byte {
+	const block = 128
+	const blockBytes = 32
+	n := len(vals)
+	packed := make([]byte, (n+block-1)/block*blockBytes)
+	for i, q := range vals {
+		gp := i % 32
+		group := i / 32
+		p := (i/block)*blockBytes + gp
+		shift := uint(6 - 2*group)
+		packed[p] |= (q & 0x3) << shift
 	}
 	return packed
 }

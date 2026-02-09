@@ -11,6 +11,9 @@ type GenerateRequest struct {
 	Prompt    string
 	Seed      int64
 	MaxTokens int
+	Temp      float32
+	TopP      float32
+	TopK      int
 }
 
 type GenerateResult struct {
@@ -72,6 +75,9 @@ func (s *Session) Generate(ctx context.Context, req GenerateRequest) (GenerateRe
 		Prompt:    req.Prompt,
 		Seed:      req.Seed,
 		MaxTokens: req.MaxTokens,
+		Temp:      req.Temp,
+		TopP:      req.TopP,
+		TopK:      req.TopK,
 	})
 	if err != nil {
 		return GenerateResult{}, err

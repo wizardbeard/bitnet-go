@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,6 +19,9 @@ type GenerateRequest struct {
 	Prompt    string
 	Seed      int64
 	MaxTokens int
+	Temp      float32
+	TopP      float32
+	TopK      int
 }
 
 type Metadata struct {
@@ -113,6 +117,8 @@ var debugFastV = os.Getenv("BITNET_FAST_V_DOT") != "0" && !debugParityStrict
 var debugKVRowMajor = os.Getenv("BITNET_KV_ROWMAJOR") != "0"
 var debugFastQKVCol = os.Getenv("BITNET_FAST_QKV_COL") == "1" && !debugParityStrict
 var debugQKVFusedMax = parseEnvInt("BITNET_QKV_FUSED_MAX", 256*256)
+var debugStrictAttnRef = os.Getenv("BITNET_STRICT_ATTENTION_REF") == "1"
+var debugStrictFFNRef = os.Getenv("BITNET_STRICT_FFN_REF") == "1"
 var debugMatchGGML = os.Getenv("BITNET_MATCH_GGML") == "1" || debugParityStrict
 var debugAttnRef = os.Getenv("BITNET_DEBUG_ATTN_REF") == "1"
 var debugFFNRef = os.Getenv("BITNET_DEBUG_FFN_REF") == "1"
@@ -124,13 +130,63 @@ var debugI2SDisableActSum = os.Getenv("BITNET_I2S_DISABLE_ACTSUM") == "1"
 var debugI2SInvertActScale = os.Getenv("BITNET_I2S_INVERT_ACT_SCALE") == "1"
 var debugI2SFloat = os.Getenv("BITNET_I2S_F32") == "1" || debugParityStrict
 var debugI2SForceQuant = os.Getenv("BITNET_I2S_FORCE_Q") == "1"
+var debugI2SRefDot = os.Getenv("BITNET_I2S_REF_DOT") == "1"
 var debugI2SMatvecRef = os.Getenv("BITNET_DEBUG_I2S_MATVEC_REF") == "1"
 var debugI2SMatvecPrinted bool
+var debugI2SRefOnce = os.Getenv("BITNET_I2S_REF_ONCE") == "1"
+var debugI2SRefOncePrinted bool
+var debugI2SMap3To1 = os.Getenv("BITNET_I2S_MAP3_TO1") == "1"
+var debugI2SAltLayout = os.Getenv("BITNET_I2S_ALT_LAYOUT") == "1"
+var debugI2SScalar = os.Getenv("BITNET_I2S_SCALAR") == "1"
 var disableTopK = os.Getenv("BITNET_DISABLE_TOPK") == "1"
 var i8ScratchPool = sync.Pool{
 	New: func() any {
 		return make([]int8, 0)
 	},
+}
+
+type samplingConfig struct {
+	temp float32
+	topP float32
+	topK int
+}
+
+func (c *samplingConfig) normalize() {
+	if c.temp < 0 {
+		c.temp = 0
+	}
+	if c.topP <= 0 || c.topP > 1 {
+		c.topP = 1
+	}
+	if c.topK < 0 {
+		c.topK = 0
+	}
+}
+
+type sampler struct {
+	state uint64
+}
+
+func newSampler(seed int64) *sampler {
+	state := uint64(seed) ^ 0x9e3779b97f4a7c15
+	if state == 0 {
+		state = 1
+	}
+	return &sampler{state: state}
+}
+
+func (s *sampler) nextU64() uint64 {
+	x := s.state
+	x ^= x >> 12
+	x ^= x << 25
+	x ^= x >> 27
+	s.state = x
+	return x * 2685821657736338717
+}
+
+func (s *sampler) nextFloat() float32 {
+	const denom = 1.0 / (1 << 53)
+	return float32(float64(s.nextU64()>>11) * denom)
 }
 
 func parseDebugPos(v string) int {
@@ -338,11 +394,17 @@ func (r *Runtime) Generate(_ context.Context, req GenerateRequest) (struct {
 	if !disableTopK {
 		topkWriter = newTopKWriter(req.MaxTokens, 5)
 	}
+	cfg := samplingConfig{
+		temp: req.Temp,
+		topP: req.TopP,
+		topK: req.TopK,
+	}
+	cfg.normalize()
 	forceTokens := forceTokensFromEnv()
 	if r.block != nil {
-		runForwardTensorBlock(r.block, req.Seed, promptTokens, tokens, topkWriter, forceTokens)
+		runForwardTensorBlock(r.block, req.Seed, promptTokens, tokens, topkWriter, forceTokens, cfg)
 	} else {
-		runForwardStub(r.meta.VocabSize, req.Seed, promptTokens, tokens, topkWriter)
+		runForwardStub(r.meta.VocabSize, req.Seed, promptTokens, tokens, topkWriter, cfg)
 	}
 
 	return struct {
@@ -815,24 +877,30 @@ func loadLlamaLayer(path string, info gguf.ModelInfo, layerIdx int, prefix strin
 	return l, nil
 }
 
-func runForwardTensorBlock(block *tensorBlock, seed int64, promptTokens []int32, out []int32, topk *topKWriter, forceTokens []int32) {
+func runForwardTensorBlock(block *tensorBlock, seed int64, promptTokens []int32, out []int32, topk *topKWriter, forceTokens []int32, cfg samplingConfig) {
 	switch block.mode {
 	case tensorBlockModeProjection:
-		runForwardProjectionBlock(block, seed, promptTokens, out, topk)
+		runForwardProjectionBlock(block, seed, promptTokens, out, topk, cfg)
 	case tensorBlockModeEmbeddingOutput:
-		runForwardEmbeddingOutputBlock(block, seed, promptTokens, out, topk)
+		runForwardEmbeddingOutputBlock(block, seed, promptTokens, out, topk, cfg)
 	case tensorBlockModeLlamaStack:
-		runForwardLlamaStack(block, seed, promptTokens, out, topk, forceTokens)
+		runForwardLlamaStack(block, seed, promptTokens, out, topk, forceTokens, cfg)
 	default:
-		runForwardStub(uint32(block.vocabDim), seed, promptTokens, out, topk)
+		runForwardStub(uint32(block.vocabDim), seed, promptTokens, out, topk, cfg)
 	}
 }
 
-func runForwardProjectionBlock(block *tensorBlock, seed int64, promptTokens []int32, out []int32, topk *topKWriter) {
+func runForwardProjectionBlock(block *tensorBlock, seed int64, promptTokens []int32, out []int32, topk *topKWriter, cfg samplingConfig) {
 	state := make([]float32, block.hiddenDim)
 	tokenVec := make([]float32, block.hiddenDim)
 	nextState := make([]float32, block.hiddenDim)
 	logits := make([]float32, block.vocabDim)
+	sampler := newSampler(seed)
+	probs := make([]float32, block.vocabDim)
+	idx := make([]int, block.vocabDim)
+	for i := range idx {
+		idx[i] = i
+	}
 
 	mixState(state, tokenVec, int32(seed))
 	for _, tok := range promptTokens {
@@ -852,7 +920,7 @@ func runForwardProjectionBlock(block *tensorBlock, seed int64, promptTokens []in
 			topk.append(i, logits)
 		}
 
-		next := kernels.Argmax(logits)
+		next := sampleLogitsWithScratch(logits, cfg, sampler, probs, idx)
 		if next < 0 {
 			out[i] = 0
 			continue
@@ -864,10 +932,16 @@ func runForwardProjectionBlock(block *tensorBlock, seed int64, promptTokens []in
 	}
 }
 
-func runForwardEmbeddingOutputBlock(block *tensorBlock, seed int64, promptTokens []int32, out []int32, topk *topKWriter) {
+func runForwardEmbeddingOutputBlock(block *tensorBlock, seed int64, promptTokens []int32, out []int32, topk *topKWriter, cfg samplingConfig) {
 	state := make([]float32, block.hiddenDim)
 	logits := make([]float32, block.vocabDim)
 	scratch := make([]float32, block.hiddenDim)
+	sampler := newSampler(seed)
+	probs := make([]float32, block.vocabDim)
+	idx := make([]int, block.vocabDim)
+	for i := range idx {
+		idx[i] = i
+	}
 
 	fillTokenVector(state, int32(seed))
 	for _, tok := range promptTokens {
@@ -891,7 +965,7 @@ func runForwardEmbeddingOutputBlock(block *tensorBlock, seed int64, promptTokens
 			topk.append(i, logits)
 		}
 
-		next := kernels.Argmax(logits)
+		next := sampleLogitsWithScratch(logits, cfg, sampler, probs, idx)
 		if next < 0 {
 			out[i] = 0
 			continue
@@ -921,7 +995,7 @@ func embedToken(dst []float32, block *tensorBlock, token int32) bool {
 	return true
 }
 
-func runForwardLlamaStack(block *tensorBlock, seed int64, promptTokens []int32, out []int32, topk *topKWriter, forceTokens []int32) {
+func runForwardLlamaStack(block *tensorBlock, seed int64, promptTokens []int32, out []int32, topk *topKWriter, forceTokens []int32, cfg samplingConfig) {
 	if len(out) == 0 {
 		return
 	}
@@ -953,12 +1027,18 @@ func runForwardLlamaStack(block *tensorBlock, seed int64, promptTokens []int32, 
 		startPos = len(promptTokens) - 1
 	}
 
+	sampler := newSampler(seed)
+	probs := make([]float32, block.vocabDim)
+	idx := make([]int, block.vocabDim)
+	for i := range idx {
+		idx[i] = i
+	}
 	for i := range out {
 		runLlamaStackStep(block, layerStates, currentToken, startPos+i, x, n1, n2, logits)
 		if topk != nil {
 			topk.append(i, logits)
 		}
-		next := kernels.Argmax(logits)
+		next := sampleLogitsWithScratch(logits, cfg, sampler, probs, idx)
 		if i < len(forceTokens) {
 			next = int(forceTokens[i])
 		}
@@ -1136,7 +1216,11 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 			}
 
 			storeCacheVector(st.keys, pos, st.k)
-			if debugKVRowMajor {
+			if debugParityStrict || debugStrictAttnRef {
+				// Match ggml accumulation order in parity-strict mode.
+				storeCacheVectorV(st.values, pos, st.v, block.kvHeads)
+				causalAttentionMultiHeadIntoReference(st.attnAcc, st.q, st.keys, st.values, pos+1, block.attnHeads, block.kvHeads, len(st.k), len(st.v))
+			} else if debugKVRowMajor {
 				storeCacheVectorVRowMajor(st.values, pos, st.v, block.kvHeads)
 				causalAttentionMultiHeadIntoRowMajor(st.attnAcc, st.scores, st.q, st.keys, st.values, pos+1, block.attnHeads, block.kvHeads, len(st.k), len(st.v), pos)
 			} else {
@@ -1175,6 +1259,25 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 		}
 
 		if !disableFFN {
+			if debugStrictFFNRef {
+				rmsNormInto(n2, x, layer.ffnNorm, block.rmsEps)
+				linearApplyIntoWeight(st.gate, layer.ffnGate, n2)
+				linearApplyIntoWeight(st.up, layer.ffnUp, n2)
+				mulRelu2Reference(st.ffnAct, st.gate, st.up)
+				rmsNormInto(st.up, st.ffnAct, layer.ffnSubNorm, block.rmsEps)
+				linearApplyIntoWeight(st.ffnDown, layer.ffnDown, st.up)
+				kernels.AddScaled(x, st.ffnDown, 1.0)
+				if debugStages && shouldDebug(pos) && i == 0 {
+					debugStage("stage.ffn_sub_norm", st.up, block, stageNormBuf, false)
+					debugStage("stage.post_ffn", x, block, stageNormBuf, false)
+				}
+				if shouldDebug(pos) && i == 0 {
+					debugVecStats("ffn_act", st.ffnAct)
+					debugVecStats("ffn_down", st.ffnDown)
+					debugVecStats("x.post_ffn", x)
+				}
+				continue
+			}
 			var gateRef []float32
 			var upRef []float32
 			var actRef []float32
@@ -2059,10 +2162,56 @@ func linearApplyIntoWeight(dst []float32, w linearWeight, x []float32) {
 		if debugI2SInvertActScale && actScale != 0 {
 			actScale = 1 / actScale
 		}
-		if w.transposed {
-			kernels.MatVecTI2SI8S(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
+		if debugI2SRefOnce && !debugI2SRefOncePrinted {
+			ref := make([]float32, len(dst))
+			if w.transposed {
+				kernels.MatVecTI2SI8SRef(ref, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale)
+			} else {
+				kernels.MatVecI2SI8SRef(ref, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale)
+			}
+			var maxAbs, maxRel float32
+			for i := range ref {
+				diff := float32(math.Abs(float64(dst[i] - ref[i])))
+				if diff > maxAbs {
+					maxAbs = diff
+				}
+				den := float32(math.Abs(float64(ref[i]))) + 1e-9
+				rel := diff / den
+				if rel > maxRel {
+					maxRel = rel
+				}
+			}
+			fmt.Fprintf(os.Stderr, "debug i2s_ref_once max_abs=%g max_rel=%g act_sum=%d act_scale=%g\n", maxAbs, maxRel, actSum, actScale)
+			debugI2SRefOncePrinted = true
+		}
+		if debugI2SRefDot {
+			if w.transposed {
+				kernels.MatVecTI2SI8SRef(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale)
+			} else {
+				kernels.MatVecI2SI8SRef(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale)
+			}
 		} else {
-			kernels.MatVecI2SI8S(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
+			if w.transposed {
+				if debugI2SMap3To1 {
+					kernels.MatVecTI2SI8SMap(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
+				} else if debugI2SAltLayout {
+					kernels.MatVecTI2SI8SAlt(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
+				} else if debugI2SScalar {
+					kernels.MatVecTI2SI8SScalar(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
+				} else {
+					kernels.MatVecTI2SI8S(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
+				}
+			} else {
+				if debugI2SMap3To1 {
+					kernels.MatVecI2SI8SMap(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
+				} else if debugI2SAltLayout {
+					kernels.MatVecI2SI8SAlt(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
+				} else if debugI2SScalar {
+					kernels.MatVecI2SI8SScalar(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
+				} else {
+					kernels.MatVecI2SI8S(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
+				}
+			}
 		}
 		if debugI2SMatvecRef && !debugI2SMatvecPrinted {
 			ref := make([]float32, len(dst))
@@ -2265,7 +2414,7 @@ func firstString(values ...any) string {
 	return ""
 }
 
-func runForwardStub(vocabSize uint32, seed int64, promptTokens []int32, out []int32, topk *topKWriter) {
+func runForwardStub(vocabSize uint32, seed int64, promptTokens []int32, out []int32, topk *topKWriter, cfg samplingConfig) {
 	const hiddenDim = 32
 	state := make([]float32, hiddenDim)
 	tokenVec := make([]float32, hiddenDim)
@@ -2283,6 +2432,12 @@ func runForwardStub(vocabSize uint32, seed int64, promptTokens []int32, out []in
 		mixState(state, tokenVec, tok)
 	}
 
+	sampler := newSampler(seed)
+	probs := make([]float32, logitsCap)
+	idx := make([]int, logitsCap)
+	for i := range idx {
+		idx[i] = i
+	}
 	for i := range out {
 		for id := 0; id < logitsCap; id++ {
 			fillTokenVector(tokenVec, int32(id))
@@ -2292,7 +2447,7 @@ func runForwardStub(vocabSize uint32, seed int64, promptTokens []int32, out []in
 			topk.append(i, logits)
 		}
 
-		next := kernels.Argmax(logits)
+		next := sampleLogitsWithScratch(logits, cfg, sampler, probs, idx)
 		if next < 0 {
 			out[i] = 0
 			continue
@@ -2420,6 +2575,178 @@ func fillTopK(entries []TopKEntry, logits []float32, k int) int {
 		out[j+1] = key
 	}
 	return count
+}
+
+func sampleLogitsWithScratch(logits []float32, cfg samplingConfig, rng *sampler, probs []float32, idx []int) int {
+	if len(logits) == 0 {
+		return -1
+	}
+	if cfg.temp <= 0 {
+		return kernels.Argmax(logits)
+	}
+	if cfg.topK > 0 {
+		k := cfg.topK
+		if k > len(logits) {
+			k = len(logits)
+		}
+		entries := make([]TopKEntry, k)
+		n := fillTopK(entries, logits, k)
+		if n == 0 {
+			return kernels.Argmax(logits)
+		}
+		return sampleFromTopK(entries[:n], cfg.temp, cfg.topP, rng)
+	}
+	if cfg.topP < 1 {
+		return sampleFromTopP(logits, cfg.temp, cfg.topP, rng, probs, idx)
+	}
+	return sampleFromFull(logits, cfg.temp, rng, probs)
+}
+
+func sampleFromTopK(entries []TopKEntry, temp float32, topP float32, rng *sampler) int {
+	if len(entries) == 0 {
+		return -1
+	}
+	maxLogit := entries[0].Logit / temp
+	for i := 1; i < len(entries); i++ {
+		val := entries[i].Logit / temp
+		if val > maxLogit {
+			maxLogit = val
+		}
+	}
+	probs := make([]float32, len(entries))
+	var sum float32
+	for i := range entries {
+		val := entries[i].Logit/temp - maxLogit
+		p := expForSampling(val)
+		probs[i] = p
+		sum += p
+	}
+	if sum == 0 {
+		return int(entries[0].TokenID)
+	}
+	inv := 1 / sum
+	for i := range probs {
+		probs[i] *= inv
+	}
+	limit := len(entries)
+	if topP < 1 {
+		var cum float32
+		for i := 0; i < len(entries); i++ {
+			cum += probs[i]
+			if cum >= topP {
+				limit = i + 1
+				break
+			}
+		}
+		if limit < len(entries) {
+			var subSum float32
+			for i := 0; i < limit; i++ {
+				subSum += probs[i]
+			}
+			if subSum > 0 {
+				invSub := 1 / subSum
+				for i := 0; i < limit; i++ {
+					probs[i] *= invSub
+				}
+			}
+		}
+	}
+	r := rng.nextFloat()
+	var cum float32
+	for i := 0; i < limit; i++ {
+		cum += probs[i]
+		if r <= cum {
+			return int(entries[i].TokenID)
+		}
+	}
+	return int(entries[limit-1].TokenID)
+}
+
+func sampleFromFull(logits []float32, temp float32, rng *sampler, probs []float32) int {
+	if len(logits) == 0 {
+		return -1
+	}
+	maxLogit := logits[0] / temp
+	for i := 1; i < len(logits); i++ {
+		val := logits[i] / temp
+		if val > maxLogit {
+			maxLogit = val
+		}
+	}
+	var sum float32
+	for i := range logits {
+		val := logits[i]/temp - maxLogit
+		p := expForSampling(val)
+		probs[i] = p
+		sum += p
+	}
+	if sum == 0 {
+		return kernels.Argmax(logits)
+	}
+	inv := 1 / sum
+	for i := range probs {
+		probs[i] *= inv
+	}
+	r := rng.nextFloat()
+	var cum float32
+	for i := range probs {
+		cum += probs[i]
+		if r <= cum {
+			return i
+		}
+	}
+	return len(probs) - 1
+}
+
+func sampleFromTopP(logits []float32, temp float32, topP float32, rng *sampler, probs []float32, idx []int) int {
+	if len(logits) == 0 {
+		return -1
+	}
+	if len(idx) < len(logits) {
+		return sampleFromFull(logits, temp, rng, probs)
+	}
+	sort.Slice(idx[:len(logits)], func(i, j int) bool {
+		return logits[idx[i]] > logits[idx[j]]
+	})
+	maxLogit := logits[idx[0]] / temp
+	var cum float32
+	limit := len(logits)
+	for i := 0; i < len(logits); i++ {
+		id := idx[i]
+		val := logits[id]/temp - maxLogit
+		p := expForSampling(val)
+		probs[id] = p
+		cum += p
+		if cum >= topP {
+			limit = i + 1
+			break
+		}
+	}
+	if cum == 0 {
+		return kernels.Argmax(logits)
+	}
+	inv := 1 / cum
+	for i := 0; i < limit; i++ {
+		id := idx[i]
+		probs[id] *= inv
+	}
+	r := rng.nextFloat()
+	var run float32
+	for i := 0; i < limit; i++ {
+		id := idx[i]
+		run += probs[id]
+		if r <= run {
+			return id
+		}
+	}
+	return idx[limit-1]
+}
+
+func expForSampling(x float32) float32 {
+	if debugStrictExpf {
+		return expf32(x)
+	}
+	return float32(math.Exp(float64(x)))
 }
 
 func mixState(state, scratch []float32, token int32) {

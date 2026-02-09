@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "ggml.h"
+#include "ggml-quants.h"
 #include "llama.h"
 
 namespace {
@@ -93,6 +94,11 @@ struct DebugState {
     int target_pos = -1;
     int current_pos = -1;
     std::unordered_set<std::string> seen;
+    bool i2s_dot = false;
+    bool i2s_dot_done = false;
+    std::string i2s_dot_tensor;
+    int i2s_dot_row = 0;
+    llama_model * model = nullptr;
 };
 
 bool g_print_values = false;
@@ -239,6 +245,43 @@ bool eval_callback(struct ggml_tensor * t, bool ask, void * user_data) {
         return true;
     }
     print_tensor_stats(name, t);
+    if (state->i2s_dot && !state->i2s_dot_done && std::strcmp(name, "ffn_norm-0") == 0) {
+        if (t->type == GGML_TYPE_F32 && t->ne[0] > 0 && state->model != nullptr) {
+            ggml_tensor * w = llama_get_model_tensor(state->model, state->i2s_dot_tensor.c_str());
+            if (w == nullptr) {
+                std::printf("I2S_DOT error=missing_tensor name=%s\n", state->i2s_dot_tensor.c_str());
+            } else if (w->type != GGML_TYPE_I2_S) {
+                std::printf("I2S_DOT error=wrong_type name=%s type=%d\n", state->i2s_dot_tensor.c_str(), (int)w->type);
+            } else if (state->i2s_dot_row < 0 || state->i2s_dot_row >= w->ne[1]) {
+                std::printf("I2S_DOT error=row_oob name=%s row=%d rows=%lld\n", state->i2s_dot_tensor.c_str(), state->i2s_dot_row, (long long)w->ne[1]);
+            } else {
+                const int n = (int)w->ne[0];
+                const float * x = ggml_get_data_f32(t);
+                if (x != nullptr && n > 0) {
+                    std::vector<int8_t> q((size_t)n);
+                    float act_scale = 0.0f;
+                    int32_t act_sum = 0;
+                    quantize_row_i8_s(x, q.data(), n, &act_scale, &act_sum);
+
+                    const size_t row_stride = (size_t)w->nb[1] / 4;
+                    const uint8_t * wdata = (const uint8_t *)w->data;
+                    const uint8_t * row_ptr = wdata + (size_t)state->i2s_dot_row * row_stride;
+
+                    float dot = 0.0f;
+                    ggml_vec_dot_i2_i8_s(n, &dot, 0, row_ptr, 0, q.data(), 0, 1);
+
+                    const size_t scale_off = (size_t)w->ne[0] * (size_t)w->ne[1] / 4;
+                    const float * wscale = (const float *)(wdata + scale_off);
+                    const float weight_scale = wscale[0];
+
+                    const float out = (dot - (float)act_sum) / act_scale * weight_scale;
+                    std::printf("I2S_DOT name=%s row=%d dot=%.9g act_scale=%.9g act_sum=%d weight_scale=%.9g out=%.9g\n",
+                        state->i2s_dot_tensor.c_str(), state->i2s_dot_row, dot, act_scale, act_sum, weight_scale, out);
+                }
+            }
+        }
+        state->i2s_dot_done = true;
+    }
     return true;
 }
 
@@ -272,6 +315,9 @@ int main() {
     DebugState debug_state;
     debug_state.enabled = env_or_bool("BITNET_REF_DEBUG", false);
     debug_state.target_pos = env_or_int("BITNET_REF_DEBUG_POS", -1);
+    debug_state.i2s_dot = env_or_bool("BITNET_REF_I2S_DOT", false);
+    debug_state.i2s_dot_tensor = env_or("BITNET_REF_I2S_DOT_TENSOR", "blk.0.ffn_gate.weight");
+    debug_state.i2s_dot_row = env_or_int("BITNET_REF_I2S_DOT_ROW", 0);
     if (debug_state.enabled) {
         cparams.cb_eval = eval_callback;
         cparams.cb_eval_user_data = &debug_state;
@@ -290,6 +336,7 @@ int main() {
         llama_backend_free();
         return 1;
     }
+    debug_state.model = model;
 
     llama_context * ctx = llama_new_context_with_model(model, cparams);
     if (ctx == nullptr) {

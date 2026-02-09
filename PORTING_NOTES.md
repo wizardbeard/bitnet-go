@@ -180,6 +180,15 @@
 - update: fused Q/K/V is now gated by `BITNET_QKV_FUSED_MAX` (default `256*256`) to avoid large‑matrix regressions; large shapes fall back to separate matvecs.
 - update: tightened i2_s default logits rtol to `1e-1` after parity report (max_rel ~0.08); atol stays `2e-1`.
 - update: regenerated i2_s 2B parity vectors via `scripts/run_ref_i2s_2b.sh` and validated `TestParityAgainstI2S2BVectors`.
+- update: parity-strict mode now routes attention through the ggml-order reference path to reduce accumulation drift.
+- update: added `BITNET_STRICT_ATTENTION_REF=1` to use ggml-order attention without forcing full parity-strict mode.
+- update: added `BITNET_STRICT_FFN_REF=1` to route FFN activation through the reference path for drift analysis.
+- update: added `BITNET_I2S_REF_DOT=1` to use i2_s map‑to‑{-1,0,1} dot (ignores actSum) for drift analysis.
+- update: added `BITNET_I2S_REF_ONCE=1` to report one‑off i2_s ref‑dot deltas without full parity.
+- update: added `BITNET_I2S_MAP3_TO1=1` to map i2_s q=3 to 1 before actSum (debug/analysis).
+- update: added `BITNET_I2S_ALT_LAYOUT=1` to test row‑major packed layout for i2_s (debug/analysis).
+- update: added `BITNET_I2S_SCALAR=1` to force scalar i2_s dot (no block decode) for drift analysis.
+- update: ref tracer can emit ggml i2_s dot diagnostics via `BITNET_REF_I2S_DOT=1`.
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).

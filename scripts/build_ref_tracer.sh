@@ -21,6 +21,7 @@ fi
 
 LLAMA_INCLUDE="$REF_SRC/3rdparty/llama.cpp/include"
 GGML_INCLUDE="$REF_SRC/3rdparty/llama.cpp/ggml/include"
+GGML_SRC_INCLUDE="$REF_SRC/3rdparty/llama.cpp/ggml/src"
 LLAMA_LIB_DIR="$REF_BUILD_DIR/3rdparty/llama.cpp/src"
 GGML_LIB_DIR="$REF_BUILD_DIR/3rdparty/llama.cpp/ggml/src"
 
@@ -38,6 +39,7 @@ mkdir -p "$REF_DIR/bin"
     -O2 \
     -I"$LLAMA_INCLUDE" \
     -I"$GGML_INCLUDE" \
+    -I"$GGML_SRC_INCLUDE" \
     "$SRC_FILE" \
     -L"$LLAMA_LIB_DIR" \
     -L"$GGML_LIB_DIR" \
