@@ -1808,32 +1808,61 @@ func applyRoPEInPlace(v []float32, pos, heads int, base, scale float32, scalingT
 	if half == 0 {
 		return
 	}
-	posf := float32(ropeScaledPosition(pos, scale, scalingType))
-	thetaScale := float32(math.Pow(float64(base), -2.0/float64(ropeDim)))
+	posf := ropeScaledPosition(pos, scale, scalingType)
+	thetaScale := math.Pow(float64(base), -2.0/float64(ropeDim))
+
+	if scalingType != "yarn" {
+		for h := 0; h < heads; h++ {
+			offset := h * headDim
+			theta := posf
+			if ropeNeox {
+				halfDim := ropeDim / 2
+				for i := 0; i+1 < ropeDim; i += 2 {
+					sinT, cosT := math.Sincos(theta)
+					pair := i / 2
+					x0 := v[offset+pair]
+					x1 := v[offset+pair+halfDim]
+					v[offset+pair] = x0*float32(cosT) - x1*float32(sinT)
+					v[offset+pair+halfDim] = x0*float32(sinT) + x1*float32(cosT)
+					theta *= thetaScale
+				}
+				continue
+			}
+			for i := 0; i+1 < ropeDim; i += 2 {
+				sinT, cosT := math.Sincos(theta)
+				x0 := v[offset+i]
+				x1 := v[offset+i+1]
+				v[offset+i] = x0*float32(cosT) - x1*float32(sinT)
+				v[offset+i+1] = x0*float32(sinT) + x1*float32(cosT)
+				theta *= thetaScale
+			}
+		}
+		return
+	}
 
 	for h := 0; h < heads; h++ {
 		offset := h * headDim
-		theta := posf
+		theta := float32(posf)
 		if ropeNeox {
 			halfDim := ropeDim / 2
 			for i := 0; i+1 < ropeDim; i += 2 {
+				cosT, sinT := ropeYarnCosSin(theta, scale, betaFast, betaSlow, extFactor, attnFactor, i)
 				pair := i / 2
-				cosT, sinT := ropeCosSin(theta, scale, scalingType, betaFast, betaSlow, extFactor, attnFactor, i)
 				x0 := v[offset+pair]
 				x1 := v[offset+pair+halfDim]
 				v[offset+pair] = x0*cosT - x1*sinT
 				v[offset+pair+halfDim] = x0*sinT + x1*cosT
-				theta *= thetaScale
+				theta = float32(float64(theta) * thetaScale)
 			}
 			continue
 		}
 		for i := 0; i+1 < ropeDim; i += 2 {
-			cosT, sinT := ropeCosSin(theta, scale, scalingType, betaFast, betaSlow, extFactor, attnFactor, i)
+			cosT, sinT := ropeYarnCosSin(theta, scale, betaFast, betaSlow, extFactor, attnFactor, i)
 			x0 := v[offset+i]
 			x1 := v[offset+i+1]
 			v[offset+i] = x0*cosT - x1*sinT
 			v[offset+i+1] = x0*sinT + x1*cosT
-			theta *= thetaScale
+			theta = float32(float64(theta) * thetaScale)
 		}
 	}
 }
@@ -1860,18 +1889,6 @@ func ropeScaledPosition(pos int, scale float32, scalingType string) float64 {
 	return p
 }
 
-func ropeCosSin(thetaBase float32, scale float32, scalingType string, betaFast, betaSlow, extFactor, attnFactor float32, i0 int) (float32, float32) {
-	switch scalingType {
-	case "yarn":
-		return ropeYarnCosSin(thetaBase, scale, betaFast, betaSlow, extFactor, attnFactor, i0)
-	default:
-		theta := float64(thetaBase)
-		cosT := float32(math.Cos(theta))
-		sinT := float32(math.Sin(theta))
-		return cosT, sinT
-	}
-}
-
 func ropeYarnCosSin(thetaExtrap float32, scale, betaFast, betaSlow, extFactor, attnFactor float32, i0 int) (float32, float32) {
 	freqScale := float32(1.0)
 	if scale != 0 {
@@ -1886,9 +1903,8 @@ func ropeYarnCosSin(thetaExtrap float32, scale, betaFast, betaSlow, extFactor, a
 		theta = thetaInterp*(1-rampMix) + thetaExtrap*rampMix
 		mscale *= 1.0 + 0.1*float32(math.Log(float64(1.0/freqScale)))
 	}
-	cosT := float32(math.Cos(float64(theta))) * mscale
-	sinT := float32(math.Sin(float64(theta))) * mscale
-	return cosT, sinT
+	sinT, cosT := math.Sincos(float64(theta))
+	return float32(cosT) * mscale, float32(sinT) * mscale
 }
 
 func ropeYarnRamp(low, high float32, i0 int) float32 {

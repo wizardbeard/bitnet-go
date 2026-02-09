@@ -196,6 +196,7 @@
 - update: added `BITNET_FAST_EXPF=1` to use the fast expf approximation in softmax/sampling (non-parity). Benchmark (i7-11800H): softmax dispatch `1506ns` vs ~`1766ns` prior (~1.17x).
 - update: tokenizer ASCII classification now uses a precomputed table (reduced branching). Bench (i7-11800H): SplitGPT2 `240.8ns`, SplitLlama3 `259.2ns`, TokenizeBPE hot `196.3ns` (3 allocs).
 - update: row‑major KV read path now processes two value rows per step (`accumWeightedRow2`) to reduce loop overhead. Benchmark (i7-11800H): row_major attention `34.2us` (steps=64), `66.8us` (128), `275.5us` (256).
+- update: RoPE now uses `math.Sincos` and a fast non‑YaRN path (no helper call per pair). Bench (i7-11800H): linear h=8/d=64 `4392ns` -> `2986ns` (~1.47x), h=16/d=128 `17331ns` -> `11273ns` (~1.54x); YaRN `8701ns` -> `6808ns`.
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).
