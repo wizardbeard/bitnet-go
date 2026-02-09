@@ -440,21 +440,42 @@ func isASCII(s string) bool {
 	return true
 }
 
+const (
+	asciiClassLetter = 1 << iota
+	asciiClassDigit
+	asciiClassSpace
+)
+
+var asciiClassTable = func() [256]uint8 {
+	var tbl [256]uint8
+	for c := byte('a'); c <= 'z'; c++ {
+		tbl[c] |= asciiClassLetter
+	}
+	for c := byte('A'); c <= 'Z'; c++ {
+		tbl[c] |= asciiClassLetter
+	}
+	for c := byte('0'); c <= '9'; c++ {
+		tbl[c] |= asciiClassDigit
+	}
+	tbl[' '] |= asciiClassSpace
+	tbl['\t'] |= asciiClassSpace
+	tbl['\n'] |= asciiClassSpace
+	tbl['\r'] |= asciiClassSpace
+	tbl['\v'] |= asciiClassSpace
+	tbl['\f'] |= asciiClassSpace
+	return tbl
+}()
+
 func isASCIILetter(b byte) bool {
-	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
+	return asciiClassTable[b]&asciiClassLetter != 0
 }
 
 func isASCIIDigit(b byte) bool {
-	return b >= '0' && b <= '9'
+	return asciiClassTable[b]&asciiClassDigit != 0
 }
 
 func isASCIISpace(b byte) bool {
-	switch b {
-	case ' ', '\t', '\n', '\r', '\v', '\f':
-		return true
-	default:
-		return false
-	}
+	return asciiClassTable[b]&asciiClassSpace != 0
 }
 
 func (t *Tokenizer) encodeBPEWord(word string) []int32 {

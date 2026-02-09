@@ -12,7 +12,7 @@ func softmaxInPlaceOpt(scores []float32, maxScore float32) float32 {
 		d2 := scores[i+2] - maxScore
 		d3 := scores[i+3] - maxScore
 		var w0, w1, w2, w3 float32
-		if debugStrictExpf {
+		if debugStrictExpf || debugFastExpf {
 			w0 = expf32(d0)
 			w1 = expf32(d1)
 			w2 = expf32(d2)
@@ -36,7 +36,7 @@ func softmaxInPlaceOpt(scores []float32, maxScore float32) float32 {
 	for ; i < n; i++ {
 		diff := scores[i] - maxScore
 		var w float32
-		if debugStrictExpf {
+		if debugStrictExpf || debugFastExpf {
 			w = expf32(diff)
 		} else {
 			w = float32(math.Exp(float64(diff)))

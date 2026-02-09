@@ -34,53 +34,120 @@ static inline uint8_t i2s_get(const uint8_t *packed, int idx) {
 
 void matvec_i2s_avx2(float *dst, const uint8_t *packed, int rows, int cols, const float *vec, float scale) {
     const float map[4] = {-1.0f, 0.0f, 1.0f, 0.0f};
-    for (int r = 0; r < rows; r++) {
-        float sum = 0.0f;
-        int c = 0;
-        for (; c + 8 <= cols; c += 8) {
-            float w[8];
-            for (int i = 0; i < 8; i++) {
-                int idx = r + rows * (c + i);
-                uint8_t q = i2s_get(packed, idx);
-                w[i] = map[q];
+    if (rows % 128 != 0) {
+        for (int r = 0; r < rows; r++) {
+            float sum = 0.0f;
+            int c = 0;
+            for (; c + 8 <= cols; c += 8) {
+                float w[8];
+                for (int i = 0; i < 8; i++) {
+                    int idx = r + rows * (c + i);
+                    uint8_t q = i2s_get(packed, idx);
+                    w[i] = map[q];
+                }
+                __m256 vw = _mm256_loadu_ps(w);
+                __m256 vx = _mm256_loadu_ps(vec + c);
+                __m256 prod = _mm256_mul_ps(vw, vx);
+                sum += hsum256_ps(prod);
             }
-            __m256 vw = _mm256_loadu_ps(w);
-            __m256 vx = _mm256_loadu_ps(vec + c);
-            __m256 prod = _mm256_mul_ps(vw, vx);
-            sum += hsum256_ps(prod);
+            for (; c < cols; c++) {
+                int idx = r + rows * c;
+                uint8_t q = i2s_get(packed, idx);
+                sum += map[q] * vec[c];
+            }
+            dst[r] = sum * scale;
         }
-        for (; c < cols; c++) {
-            int idx = r + rows * c;
-            uint8_t q = i2s_get(packed, idx);
-            sum += map[q] * vec[c];
+        return;
+    }
+
+    for (int r = 0; r < rows; r++) {
+        dst[r] = 0.0f;
+    }
+
+    const int blocks = rows / 128;
+    for (int c = 0; c < cols; c++) {
+        const float v = vec[c] * scale;
+        if (v == 0.0f) {
+            continue;
         }
-        dst[r] = sum * scale;
+        int basePacked = (c * rows / 128) * 32;
+        int rowBase = 0;
+        __m256 vv = _mm256_set1_ps(v);
+        for (int b = 0; b < blocks; b++) {
+            float w[128];
+            const uint8_t *p = packed + basePacked;
+            for (int gp = 0; gp < 32; gp++) {
+                const uint8_t val = p[gp];
+                w[gp] = map[val >> 6];
+                w[32 + gp] = map[(val >> 4) & 0x3];
+                w[64 + gp] = map[(val >> 2) & 0x3];
+                w[96 + gp] = map[val & 0x3];
+            }
+            for (int i = 0; i < 128; i += 8) {
+                __m256 vw = _mm256_loadu_ps(w + i);
+                __m256 vd = _mm256_loadu_ps(dst + rowBase + i);
+                vd = _mm256_add_ps(vd, _mm256_mul_ps(vw, vv));
+                _mm256_storeu_ps(dst + rowBase + i, vd);
+            }
+            basePacked += 32;
+            rowBase += 128;
+        }
     }
 }
 
 void matvec_t_i2s_avx2(float *dst, const uint8_t *packed, int rows, int cols, const float *vec, float scale) {
     const float map[4] = {-1.0f, 0.0f, 1.0f, 0.0f};
+    if (rows % 128 != 0) {
+        for (int c = 0; c < cols; c++) {
+            float sum = 0.0f;
+            int r = 0;
+            for (; r + 8 <= rows; r += 8) {
+                float w[8];
+                for (int i = 0; i < 8; i++) {
+                    int idx = (r + i) + rows * c;
+                    uint8_t q = i2s_get(packed, idx);
+                    w[i] = map[q];
+                }
+                __m256 vw = _mm256_loadu_ps(w);
+                __m256 vx = _mm256_loadu_ps(vec + r);
+                __m256 prod = _mm256_mul_ps(vw, vx);
+                sum += hsum256_ps(prod);
+            }
+            for (; r < rows; r++) {
+                int idx = r + rows * c;
+                uint8_t q = i2s_get(packed, idx);
+                sum += map[q] * vec[r];
+            }
+            sum *= scale;
+            dst[c] = sum;
+        }
+        return;
+    }
+
+    const int blocks = rows / 128;
     for (int c = 0; c < cols; c++) {
         float sum = 0.0f;
-        int r = 0;
-        for (; r + 8 <= rows; r += 8) {
-            float w[8];
-            for (int i = 0; i < 8; i++) {
-                int idx = (r + i) + rows * c;
-                uint8_t q = i2s_get(packed, idx);
-                w[i] = map[q];
+        int basePacked = (c * rows / 128) * 32;
+        int rowBase = 0;
+        for (int b = 0; b < blocks; b++) {
+            float w[128];
+            const uint8_t *p = packed + basePacked;
+            for (int gp = 0; gp < 32; gp++) {
+                const uint8_t val = p[gp];
+                w[gp] = map[val >> 6];
+                w[32 + gp] = map[(val >> 4) & 0x3];
+                w[64 + gp] = map[(val >> 2) & 0x3];
+                w[96 + gp] = map[val & 0x3];
             }
-            __m256 vw = _mm256_loadu_ps(w);
-            __m256 vx = _mm256_loadu_ps(vec + r);
-            __m256 prod = _mm256_mul_ps(vw, vx);
-            sum += hsum256_ps(prod);
+            for (int i = 0; i < 128; i += 8) {
+                __m256 vw = _mm256_loadu_ps(w + i);
+                __m256 vx = _mm256_loadu_ps(vec + rowBase + i);
+                __m256 prod = _mm256_mul_ps(vw, vx);
+                sum += hsum256_ps(prod);
+            }
+            basePacked += 32;
+            rowBase += 128;
         }
-        for (; r < rows; r++) {
-            int idx = r + rows * c;
-            uint8_t q = i2s_get(packed, idx);
-            sum += map[q] * vec[r];
-        }
-        sum *= scale;
-        dst[c] = sum;
+        dst[c] = sum * scale;
     }
 }

@@ -110,6 +110,7 @@ var debugSoftmaxPrinted bool
 var debugParityStrict = os.Getenv("BITNET_PARITY_STRICT") == "1"
 var debugStrictAttention = os.Getenv("BITNET_STRICT_ATTENTION") == "1"
 var debugStrictExpf = os.Getenv("BITNET_STRICT_EXPF") == "1"
+var debugFastExpf = os.Getenv("BITNET_FAST_EXPF") == "1" && !debugParityStrict
 var debugAttnF64 = os.Getenv("BITNET_ATTN_F64") == "1"
 var debugStrictKQ = os.Getenv("BITNET_STRICT_KQ") == "1" || debugParityStrict
 var debugFastKQ = os.Getenv("BITNET_FAST_KQ_DOT") != "0" && !debugParityStrict
@@ -1649,7 +1650,7 @@ func causalAttentionMultiHeadIntoReference(dst, q, keys, values []float32, steps
 		for i := 0; i < steps; i++ {
 			diff := scores[i] - maxScore
 			var w float32
-			if debugStrictExpf {
+			if debugStrictExpf || debugFastExpf {
 				w = expf32(diff)
 			} else {
 				w = float32(math.Exp(float64(diff)))
@@ -2305,7 +2306,63 @@ func matVec3F32Col(dstA, dstB, dstC []float32, matA, matB, matC []float32, rows,
 	for c := 0; c < cols; c++ {
 		scale := vec[c]
 		base := rows * c
-		for r := 0; r < rows; r++ {
+		r := 0
+		for ; r+7 < rows; r += 8 {
+			a0 := matA[base+r] * scale
+			a1 := matA[base+r+1] * scale
+			a2 := matA[base+r+2] * scale
+			a3 := matA[base+r+3] * scale
+			a4 := matA[base+r+4] * scale
+			a5 := matA[base+r+5] * scale
+			a6 := matA[base+r+6] * scale
+			a7 := matA[base+r+7] * scale
+
+			b0 := matB[base+r] * scale
+			b1 := matB[base+r+1] * scale
+			b2 := matB[base+r+2] * scale
+			b3 := matB[base+r+3] * scale
+			b4 := matB[base+r+4] * scale
+			b5 := matB[base+r+5] * scale
+			b6 := matB[base+r+6] * scale
+			b7 := matB[base+r+7] * scale
+
+			c0 := matC[base+r] * scale
+			c1 := matC[base+r+1] * scale
+			c2 := matC[base+r+2] * scale
+			c3 := matC[base+r+3] * scale
+			c4 := matC[base+r+4] * scale
+			c5 := matC[base+r+5] * scale
+			c6 := matC[base+r+6] * scale
+			c7 := matC[base+r+7] * scale
+
+			dstA[r] += a0
+			dstA[r+1] += a1
+			dstA[r+2] += a2
+			dstA[r+3] += a3
+			dstA[r+4] += a4
+			dstA[r+5] += a5
+			dstA[r+6] += a6
+			dstA[r+7] += a7
+
+			dstB[r] += b0
+			dstB[r+1] += b1
+			dstB[r+2] += b2
+			dstB[r+3] += b3
+			dstB[r+4] += b4
+			dstB[r+5] += b5
+			dstB[r+6] += b6
+			dstB[r+7] += b7
+
+			dstC[r] += c0
+			dstC[r+1] += c1
+			dstC[r+2] += c2
+			dstC[r+3] += c3
+			dstC[r+4] += c4
+			dstC[r+5] += c5
+			dstC[r+6] += c6
+			dstC[r+7] += c7
+		}
+		for ; r < rows; r++ {
 			dstA[r] += matA[base+r] * scale
 			dstB[r] += matB[base+r] * scale
 			dstC[r] += matC[base+r] * scale

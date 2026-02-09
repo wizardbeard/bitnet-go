@@ -115,17 +115,18 @@ func causalAttentionMultiHeadIntoOptimized(dst, scores, q, keys, values []float3
 		}
 
 		weights := scores[scoreBase : scoreBase+steps]
-		for i := 0; i < steps; i++ {
-			weights[i] *= inv
-		}
 		vHeadBase := kvHead * headDim * maxSeq
 		for j := 0; j < headDim; j++ {
 			rowBase := vHeadBase + j*maxSeq
 			if debugAttnF64 {
 				row := values[rowBase : rowBase+steps]
-				dst[qBase+j] += dotF64(row, weights)
+				var sum64 float64
+				for i := 0; i < steps; i++ {
+					sum64 += float64(row[i]) * float64(weights[i]*inv)
+				}
+				dst[qBase+j] += float32(sum64)
 			} else {
-				dst[qBase+j] += dotF32FastN(values, rowBase, weights, 0, steps)
+				dst[qBase+j] += dotF32FastNScaled(values, rowBase, weights, 0, steps, inv)
 			}
 		}
 	}
@@ -235,25 +236,29 @@ func causalAttentionMultiHeadIntoRowMajor(dst, scores, q, keys, values []float32
 		}
 
 		weights := scores[scoreBase : scoreBase+steps]
-		for i := 0; i < steps; i++ {
-			weights[i] *= inv
-		}
 		vHeadBase := kvHead * maxSeq * headDim
 		if debugAttnF64 {
 			for j := 0; j < headDim; j++ {
 				var sum64 float64
 				for i := 0; i < steps; i++ {
 					rowBase := vHeadBase + i*headDim
-					sum64 += float64(values[rowBase+j]) * float64(weights[i])
+					sum64 += float64(values[rowBase+j]) * float64(weights[i]*inv)
 				}
 				dst[qBase+j] += float32(sum64)
 			}
 			continue
 		}
 		dstHead := dst[qBase : qBase+headDim]
-		for i := 0; i < steps; i++ {
+		i := 0
+		for ; i+1 < steps; i += 2 {
 			rowBase := vHeadBase + i*headDim
-			accumWeightedRow(dstHead, values[rowBase:rowBase+headDim], weights[i])
+			row0 := values[rowBase : rowBase+headDim]
+			row1 := values[rowBase+headDim : rowBase+2*headDim]
+			accumWeightedRow2(dstHead, row0, row1, weights[i]*inv, weights[i+1]*inv)
+		}
+		if i < steps {
+			rowBase := vHeadBase + i*headDim
+			accumWeightedRow(dstHead, values[rowBase:rowBase+headDim], weights[i]*inv)
 		}
 	}
 }
@@ -276,6 +281,30 @@ func accumWeightedRow(dst, row []float32, w float32) {
 	}
 	for ; i < n; i++ {
 		dst[i] += row[i] * w
+	}
+}
+
+func accumWeightedRow2(dst, row0, row1 []float32, w0, w1 float32) {
+	n := len(dst)
+	if len(row0) < n {
+		n = len(row0)
+	}
+	if len(row1) < n {
+		n = len(row1)
+	}
+	i := 0
+	for ; i+7 < n; i += 8 {
+		dst[i] += row0[i]*w0 + row1[i]*w1
+		dst[i+1] += row0[i+1]*w0 + row1[i+1]*w1
+		dst[i+2] += row0[i+2]*w0 + row1[i+2]*w1
+		dst[i+3] += row0[i+3]*w0 + row1[i+3]*w1
+		dst[i+4] += row0[i+4]*w0 + row1[i+4]*w1
+		dst[i+5] += row0[i+5]*w0 + row1[i+5]*w1
+		dst[i+6] += row0[i+6]*w0 + row1[i+6]*w1
+		dst[i+7] += row0[i+7]*w0 + row1[i+7]*w1
+	}
+	for ; i < n; i++ {
+		dst[i] += row0[i]*w0 + row1[i]*w1
 	}
 }
 
@@ -340,6 +369,43 @@ func dotF32FastN(a []float32, aOff int, b []float32, bOff int, n int) float32 {
 	sum += (sum4 + sum5) + (sum6 + sum7)
 	for ; i < n; i++ {
 		sum += a[aOff+i] * b[bOff+i]
+	}
+	return sum
+}
+
+func dotF32FastNScaled(a []float32, aOff int, b []float32, bOff int, n int, scale float32) float32 {
+	if n <= 0 {
+		return 0
+	}
+	if aOff < 0 || bOff < 0 {
+		return 0
+	}
+	if aOff+n > len(a) {
+		n = len(a) - aOff
+	}
+	if bOff+n > len(b) {
+		n = len(b) - bOff
+	}
+	if n <= 0 {
+		return 0
+	}
+	var sum0, sum1, sum2, sum3 float32
+	var sum4, sum5, sum6, sum7 float32
+	i := 0
+	for ; i+7 < n; i += 8 {
+		sum0 += a[aOff+i] * (b[bOff+i] * scale)
+		sum1 += a[aOff+i+1] * (b[bOff+i+1] * scale)
+		sum2 += a[aOff+i+2] * (b[bOff+i+2] * scale)
+		sum3 += a[aOff+i+3] * (b[bOff+i+3] * scale)
+		sum4 += a[aOff+i+4] * (b[bOff+i+4] * scale)
+		sum5 += a[aOff+i+5] * (b[bOff+i+5] * scale)
+		sum6 += a[aOff+i+6] * (b[bOff+i+6] * scale)
+		sum7 += a[aOff+i+7] * (b[bOff+i+7] * scale)
+	}
+	sum := (sum0 + sum1) + (sum2 + sum3)
+	sum += (sum4 + sum5) + (sum6 + sum7)
+	for ; i < n; i++ {
+		sum += a[aOff+i] * (b[bOff+i] * scale)
 	}
 	return sum
 }

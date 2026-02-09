@@ -189,6 +189,13 @@
 - update: added `BITNET_I2S_ALT_LAYOUT=1` to test row‑major packed layout for i2_s (debug/analysis).
 - update: added `BITNET_I2S_SCALAR=1` to force scalar i2_s dot (no block decode) for drift analysis.
 - update: ref tracer can emit ggml i2_s dot diagnostics via `BITNET_REF_I2S_DOT=1`.
+- update: improved amd64+cgo AVX2 i2_s matvec path with block decode and AVX2 accumulation for `rows % 128 == 0` (still gated by `BITNET_FORCE_AVX2=1`).
+- update: AVX2 i2_s benchmark (i7-11800H): r=256/c=256 `162,689ns` -> `22,435ns` (~7.25x), r=512/c=512 `660,277ns` -> `88,960ns` (~7.42x).
+- update: KQV accumulation now fuses softmax scaling into accumulation to avoid extra weight-scaling pass; benchmark (i7-11800H) remains similar: steps=64 `1848ns` (fast) / `2377ns` (fast_n) / `3445ns` (ggml), steps=128 `3485ns` / `4367ns` / `6211ns`, steps=256 `6834ns` / `8842ns` / `13333ns`.
+- update: unrolled `matVec3F32Col` for Q/K/V fused matvec; benchmark (i7-11800H): r=256/c=256 separate `119,386ns`, fused `139,802ns`, fused_col `106,445ns` (small matrices favor fused_col); large matrices still gated by `BITNET_QKV_FUSED_MAX`.
+- update: added `BITNET_FAST_EXPF=1` to use the fast expf approximation in softmax/sampling (non-parity). Benchmark (i7-11800H): softmax dispatch `1506ns` vs ~`1766ns` prior (~1.17x).
+- update: tokenizer ASCII classification now uses a precomputed table (reduced branching). Bench (i7-11800H): SplitGPT2 `240.8ns`, SplitLlama3 `259.2ns`, TokenizeBPE hot `196.3ns` (3 allocs).
+- update: row‑major KV read path now processes two value rows per step (`accumWeightedRow2`) to reduce loop overhead. Benchmark (i7-11800H): row_major attention `34.2us` (steps=64), `66.8us` (128), `275.5us` (256).
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).

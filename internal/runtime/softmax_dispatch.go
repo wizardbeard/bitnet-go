@@ -13,7 +13,7 @@ func softmaxInPlaceGeneric(scores []float32, maxScore float32) float32 {
 	for i := range scores {
 		diff := scores[i] - maxScore
 		var w float32
-		if debugStrictExpf {
+		if debugStrictExpf || debugFastExpf {
 			w = expf32(diff)
 		} else {
 			w = float32(math.Exp(float64(diff)))
