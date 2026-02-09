@@ -45,6 +45,7 @@ Overrides:
 - `BITNET_BENCH_TOKENS`
 - `BITNET_BENCH_TEMP`
 - `BITNET_BENCH_PROCS`
+- `BITNET_FORCE_AVX2=1` (enables AVX2 i2_s i8_s matvec fast path on amd64+cgo)
 
 | Benchmark | Result | Notes |
 | --- | --- | --- |

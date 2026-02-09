@@ -94,6 +94,8 @@ var i2sDecodeTable = func() [256][4]int8 {
 	return table
 }()
 
+var matVecTI2SI8SFast func(dst []float32, packed []byte, rows, cols int, vec []int8, weightScale, actScale float32, actSum int32)
+
 func decodeI2SBlock(dst []int8, packed []byte) {
 	if len(dst) < 128 || len(packed) < 32 {
 		return
@@ -299,6 +301,10 @@ func MatVecTI2SI8S(dst []float32, packed []byte, rows, cols int, vec []int8, wei
 		return
 	}
 	if rows*cols == 0 || len(packed) < i2sPackedLen(rows*cols) {
+		return
+	}
+	if matVecTI2SI8SFast != nil {
+		matVecTI2SI8SFast(dst, packed, rows, cols, vec, weightScale, actScale, actSum)
 		return
 	}
 	var block [128]int8
