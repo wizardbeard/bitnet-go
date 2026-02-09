@@ -131,6 +131,7 @@ var debugI2SDisableActSum = os.Getenv("BITNET_I2S_DISABLE_ACTSUM") == "1"
 var debugI2SInvertActScale = os.Getenv("BITNET_I2S_INVERT_ACT_SCALE") == "1"
 var debugI2SFloat = os.Getenv("BITNET_I2S_F32") == "1" || debugParityStrict
 var debugI2SForceQuant = os.Getenv("BITNET_I2S_FORCE_Q") == "1"
+var debugI2SPretransposeMax = parseEnvInt("BITNET_I2S_PRETRANSPOSE_MAX", 0)
 var debugI2SRefDot = os.Getenv("BITNET_I2S_REF_DOT") == "1"
 var debugI2SMatvecRef = os.Getenv("BITNET_DEBUG_I2S_MATVEC_REF") == "1"
 var debugI2SMatvecPrinted bool
@@ -2156,6 +2157,41 @@ func i2sPackedAtLocal(packed []byte, idx int) byte {
 	return (packed[p] >> shift) & 0x3
 }
 
+func i2sPackedSetLocal(packed []byte, idx int, val byte) {
+	if idx < 0 {
+		return
+	}
+	const block = 128
+	const blockBytes = 32
+	bi := idx / block
+	off := idx % block
+	gp := off % 32
+	group := off / 32
+	p := bi*blockBytes + gp
+	if p < 0 || p >= len(packed) {
+		return
+	}
+	shift := uint(6 - 2*group)
+	mask := byte(0x3 << shift)
+	packed[p] = (packed[p] & ^mask) | ((val & 0x3) << shift)
+}
+
+func transposeI2SPacked(packed []byte, rows, cols int) []byte {
+	if rows <= 0 || cols <= 0 {
+		return nil
+	}
+	count := rows * cols
+	out := make([]byte, (count+127)/128*32)
+	for r := 0; r < rows; r++ {
+		for c := 0; c < cols; c++ {
+			src := r + rows*c
+			dst := c + cols*r
+			i2sPackedSetLocal(out, dst, i2sPackedAtLocal(packed, src))
+		}
+	}
+	return out
+}
+
 func linearOutputLen(w linearWeight) int {
 	if w.transposed {
 		return w.cols
@@ -2410,6 +2446,12 @@ func loadLinearWeight(path string, info gguf.ModelInfo, name string, inDim int) 
 		packed, scale, _, err := gguf.ReadTensorI2SPacked(path, info, name)
 		if err != nil {
 			return linearWeight{}, err
+		}
+		if transposed && debugI2SPretransposeMax > 0 && rows*cols <= debugI2SPretransposeMax {
+			if repacked := transposeI2SPacked(packed, rows, cols); len(repacked) > 0 {
+				packed = repacked
+				transposed = false
+			}
 		}
 		w.i2sPacked = packed
 		w.i2sScale = scale

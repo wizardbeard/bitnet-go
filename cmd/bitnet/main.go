@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"runtime/pprof"
 	"strings"
 
 	"bitnet-go/pkg/bitnet"
@@ -23,6 +24,7 @@ func main() {
 		chatFile  = flag.String("chat-history", "", "Path to chat history file (role:content per line)")
 		useChat   = flag.Bool("chat-template", false, "Use Llama chat template for system/user/assistant")
 		procs     = flag.Int("procs", 0, "GOMAXPROCS setting (0 = auto: NumCPU-2, min 1)")
+		cpuProf   = flag.String("cpuprofile", "", "Write CPU profile to file")
 		seed      = flag.Int64("seed", 1, "Deterministic seed")
 		maxTokens = flag.Int("max-tokens", 32, "Maximum tokens to generate")
 		temp      = flag.Float64("temp", 0, "Sampling temperature (0 = greedy)")
@@ -47,6 +49,22 @@ func main() {
 	}
 	if *procs > 0 {
 		runtime.GOMAXPROCS(*procs)
+	}
+	var cpuFile *os.File
+	if *cpuProf != "" {
+		f, err := os.Create(*cpuProf)
+		if err != nil {
+			log.Fatalf("create cpuprofile: %v", err)
+		}
+		cpuFile = f
+		if err := pprof.StartCPUProfile(f); err != nil {
+			_ = f.Close()
+			log.Fatalf("start cpuprofile: %v", err)
+		}
+		defer func() {
+			pprof.StopCPUProfile()
+			_ = cpuFile.Close()
+		}()
 	}
 
 	session, err := bitnet.LoadModel(context.Background(), *modelPath)

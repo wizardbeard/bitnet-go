@@ -83,16 +83,27 @@ func i2sPackedLen(count int) int {
 	return (count + block - 1) / block * blockBytes
 }
 
+var i2sDecodeTable = func() [256][4]int8 {
+	var table [256][4]int8
+	for b := 0; b < 256; b++ {
+		table[b][0] = int8((b >> 6) & 0x3)
+		table[b][1] = int8((b >> 4) & 0x3)
+		table[b][2] = int8((b >> 2) & 0x3)
+		table[b][3] = int8(b & 0x3)
+	}
+	return table
+}()
+
 func decodeI2SBlock(dst []int8, packed []byte) {
 	if len(dst) < 128 || len(packed) < 32 {
 		return
 	}
 	for gp := 0; gp < 32; gp++ {
-		b := packed[gp]
-		dst[gp] = int8((b >> 6) & 0x3)
-		dst[32+gp] = int8((b >> 4) & 0x3)
-		dst[64+gp] = int8((b >> 2) & 0x3)
-		dst[96+gp] = int8(b & 0x3)
+		vals := i2sDecodeTable[packed[gp]]
+		dst[gp] = vals[0]
+		dst[32+gp] = vals[1]
+		dst[64+gp] = vals[2]
+		dst[96+gp] = vals[3]
 	}
 }
 
@@ -300,7 +311,18 @@ func MatVecTI2SI8S(dst []float32, packed []byte, rows, cols int, vec []int8, wei
 				idx0 := r + rows*c
 				bi := idx0 / 128
 				decodeI2SBlock(block[:], packed[bi*32:bi*32+32])
-				for i := 0; i < 128; i++ {
+				i := 0
+				for ; i+7 < 128; i += 8 {
+					sum += int32(block[i]) * int32(vec[r+i])
+					sum += int32(block[i+1]) * int32(vec[r+i+1])
+					sum += int32(block[i+2]) * int32(vec[r+i+2])
+					sum += int32(block[i+3]) * int32(vec[r+i+3])
+					sum += int32(block[i+4]) * int32(vec[r+i+4])
+					sum += int32(block[i+5]) * int32(vec[r+i+5])
+					sum += int32(block[i+6]) * int32(vec[r+i+6])
+					sum += int32(block[i+7]) * int32(vec[r+i+7])
+				}
+				for ; i < 128; i++ {
 					sum += int32(block[i]) * int32(vec[r+i])
 				}
 			}
