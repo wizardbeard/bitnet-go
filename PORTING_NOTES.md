@@ -198,6 +198,7 @@
 - update: row‑major KV read path now processes two value rows per step (`accumWeightedRow2`) to reduce loop overhead. Benchmark (i7-11800H): row_major attention `34.2us` (steps=64), `66.8us` (128), `275.5us` (256).
 - update: RoPE now uses `math.Sincos` and a fast non‑YaRN path (no helper call per pair). Bench (i7-11800H): linear h=8/d=64 `4392ns` -> `2986ns` (~1.47x), h=16/d=128 `17331ns` -> `11273ns` (~1.54x); YaRN `8701ns` -> `6808ns`.
 - update: unrolled col‑accum in f32 MatVec (Q/K matvec hot path). Bench (i7-11800H): r=1024/c=1024 dispatch `553,173ns` vs generic `2,147,608ns`; r=512/c=512 dispatch `160,215ns` vs generic `328,481ns`.
+- update: added a bounded BPE merge cache (`bitnet.tokenizer.bpe_merge_cache_size`, default 4096). GPT2 fixture bench improved `23.90s` -> `22.99s` on i7-11800H (allocs unchanged).
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).

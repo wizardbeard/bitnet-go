@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 	"strings"
 
 	"bitnet-go/pkg/bitnet"
@@ -21,6 +22,7 @@ func main() {
 		assistant = flag.String("assistant", "", "Prior assistant message (Llama chat template)")
 		chatFile  = flag.String("chat-history", "", "Path to chat history file (role:content per line)")
 		useChat   = flag.Bool("chat-template", false, "Use Llama chat template for system/user/assistant")
+		procs     = flag.Int("procs", 0, "GOMAXPROCS setting (0 = auto: NumCPU-2, min 1)")
 		seed      = flag.Int64("seed", 1, "Deterministic seed")
 		maxTokens = flag.Int("max-tokens", 32, "Maximum tokens to generate")
 		temp      = flag.Float64("temp", 0, "Sampling temperature (0 = greedy)")
@@ -35,6 +37,16 @@ func main() {
 		fmt.Fprintln(os.Stderr, "missing required --model")
 		flag.Usage()
 		os.Exit(2)
+	}
+	if *procs == 0 {
+		auto := runtime.NumCPU() - 2
+		if auto < 1 {
+			auto = 1
+		}
+		*procs = auto
+	}
+	if *procs > 0 {
+		runtime.GOMAXPROCS(*procs)
 	}
 
 	session, err := bitnet.LoadModel(context.Background(), *modelPath)

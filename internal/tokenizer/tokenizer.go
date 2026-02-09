@@ -16,11 +16,15 @@ type Tokenizer struct {
 	unkTokenID       int32
 	model            string
 	preType          string
+	tokens           []string
+	hasSPMPrefix     bool
+	hasBPEMerges     bool
 	vocab            map[string]int32
 	scores           []float32
 	bpeRanks         map[string]int
 	bpeRanksPair     map[bpePair]int
 	byteEncode       [256]string
+	byteDecode       map[string]byte
 	trie             *trieNode
 	byteTok          [256]int32
 	bpeBuf           []string
@@ -33,6 +37,8 @@ type Tokenizer struct {
 	bpeKeyBuf        []byte
 	bpeChunkCache    *bpeChunkCache
 	bpeChunkCacheCap int
+	bpeMergeCache    map[bpePair]string
+	bpeMergeCacheCap int
 	spmChunkCache    *bpeChunkCache
 	spmChunkCacheCap int
 	spmSymbolPool    []spmSymbol
@@ -70,12 +76,14 @@ func NewFromModelInfo(info gguf.ModelInfo) (*Tokenizer, error) {
 		unkTokenID:       int32(firstUint32(info.KeyValues["tokenizer.ggml.unknown_token_id"])),
 		model:            model,
 		preType:          firstString(info.KeyValues["tokenizer.ggml.pre"]),
+		tokens:           tokens,
 		vocab:            make(map[string]int32, len(tokens)),
 		scores:           scores,
 		bpeRanks:         make(map[string]int),
 		bpeRanksPair:     make(map[bpePair]int),
 		trie:             newTrieNode(),
 		bpeChunkCacheCap: 256,
+		bpeMergeCacheCap: 4096,
 		spmChunkCacheCap: 256,
 	}
 	if v, ok := info.KeyValues["bitnet.tokenizer.bpe_cache_size"].(uint32); ok {
@@ -83,6 +91,9 @@ func NewFromModelInfo(info gguf.ModelInfo) (*Tokenizer, error) {
 	}
 	if v, ok := info.KeyValues["bitnet.tokenizer.spm_cache_size"].(uint32); ok {
 		t.spmChunkCacheCap = int(v)
+	}
+	if v, ok := info.KeyValues["bitnet.tokenizer.bpe_merge_cache_size"].(uint32); ok {
+		t.bpeMergeCacheCap = int(v)
 	}
 	for i := 0; i < 256; i++ {
 		t.bpeByteSym[i] = string(byte(i))
@@ -103,8 +114,10 @@ func NewFromModelInfo(info gguf.ModelInfo) (*Tokenizer, error) {
 		}
 	}
 	t.byteEncode = buildByteEncoder()
+	t.byteDecode = buildByteDecoder(t.byteEncode[:])
 
 	if merges, ok := info.KeyValues["tokenizer.ggml.merges"].([]string); ok {
+		t.hasBPEMerges = len(merges) > 0
 		t.bpeRanksPair = make(map[bpePair]int, len(merges))
 		for i, m := range merges {
 			parts := strings.SplitN(m, " ", 2)
@@ -119,6 +132,12 @@ func NewFromModelInfo(info gguf.ModelInfo) (*Tokenizer, error) {
 		// Some GGUFs omit tokenizer.ggml.model but include BPE merges.
 		t.model = "gpt2"
 		t.addBOS = false
+	}
+	for _, tok := range tokens {
+		if strings.HasPrefix(tok, "▁") {
+			t.hasSPMPrefix = true
+			break
+		}
 	}
 	return t, nil
 }
@@ -158,6 +177,58 @@ func (t *Tokenizer) Tokenize(prompt string) []int32 {
 	}
 	out = append(out, t.tokenizeGreedy(text)...)
 	return out
+}
+
+func (t *Tokenizer) Decode(tokens []int32) string {
+	if len(tokens) == 0 || len(t.tokens) == 0 {
+		return ""
+	}
+	if t.hasBPEMerges || t.model == "gpt2" {
+		var out []byte
+		for _, id := range tokens {
+			if id < 0 || int(id) >= len(t.tokens) {
+				continue
+			}
+			piece := t.tokens[id]
+			for _, r := range piece {
+				rs := string(r)
+				if b, ok := t.byteDecode[rs]; ok {
+					out = append(out, b)
+				} else {
+					out = append(out, rs...)
+				}
+			}
+		}
+		return string(out)
+	}
+	if t.model == "llama" || t.hasSPMPrefix {
+		var b strings.Builder
+		for _, id := range tokens {
+			if id < 0 || int(id) >= len(t.tokens) {
+				continue
+			}
+			piece := t.tokens[id]
+			if piece == "▁" {
+				b.WriteByte(' ')
+				continue
+			}
+			if strings.HasPrefix(piece, "▁") {
+				b.WriteByte(' ')
+				b.WriteString(piece[3:])
+				continue
+			}
+			b.WriteString(piece)
+		}
+		return b.String()
+	}
+	var b strings.Builder
+	for _, id := range tokens {
+		if id < 0 || int(id) >= len(t.tokens) {
+			continue
+		}
+		b.WriteString(t.tokens[id])
+	}
+	return b.String()
 }
 
 func (t *Tokenizer) tokenizeBPE(prompt string) []int32 {
@@ -580,7 +651,23 @@ func (t *Tokenizer) pairKey(left, right string) string {
 }
 
 func (t *Tokenizer) mergePair(left, right string) string {
-	return left + right
+	if t.bpeMergeCacheCap <= 0 {
+		return left + right
+	}
+	if t.bpeMergeCache == nil {
+		t.bpeMergeCache = make(map[bpePair]string, t.bpeMergeCacheCap)
+	} else if len(t.bpeMergeCache) >= t.bpeMergeCacheCap {
+		for k := range t.bpeMergeCache {
+			delete(t.bpeMergeCache, k)
+		}
+	}
+	key := bpePair{a: left, b: right}
+	if v, ok := t.bpeMergeCache[key]; ok {
+		return v
+	}
+	merged := left + right
+	t.bpeMergeCache[key] = merged
+	return merged
 }
 
 func (t *Tokenizer) bpeByteMap(s string) string {
@@ -766,6 +853,14 @@ func buildByteEncoder() [256]string {
 	return enc
 }
 
+func buildByteDecoder(encoder []string) map[string]byte {
+	dec := make(map[string]byte, 256)
+	for b := 0; b < 256; b++ {
+		dec[encoder[b]] = byte(b)
+	}
+	return dec
+}
+
 func firstUint32(v any) uint32 {
 	switch x := v.(type) {
 	case uint32:
@@ -797,11 +892,6 @@ type trieNode struct {
 	id       int32
 }
 
-type match struct {
-	length int
-	id     int32
-}
-
 func newTrieNode() *trieNode {
 	return &trieNode{children: make(map[byte]*trieNode)}
 }
@@ -819,6 +909,11 @@ func (n *trieNode) insert(piece string, id int32) {
 	}
 	cur.hasID = true
 	cur.id = id
+}
+
+type match struct {
+	length int
+	id     int32
 }
 
 func (n *trieNode) match(text string, start int) []match {

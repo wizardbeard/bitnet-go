@@ -414,9 +414,16 @@ func (r *Runtime) Generate(_ context.Context, req GenerateRequest) (struct {
 		TopK     []TopKStep
 	}{
 		TokenIDs: tokens,
-		Text:     req.Prompt,
+		Text:     req.Prompt + r.decodeTokens(tokens),
 		TopK:     topkWriter.result(),
 	}, nil
+}
+
+func (r *Runtime) decodeTokens(tokens []int32) string {
+	if r.tokenizer == nil {
+		return ""
+	}
+	return r.tokenizer.Decode(tokens)
 }
 
 type tensorBlock struct {

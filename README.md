@@ -17,6 +17,8 @@ Training support (diverges from upstream) will live in this same repo so we can 
 - Chat history file:
 `go run ./cmd/bitnet --chat-history testdata/chat_history.txt --chat-template`
 Format: `role:content` per line. Blank lines and `#` comments are ignored.
+- Auto procs (uses `NumCPU-2`, min 1):
+`go run ./cmd/bitnet --model testdata/ggml-model-i2_s.gguf --prompt "Hello" --max-tokens 32`
 - Sampling controls:
 `go run ./cmd/bitnet --prompt "Hello" --temp 0.8 --top-p 0.9 --top-k 40`
 
