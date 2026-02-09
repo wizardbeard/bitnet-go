@@ -1,6 +1,9 @@
 package kernels
 
-import "math"
+import (
+	"math"
+	"sync"
+)
 
 // QuantizeRowI8S quantizes src into dst using i8_s rules and returns the
 // dequantization scale and sum of quantized values.
@@ -94,6 +97,7 @@ var i2sDecodeTable = func() [256][4]int8 {
 	return table
 }()
 
+var matVecI2SI8SFast func(dst []float32, packed []byte, rows, cols int, vec []int8, weightScale, actScale float32, actSum int32)
 var matVecTI2SI8SFast func(dst []float32, packed []byte, rows, cols int, vec []int8, weightScale, actScale float32, actSum int32)
 
 func decodeI2SBlock(dst []int8, packed []byte) {
@@ -119,6 +123,14 @@ func MatVecI2SI8S(dst []float32, packed []byte, rows, cols int, vec []int8, weig
 		return
 	}
 	if rows*cols == 0 || len(packed) < i2sPackedLen(rows*cols) {
+		return
+	}
+	if matVecThreads() > 1 && rows >= 512 && matVecI2SI8SFast == nil {
+		matVecI2SI8SParallel(dst, packed, rows, cols, vec, weightScale, actScale, actSum)
+		return
+	}
+	if matVecI2SI8SFast != nil {
+		matVecI2SI8SFast(dst, packed, rows, cols, vec, weightScale, actScale, actSum)
 		return
 	}
 	if rows%128 == 0 {
@@ -303,6 +315,10 @@ func MatVecTI2SI8S(dst []float32, packed []byte, rows, cols int, vec []int8, wei
 	if rows*cols == 0 || len(packed) < i2sPackedLen(rows*cols) {
 		return
 	}
+	if matVecThreads() > 1 && cols >= 512 && matVecTI2SI8SFast == nil {
+		matVecTI2SI8SParallel(dst, packed, rows, cols, vec, weightScale, actScale, actSum)
+		return
+	}
 	if matVecTI2SI8SFast != nil {
 		matVecTI2SI8SFast(dst, packed, rows, cols, vec, weightScale, actScale, actSum)
 		return
@@ -329,6 +345,146 @@ func MatVecTI2SI8S(dst []float32, packed []byte, rows, cols int, vec []int8, wei
 					sum += int32(block[i+7]) * int32(vec[r+i+7])
 				}
 				for ; i < 128; i++ {
+					sum += int32(block[i]) * int32(vec[r+i])
+				}
+			}
+		}
+		for ; r < rows; r++ {
+			idx := r + rows*c
+			q := i2sPackedAt(packed, idx)
+			sum += int32(q) * int32(vec[r])
+		}
+		dst[c] = float32(sum-actSum) * (weightScale / actScale)
+	}
+}
+
+func matVecI2SI8SParallel(dst []float32, packed []byte, rows, cols int, vec []int8, weightScale, actScale float32, actSum int32) {
+	threads := matVecThreads()
+	if threads <= 1 {
+		return
+	}
+	if threads > rows/128 {
+		threads = rows / 128
+	}
+	if threads < 1 {
+		threads = 1
+	}
+	blockAligned := rows%128 == 0
+	chunk := rows / threads
+	if blockAligned {
+		chunk = (chunk / 128) * 128
+		if chunk == 0 {
+			chunk = 128
+		}
+	}
+	var wg sync.WaitGroup
+	for start := 0; start < rows; start += chunk {
+		end := start + chunk
+		if end > rows {
+			end = rows
+		}
+		wg.Add(1)
+		go func(s, e int) {
+			defer wg.Done()
+			matVecI2SI8SRange(dst, packed, rows, cols, vec, weightScale, actScale, actSum, s, e)
+		}(start, end)
+	}
+	wg.Wait()
+}
+
+func matVecI2SI8SRange(dst []float32, packed []byte, rows, cols int, vec []int8, weightScale, actScale float32, actSum int32, rStart, rEnd int) {
+	if rStart < 0 {
+		rStart = 0
+	}
+	if rEnd > rows {
+		rEnd = rows
+	}
+	if rStart >= rEnd {
+		return
+	}
+	if rows%128 == 0 {
+		var block [128]int8
+		var sums [128]int32
+		for rb := rStart; rb < rEnd; rb += 128 {
+			for i := range sums {
+				sums[i] = 0
+			}
+			for c := 0; c < cols; c++ {
+				idx := rb + rows*c
+				bi := idx / 128
+				decodeI2SBlock(block[:], packed[bi*32:bi*32+32])
+				for i := 0; i < 128; i++ {
+					sums[i] += int32(block[i]) * int32(vec[c])
+				}
+			}
+			for i := 0; i < 128; i++ {
+				dst[rb+i] = float32(sums[i]-actSum) * (weightScale / actScale)
+			}
+		}
+		return
+	}
+	for r := rStart; r < rEnd; r++ {
+		var sum int32
+		for c := 0; c < cols; c++ {
+			idx := r + rows*c
+			q := i2sPackedAt(packed, idx)
+			sum += int32(q) * int32(vec[c])
+		}
+		dst[r] = float32(sum-actSum) * (weightScale / actScale)
+	}
+}
+
+func matVecTI2SI8SParallel(dst []float32, packed []byte, rows, cols int, vec []int8, weightScale, actScale float32, actSum int32) {
+	threads := matVecThreads()
+	if threads <= 1 {
+		return
+	}
+	if threads > cols {
+		threads = cols
+	}
+	if threads < 1 {
+		threads = 1
+	}
+	chunk := cols / threads
+	if chunk < 1 {
+		chunk = 1
+	}
+	var wg sync.WaitGroup
+	for start := 0; start < cols; start += chunk {
+		end := start + chunk
+		if end > cols {
+			end = cols
+		}
+		wg.Add(1)
+		go func(s, e int) {
+			defer wg.Done()
+			matVecTI2SI8SRange(dst, packed, rows, cols, vec, weightScale, actScale, actSum, s, e)
+		}(start, end)
+	}
+	wg.Wait()
+}
+
+func matVecTI2SI8SRange(dst []float32, packed []byte, rows, cols int, vec []int8, weightScale, actScale float32, actSum int32, cStart, cEnd int) {
+	if cStart < 0 {
+		cStart = 0
+	}
+	if cEnd > cols {
+		cEnd = cols
+	}
+	if cStart >= cEnd {
+		return
+	}
+	var block [128]int8
+	blockAligned := rows%128 == 0
+	for c := cStart; c < cEnd; c++ {
+		var sum int32
+		r := 0
+		if blockAligned && (rows*c)%128 == 0 {
+			for ; r+127 < rows; r += 128 {
+				idx0 := r + rows*c
+				bi := idx0 / 128
+				decodeI2SBlock(block[:], packed[bi*32:bi*32+32])
+				for i := 0; i < 128; i++ {
 					sum += int32(block[i]) * int32(vec[r+i])
 				}
 			}

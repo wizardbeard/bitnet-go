@@ -203,6 +203,10 @@
 - update: `MatVecTI2SI8S` now uses a precomputed i2_s decode table and unrolled block dot loop; microbench ~6.6–6.9 ms vs ~7.3 ms prior (i7-11800H).
 - update: added optional i2_s pre-transpose (`BITNET_I2S_PRETRANSPOSE_MAX`) to repack small matrices and avoid transpose matvecs; disabled by default due to O(n) repack cost.
 - update: added amd64+cgo AVX2 fast path for `MatVecTI2SI8S` (set `BITNET_FORCE_AVX2=1`), reducing microbench to ~2.0 ms/op (from ~6.6 ms/op) and improving inference benchmark to ~0.28 tok/s on i7-11800H.
+- update: added amd64+cgo AVX2 fast path for `MatVecI2SI8S` (set `BITNET_FORCE_AVX2=1`), microbench ~2.32 ms/op; overall inference with AVX2 remains ~0.26–0.28 tok/s on i7-11800H.
+- update: AVX2 i2_s i8_s fast paths now auto-detect AVX2 when cgo is available (env override still supported).
+- update: added `BITNET_MATVEC_THREADS` to enable parallel i2_s i8_s matvec when AVX2 is unavailable.
+- update: inference benchmark without forcing AVX2 now hits ~0.27 tok/s on i7-11800H (auto-detect working).
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).

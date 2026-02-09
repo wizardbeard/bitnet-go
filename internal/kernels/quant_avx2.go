@@ -4,7 +4,16 @@ package kernels
 
 /*
 #cgo CFLAGS: -mavx2
+#include <immintrin.h>
+int bitnet_has_avx2() {
+#if defined(__GNUC__)
+    return __builtin_cpu_supports("avx2");
+#else
+    return 0;
+#endif
+}
 void matvec_t_i2s_i8s_avx2(float *dst, const unsigned char *packed, int rows, int cols, const signed char *vec, float weight_scale, float act_scale, int act_sum);
+void matvec_i2s_i8s_avx2(float *dst, const unsigned char *packed, int rows, int cols, const signed char *vec, float weight_scale, float act_scale, int act_sum);
 */
 import "C"
 import (
@@ -13,7 +22,8 @@ import (
 )
 
 func init() {
-	if os.Getenv("BITNET_FORCE_AVX2") == "1" {
+	if os.Getenv("BITNET_FORCE_AVX2") == "1" || C.bitnet_has_avx2() != 0 {
+		matVecI2SI8SFast = matVecI2SI8SAVX2
 		matVecTI2SI8SFast = matVecTI2SI8SAVX2
 	}
 }
@@ -29,6 +39,28 @@ func matVecTI2SI8SAVX2(dst []float32, packed []byte, rows, cols int, vec []int8,
 		return
 	}
 	C.matvec_t_i2s_i8s_avx2(
+		(*C.float)(unsafe.Pointer(&dst[0])),
+		(*C.uchar)(unsafe.Pointer(&packed[0])),
+		C.int(rows),
+		C.int(cols),
+		(*C.schar)(unsafe.Pointer(&vec[0])),
+		C.float(weightScale),
+		C.float(actScale),
+		C.int(actSum),
+	)
+}
+
+func matVecI2SI8SAVX2(dst []float32, packed []byte, rows, cols int, vec []int8, weightScale, actScale float32, actSum int32) {
+	if rows <= 0 || cols <= 0 {
+		return
+	}
+	if len(dst) < rows || len(vec) < cols {
+		return
+	}
+	if rows*cols == 0 || len(packed) < i2sPackedLen(rows*cols) {
+		return
+	}
+	C.matvec_i2s_i8s_avx2(
 		(*C.float)(unsafe.Pointer(&dst[0])),
 		(*C.uchar)(unsafe.Pointer(&packed[0])),
 		C.int(rows),

@@ -6,6 +6,7 @@ var matchGGMLFlag = os.Getenv("BITNET_MATCH_GGML") == "1" || os.Getenv("BITNET_P
 var parityStrictFlag = os.Getenv("BITNET_PARITY_STRICT") == "1"
 var fastColMatVecFlag = os.Getenv("BITNET_FAST_COL_MATVEC") == "1"
 var fastColMatVecAutoFlag = os.Getenv("BITNET_FAST_COL_MATVEC_AUTO") != "0"
+var matVecThreadsFlag = envInt("BITNET_MATVEC_THREADS", 0)
 
 func matchGGML() bool {
 	return matchGGMLFlag
@@ -20,4 +21,8 @@ func fastColMatVec() bool {
 		return true
 	}
 	return fastColMatVecAutoFlag && !parityStrictFlag
+}
+
+func matVecThreads() int {
+	return matVecThreadsFlag
 }

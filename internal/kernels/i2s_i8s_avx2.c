@@ -58,3 +58,52 @@ void matvec_t_i2s_i8s_avx2(float *dst, const unsigned char *packed, int rows, in
         dst[c] = (float)(sum - act_sum) * scale;
     }
 }
+
+void matvec_i2s_i8s_avx2(float *dst, const unsigned char *packed, int rows, int cols, const signed char *vec, float weight_scale, float act_scale, int act_sum) {
+    if (rows <= 0 || cols <= 0) {
+        return;
+    }
+    init_i2s_table();
+    const float scale = (act_scale == 0.0f) ? 0.0f : (weight_scale / act_scale);
+    const int block = 128;
+    const int block_bytes = 32;
+    if (rows % 128 != 0) {
+        for (int r = 0; r < rows; r++) {
+            int32_t sum = 0;
+            for (int c = 0; c < cols; c++) {
+                int idx = r + rows * c;
+                int bi = idx / block;
+                int off = idx % block;
+                int gp = off % 32;
+                int group = off / 32;
+                unsigned char b = packed[bi * block_bytes + gp];
+                int8_t q = g_i2s_table[b][group];
+                sum += (int32_t)q * (int32_t)vec[c];
+            }
+            dst[r] = (float)(sum - act_sum) * scale;
+        }
+        return;
+    }
+    const int blocks = rows / block;
+    int32_t sums[128];
+    for (int rb = 0; rb < rows; rb += 128) {
+        for (int i = 0; i < 128; i++) {
+            sums[i] = 0;
+        }
+        for (int c = 0; c < cols; c++) {
+            int idx = rb + rows * c;
+            int bi = idx / block;
+            const unsigned char *p = packed + bi * block_bytes;
+            for (int gp = 0; gp < 32; gp++) {
+                const int8_t *vals = g_i2s_table[p[gp]];
+                sums[gp] += (int32_t)vals[0] * (int32_t)vec[c];
+                sums[gp + 32] += (int32_t)vals[1] * (int32_t)vec[c];
+                sums[gp + 64] += (int32_t)vals[2] * (int32_t)vec[c];
+                sums[gp + 96] += (int32_t)vals[3] * (int32_t)vec[c];
+            }
+        }
+        for (int i = 0; i < 128; i++) {
+            dst[rb + i] = (float)(sums[i] - act_sum) * scale;
+        }
+    }
+}
