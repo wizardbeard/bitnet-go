@@ -1,6 +1,7 @@
 # bitnet-go
 
 Initial Go scaffold for porting BitNet CPU inference.
+Training support (diverges from upstream) will live in this same repo so we can share types and GGUF export logic.
 
 ## Commands
 
@@ -21,6 +22,12 @@ Format: `role:content` per line. Blank lines and `#` comments are ignored.
 
 Note: `go test ./...` can take ~3 minutes because tokenizer fixture tests are slow; plan CI timeouts accordingly.
 - `go run ./cmd/bitnet --help`
+- `go run ./cmd/bitnet-train --help`
+
+## Training
+
+Training is a new track hosted in this repo (not part of the upstream inference implementation).
+See `MODEL_TRAINING.md` for decisions, model spec targets, and the export/interop plan.
 
 ## Benchmarks (Snapshot)
 
