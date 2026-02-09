@@ -197,6 +197,8 @@
 - Add/confirm wrapper command (`BITNET_REF_RUN_CMD`) for upstream CLI output.
 - Confirm tokenizer behavior and seed handling against upstream reference.
 - Define logits tolerance policy from observed reference outputs.
+- update: CLI now supports `--chat-history` (role:content per line) to feed Llama chat templates from a file, and sampling flags (`--temp`, `--top-p`, `--top-k`) wired into runtime sampling config.
+- update: runtime forward paths now use sampling (greedy or probabilistic) instead of fixed argmax, with deterministic RNG seeded by `GenerateRequest.Seed`.
 
 AGENTS.md progress snapshot:
 - Phase 0 (ground truth harness): reference runners, frozen vectors, and parity tests are in place for base, YaRN, and i2_s paths.

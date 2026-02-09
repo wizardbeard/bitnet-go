@@ -15,8 +15,8 @@ import (
 func TestRunForwardStubDeterministic(t *testing.T) {
 	a := make([]int32, 8)
 	b := make([]int32, 8)
-	runForwardStub(32000, 42, []int32{1, 2, 3}, a, nil)
-	runForwardStub(32000, 42, []int32{1, 2, 3}, b, nil)
+	runForwardStub(32000, 42, []int32{1, 2, 3}, a, nil, samplingConfig{})
+	runForwardStub(32000, 42, []int32{1, 2, 3}, b, nil, samplingConfig{})
 	for i := range a {
 		if a[i] != b[i] {
 			t.Fatalf("token[%d] mismatch: %d vs %d", i, a[i], b[i])
@@ -27,8 +27,8 @@ func TestRunForwardStubDeterministic(t *testing.T) {
 func TestRunForwardStubPromptAffectsOutput(t *testing.T) {
 	a := make([]int32, 8)
 	b := make([]int32, 8)
-	runForwardStub(32000, 42, []int32{1, 2, 3}, a, nil)
-	runForwardStub(32000, 42, []int32{1, 2, 4}, b, nil)
+	runForwardStub(32000, 42, []int32{1, 2, 3}, a, nil, samplingConfig{})
+	runForwardStub(32000, 42, []int32{1, 2, 4}, b, nil, samplingConfig{})
 	same := true
 	for i := range a {
 		if a[i] != b[i] {
@@ -92,8 +92,8 @@ func TestRunForwardTensorBlockDeterministic(t *testing.T) {
 	}
 	a := make([]int32, 8)
 	b := make([]int32, 8)
-	runForwardTensorBlock(block, 123, []int32{9, 10, 11}, a, nil, nil)
-	runForwardTensorBlock(block, 123, []int32{9, 10, 11}, b, nil, nil)
+	runForwardTensorBlock(block, 123, []int32{9, 10, 11}, a, nil, nil, samplingConfig{})
+	runForwardTensorBlock(block, 123, []int32{9, 10, 11}, b, nil, nil, samplingConfig{})
 	for i := range a {
 		if a[i] != b[i] {
 			t.Fatalf("token[%d] mismatch: %d vs %d", i, a[i], b[i])
@@ -237,8 +237,8 @@ func TestGenerateUsesLlamaStackWhenPresent(t *testing.T) {
 
 	pa := make([]int32, 4)
 	pb := make([]int32, 4)
-	runForwardLlamaStack(rt.block, 5, []int32{1, 2, 3}, pa, nil, nil)
-	runForwardLlamaStack(rt.block, 5, []int32{1, 2, 4}, pb, nil, nil)
+	runForwardLlamaStack(rt.block, 5, []int32{1, 2, 3}, pa, nil, nil, samplingConfig{})
+	runForwardLlamaStack(rt.block, 5, []int32{1, 2, 4}, pb, nil, nil, samplingConfig{})
 	same := true
 	for i := range pa {
 		if pa[i] != pb[i] {
