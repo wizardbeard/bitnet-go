@@ -312,6 +312,9 @@
   - after: `read_model_info~88.8ms`, `tokenizer~0.31s`, `tensor_block~12.31s`, total ~12.71s.
   - updated Go throughput snapshot (`.bench/bitnet-go`, `--max-tokens 15`, same settings): cold wall ~24.763s (`~0.606 tok/s` cold), load-only ~12.550s, estimated generation-only ~12.213s / 15 (`~1.228 tok/s`).
   - updated cold gap vs reference: ~0.45x cold throughput (`0.606/1.362`) on this host (generation-only gap remains the primary Phase 3 bottleneck).
+- update: added large-shape column-parallel path in `MatVecT` (env knobs: `BITNET_MATVECT_PAR_MIN_ROWS`, `BITNET_MATVECT_PAR_MIN_COLS`, `BITNET_MATVECT_PAR_WORKERS`) to better utilize CPU cores for vocab projection.
+  - microbench (`BenchmarkOutputProjectionF32`, i7-11800H, 1x): parallel default ~124ms; forcing single worker (`BITNET_MATVECT_PAR_WORKERS=1`) ~82ms (microbench favors single-thread due benchmark scheduling).
+  - end-to-end check (`.bench/bitnet-go`, i2_s fixture, prompt.txt, max-tokens=15, procs=6): `BITNET_MATVECT_PAR_WORKERS=6` ~27.233s (`~0.551 tok/s`) vs `BITNET_MATVECT_PAR_WORKERS=1` ~32.981s (`~0.455 tok/s`), so parallel path remains enabled by default for large projections.
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).

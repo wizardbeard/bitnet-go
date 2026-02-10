@@ -1,5 +1,16 @@
 package kernels
 
+import (
+	"runtime"
+	"sync"
+)
+
+var (
+	matVecTParMinRows = envIntArch("BITNET_MATVECT_PAR_MIN_ROWS", 512)
+	matVecTParMinCols = envIntArch("BITNET_MATVECT_PAR_MIN_COLS", 8192)
+	matVecTParWorkers = envIntArch("BITNET_MATVECT_PAR_WORKERS", 0)
+)
+
 func matVecOpt(dst, mat []float32, rows, cols int, vec []float32) {
 	if rows <= 0 || cols <= 0 {
 		return
@@ -66,6 +77,48 @@ func matVecTOpt(dst, mat []float32, rows, cols int, vec []float32) {
 	}
 	if len(dst) < cols || len(vec) < rows || len(mat) < rows*cols {
 		return
+	}
+	if !matchGGML() && rows >= matVecTParMinRows && cols >= matVecTParMinCols {
+		workers := matVecTParWorkers
+		if workers <= 0 {
+			workers = runtime.GOMAXPROCS(0)
+		}
+		if workers > cols {
+			workers = cols
+		}
+		if workers > 1 {
+			chunk := (cols + workers - 1) / workers
+			var wg sync.WaitGroup
+			wg.Add(workers)
+			for w := 0; w < workers; w++ {
+				start := w * chunk
+				end := start + chunk
+				if end > cols {
+					end = cols
+				}
+				go func(start, end int) {
+					defer wg.Done()
+					for c := start; c < end; c++ {
+						base := rows * c
+						var sum0, sum1, sum2, sum3 float64
+						r := 0
+						for ; r+3 < rows; r += 4 {
+							sum0 += float64(mat[base+r]) * float64(vec[r])
+							sum1 += float64(mat[base+r+1]) * float64(vec[r+1])
+							sum2 += float64(mat[base+r+2]) * float64(vec[r+2])
+							sum3 += float64(mat[base+r+3]) * float64(vec[r+3])
+						}
+						sum := sum0 + sum1 + sum2 + sum3
+						for ; r < rows; r++ {
+							sum += float64(mat[base+r]) * float64(vec[r])
+						}
+						dst[c] = float32(sum)
+					}
+				}(start, end)
+			}
+			wg.Wait()
+			return
+		}
 	}
 	for c := 0; c < cols; c++ {
 		if matchGGML() {
