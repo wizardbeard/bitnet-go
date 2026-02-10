@@ -57,6 +57,8 @@ Overrides:
 - `BITNET_I2S_I8S_BLOCK_MIN_ROWS` (minimum rows for block-decode path in fallback kernels, default `256`)
 - `BITNET_I2S_I8S_FAST_MIN_ELEMS` (minimum `rows*cols` to use AVX2 fast path when available, default `0`)
   - sweep note (i7-11800H, fallback path): current defaults outperformed tested alternatives (`min_1024`, fixed chunk sizes, `block_min_rows=128`)
+- `BITNET_I2S_I8S_POOL` (set `0` to disable reusable fallback worker pool)
+- `BITNET_I2S_I8S_POOL_WORKERS` (override fallback worker pool size; default `GOMAXPROCS`)
 
 | Benchmark | Result | Notes |
 | --- | --- | --- |
@@ -98,6 +100,7 @@ CI note:
   test can run when enabled.
 - CI also runs non-gating benchmark jobs (`bench-smoke`, `bench-kernels`, `bench-runtime`) to track perf regressions.
 - CI also runs a non-gating targeted i2_s+i8_s kernel benchmark (`bench-i2s-kernels`) and uploads the result artifact (`.bench/i2s-kernels.txt`).
+- CI also runs a non-gating arm64 i2_s benchmark+sweep job and uploads arm64 artifacts (`bench-i2s-kernels-arm64`, `bench-i2s-sweep-arm64`).
 
 Optional IQ fixture hash:
 - `BITNET_FETCH_IQ=1 ./scripts/fetch_testdata_gguf.sh`

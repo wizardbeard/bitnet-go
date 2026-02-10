@@ -232,6 +232,12 @@
   - `chunk_512`: avg dispatch ~973,375 ns
   - `block_128`: avg dispatch ~785,859 ns
   - defaults kept at `BITNET_I2S_I8S_PAR_ROWS_MIN=512`, `BITNET_I2S_I8S_PAR_COLS_MIN=512`, auto chunking, and `BITNET_I2S_I8S_BLOCK_MIN_ROWS=256`.
+- update: fallback parallel i2_s+i8_s matvec now uses a reusable worker pool (`BITNET_I2S_I8S_POOL`, `BITNET_I2S_I8S_POOL_WORKERS`) to reduce per-call goroutine/closure allocation overhead.
+  - benchmark check (i7-11800H, fast path disabled, r=512/c=512 dispatch): allocs dropped from ~9-15 allocs/op to ~1 alloc/op (`16 B/op`).
+- update: CI now includes non-gating `bench-arm64-i2s` job on `ubuntu-24.04-arm`:
+  - runs `scripts/bench_i2s_kernels.sh`
+  - runs `scripts/bench_i2s_kernels_sweep.sh`
+  - uploads `.bench/i2s-kernels.txt` and `.bench/i2s-kernels-sweep.txt` artifacts for arm64 tuning data.
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).
@@ -252,4 +258,4 @@ AGENTS.md progress snapshot:
 Next steps aligned to AGENTS.md:
 - Phase 2: tighten i2_s parity tolerances where possible (focus on logits/top‑K policy and remaining drift characterization).
 - Phase 2: extend parity vectors to cover 1.58B/2B i2_s fixtures with consistent teacher‑forced logits.
-- Phase 3: reduce fallback parallel matvec allocations (goroutine/WaitGroup overhead) and re-run threshold sweeps on arm64 hosts.
+- Phase 3: consume arm64 sweep artifacts to set arm64-specific i2_s threshold defaults (if they differ from amd64), then re-baseline CI benchmark snapshots.

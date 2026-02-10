@@ -411,10 +411,20 @@ func matVecI2SI8SParallel(dst []float32, packed []byte, rows, cols int, vec []in
 			end = rows
 		}
 		wg.Add(1)
-		go func(s, e int) {
-			defer wg.Done()
-			matVecI2SI8SRange(dst, packed, rows, cols, vec, weightScale, actScale, actSum, s, e)
-		}(start, end)
+		submitI2SI8STask(i2sI8STask{
+			transposed: false,
+			dst:        dst,
+			packed:     packed,
+			rows:       rows,
+			cols:       cols,
+			vec:        vec,
+			weight:     weightScale,
+			act:        actScale,
+			actSum:     actSum,
+			start:      start,
+			end:        end,
+			wg:         &wg,
+		})
 	}
 	wg.Wait()
 }
@@ -486,10 +496,20 @@ func matVecTI2SI8SParallel(dst []float32, packed []byte, rows, cols int, vec []i
 			end = cols
 		}
 		wg.Add(1)
-		go func(s, e int) {
-			defer wg.Done()
-			matVecTI2SI8SRange(dst, packed, rows, cols, vec, weightScale, actScale, actSum, s, e)
-		}(start, end)
+		submitI2SI8STask(i2sI8STask{
+			transposed: true,
+			dst:        dst,
+			packed:     packed,
+			rows:       rows,
+			cols:       cols,
+			vec:        vec,
+			weight:     weightScale,
+			act:        actScale,
+			actSum:     actSum,
+			start:      start,
+			end:        end,
+			wg:         &wg,
+		})
 	}
 	wg.Wait()
 }

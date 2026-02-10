@@ -98,3 +98,35 @@ jobs:
         run: |
           go test ./internal/runtime -bench . -benchmem
         continue-on-error: true
+  bench-arm64-i2s:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+          cache: true
+      - name: bench-i2s-kernels-arm64
+        run: |
+          BITNET_I2S_BENCH_TIME=120ms ./scripts/bench_i2s_kernels.sh
+      - name: sweep-i2s-kernels-arm64
+        run: |
+          BITNET_I2S_BENCH_TIME=40ms \
+          BITNET_I2S_SWEEP_THREADS=4 \
+          ./scripts/bench_i2s_kernels_sweep.sh
+      - name: upload-bench-i2s-kernels-arm64
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-i2s-kernels-arm64
+          path: .bench/i2s-kernels.txt
+          if-no-files-found: warn
+      - name: upload-bench-i2s-sweep-arm64
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-i2s-sweep-arm64
+          path: .bench/i2s-kernels-sweep.txt
+          if-no-files-found: warn
