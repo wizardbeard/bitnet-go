@@ -375,6 +375,43 @@ func BenchmarkGenerateTopKToggle(b *testing.B) {
 	})
 }
 
+func BenchmarkGenerateTopPCompare(b *testing.B) {
+	modelPath := os.Getenv("BITNET_BENCH_MODEL")
+	if modelPath == "" {
+		b.Skip("set BITNET_BENCH_MODEL to run Generate benchmark")
+	}
+	rt, err := New(context.Background(), modelPath)
+	if err != nil {
+		b.Fatalf("New() error: %v", err)
+	}
+	req := GenerateRequest{
+		Prompt:    "Hello",
+		Seed:      1,
+		MaxTokens: 2,
+		Temp:      0.8,
+		TopP:      0.9,
+		TopK:      0,
+	}
+
+	b.Run("default_prefix", func(b *testing.B) {
+		restore := setTopPSortPrefixForTest(256)
+		defer restore()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			_, _ = rt.Generate(context.Background(), req)
+		}
+	})
+
+	b.Run("full_sort", func(b *testing.B) {
+		restore := setTopPSortPrefixForTest(0)
+		defer restore()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			_, _ = rt.Generate(context.Background(), req)
+		}
+	})
+}
+
 func BenchmarkOutputProjectionF32(b *testing.B) {
 	const rows = 65536
 	const cols = 2048

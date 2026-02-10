@@ -277,10 +277,11 @@
 - update: added optional bounded-heap top-p sampler path (`BITNET_TOPP_HEAP_CAP>0`) with exact fallback to full-sort when heap mass is insufficient.
   - default remains full-sort (`BITNET_TOPP_HEAP_CAP=0`) after microbench on i7-11800H favored sort for current synthetic distribution:
     - `BenchmarkSampleFromTopP`: sort ~313,845 ns/op, heap(1024) ~2,010,590 ns/op.
-- update: optimized default top-p path with partial selection (`BITNET_TOPP_SORT_PREFIX`, default `256`):
+- update: added partial-selection top-p path (`BITNET_TOPP_SORT_PREFIX>0`):
   - uses quickselect to isolate top prefix, sorts only prefix, and doubles prefix until cumulative mass reaches `topP`.
   - retains exact behavior by expanding to full vocab when needed.
-  - benchmark (i7-11800H, `BenchmarkSampleFromTopP`, 200ms): default prefix path ~252,151 ns/op vs forced full-sort (`BITNET_TOPP_SORT_PREFIX=0`) ~387,077 ns/op (~1.53x faster), allocs unchanged.
+  - microbench (i7-11800H, `BenchmarkSampleFromTopP`, 200ms): prefix=256 ~252,151 ns/op vs full-sort ~387,077 ns/op (~1.53x faster), allocs unchanged.
+  - end-to-end bench (`BenchmarkGenerateTopPCompare`, i2_s, 1x): prefix=256 ~2.603s vs full-sort ~2.479s, so default remains full-sort (`BITNET_TOPP_SORT_PREFIX=0`) and prefix path is opt-in.
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).

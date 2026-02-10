@@ -142,7 +142,7 @@ var debugI2SAltLayout = os.Getenv("BITNET_I2S_ALT_LAYOUT") == "1"
 var debugI2SScalar = os.Getenv("BITNET_I2S_SCALAR") == "1"
 var disableTopK = os.Getenv("BITNET_DISABLE_TOPK") == "1"
 var topPHeapCap = parseEnvInt("BITNET_TOPP_HEAP_CAP", 0)
-var topPSortPrefix = parseEnvInt("BITNET_TOPP_SORT_PREFIX", 256)
+var topPSortPrefix = parseEnvInt("BITNET_TOPP_SORT_PREFIX", 0)
 var i8ScratchPool = sync.Pool{
 	New: func() any {
 		return make([]int8, 0)
@@ -283,6 +283,14 @@ func parseEnvInt(key string, fallback int) int {
 		return fallback
 	}
 	return n
+}
+
+func setTopPSortPrefixForTest(v int) func() {
+	old := topPSortPrefix
+	topPSortPrefix = v
+	return func() {
+		topPSortPrefix = old
+	}
 }
 
 func shouldDebug(pos int) bool {
