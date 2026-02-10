@@ -109,6 +109,23 @@ var i2sI8SFastMinElems = envIntArch("BITNET_I2S_I8S_FAST_MIN_ELEMS", 0)
 var i2sI8SBlockMinRows = envIntArch("BITNET_I2S_I8S_BLOCK_MIN_ROWS", 256)
 var i2sI8SFastParallelNTColsMin = envIntArch("BITNET_I2S_I8S_FAST_PAR_NT_COLS_MIN", 0)
 var i2sI8SFastParallelColsMin = envIntArch("BITNET_I2S_I8S_FAST_PAR_COLS_MIN", 0)
+var matVecI2SPartialPool = sync.Pool{
+	New: func() any {
+		return make([]float32, 0)
+	},
+}
+
+func acquireI2SPartialBuf(n int) []float32 {
+	buf := matVecI2SPartialPool.Get().([]float32)
+	if cap(buf) < n {
+		return make([]float32, n)
+	}
+	return buf[:n]
+}
+
+func releaseI2SPartialBuf(buf []float32) {
+	matVecI2SPartialPool.Put(buf[:0])
+}
 
 func useI2SI8SFast(rows, cols int) bool {
 	if i2sI8SFastMinElems <= 0 {
@@ -245,30 +262,32 @@ func matVecI2SI8SFastParallel(dst []float32, packed []byte, rows, cols int, vec 
 	if chunk < 1 {
 		chunk = 1
 	}
-	type partial struct {
-		out []float32
-	}
-	parts := make([]partial, 0, threads)
-	for start := 0; start < cols; start += chunk {
-		end := start + chunk
-		if end > cols {
-			end = cols
-		}
-		parts = append(parts, partial{out: make([]float32, rows)})
-	}
-	if len(parts) == 0 {
+	numParts := (cols + chunk - 1) / chunk
+	if numParts <= 0 {
 		return
 	}
-	var wg sync.WaitGroup
-	wg.Add(len(parts))
-	pi := 0
-	for start := 0; start < cols; start += chunk {
+	partials := acquireI2SPartialBuf(rows * numParts)
+	defer releaseI2SPartialBuf(partials)
+	outs := make([][]float32, numParts)
+	starts := make([]int, numParts)
+	ends := make([]int, numParts)
+	for i := 0; i < numParts; i++ {
+		start := i * chunk
 		end := start + chunk
 		if end > cols {
 			end = cols
 		}
-		out := parts[pi].out
-		pi++
+		starts[i] = start
+		ends[i] = end
+		base := i * rows
+		outs[i] = partials[base : base+rows]
+	}
+	var wg sync.WaitGroup
+	wg.Add(numParts)
+	for i := 0; i < numParts; i++ {
+		start := starts[i]
+		end := ends[i]
+		out := outs[i]
 		go func(start, end int, out []float32) {
 			defer wg.Done()
 			if !matVecI2SI8SFastRange(out, packed, rows, cols, vec, weightScale, actScale, 0, start, end) {
@@ -278,9 +297,9 @@ func matVecI2SI8SFastParallel(dst []float32, packed []byte, rows, cols int, vec 
 	}
 	wg.Wait()
 
-	copy(dst, parts[0].out)
-	for i := 1; i < len(parts); i++ {
-		p := parts[i].out
+	copy(dst, outs[0])
+	for i := 1; i < numParts; i++ {
+		p := outs[i]
 		for r := 0; r < rows; r++ {
 			dst[r] += p[r]
 		}
