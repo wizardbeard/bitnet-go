@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -2914,9 +2914,7 @@ func sampleFromTopPPrefilter(logits []float32, temp float32, topP float32, rng *
 		}
 	}
 	selectTopKIndices(idx[:n], logits, k)
-	sort.Slice(idx[:k], func(i, j int) bool {
-		return logits[idx[i]] > logits[idx[j]]
-	})
+	sortIndicesByLogitsDesc(idx[:k], logits)
 
 	var total float32
 	for i := 0; i < n; i++ {
@@ -3022,7 +3020,7 @@ func sampleFromTopPHeap(logits []float32, temp float32, topP float32, rng *sampl
 	if topSum < target {
 		return -1, false
 	}
-	sort.Slice(h, func(i, j int) bool { return h[i].p > h[j].p })
+	sortTopPEntriesDesc(h)
 	var cum float32
 	limit := len(h)
 	for i := range h {
@@ -3075,9 +3073,7 @@ func sampleFromTopPSort(logits []float32, temp float32, topP float32, rng *sampl
 	}
 	for {
 		selectTopKIndices(idx[:n], logits, k)
-		sort.Slice(idx[:k], func(i, j int) bool {
-			return logits[idx[i]] > logits[idx[j]]
-		})
+		sortIndicesByLogitsDesc(idx[:k], logits)
 		cum = 0
 		limit = k
 		for i := 0; i < k; i++ {
@@ -3150,6 +3146,32 @@ func selectTopKIndices(idx []int, logits []float32, k int) {
 			return
 		}
 	}
+}
+
+func sortIndicesByLogitsDesc(idx []int, logits []float32) {
+	slices.SortFunc(idx, func(a, b int) int {
+		la := logits[a]
+		lb := logits[b]
+		if la > lb {
+			return -1
+		}
+		if la < lb {
+			return 1
+		}
+		return 0
+	})
+}
+
+func sortTopPEntriesDesc(h topPMinHeap) {
+	slices.SortFunc(h, func(a, b topPEntry) int {
+		if a.p > b.p {
+			return -1
+		}
+		if a.p < b.p {
+			return 1
+		}
+		return 0
+	})
 }
 
 func expForSampling(x float32) float32 {
