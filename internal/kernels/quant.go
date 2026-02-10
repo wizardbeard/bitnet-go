@@ -133,6 +133,23 @@ func decodeI2SBlock(dst []int8, packed []byte) {
 	}
 }
 
+func accumI2SBlock128(sums *[128]int32, block *[128]int8, v int32) {
+	i := 0
+	for ; i+7 < 128; i += 8 {
+		sums[i] += int32(block[i]) * v
+		sums[i+1] += int32(block[i+1]) * v
+		sums[i+2] += int32(block[i+2]) * v
+		sums[i+3] += int32(block[i+3]) * v
+		sums[i+4] += int32(block[i+4]) * v
+		sums[i+5] += int32(block[i+5]) * v
+		sums[i+6] += int32(block[i+6]) * v
+		sums[i+7] += int32(block[i+7]) * v
+	}
+	for ; i < 128; i++ {
+		sums[i] += int32(block[i]) * v
+	}
+}
+
 // MatVecI2SI8S computes dst = mat * vec where mat is GGML column-major [rows][cols]
 // stored in packed i2_s format with a global weight scale, and vec is quantized i8_s.
 func MatVecI2SI8S(dst []float32, packed []byte, rows, cols int, vec []int8, weightScale, actScale float32, actSum int32) {
@@ -165,9 +182,7 @@ func MatVecI2SI8S(dst []float32, packed []byte, rows, cols int, vec []int8, weig
 				bi := idx / 128
 				decodeI2SBlock(block[:], packed[bi*32:bi*32+32])
 				v := int32(vec[c])
-				for i := 0; i < 128; i++ {
-					sums[i] += int32(block[i]) * v
-				}
+				accumI2SBlock128(&sums, &block, v)
 			}
 			for i := 0; i < 128; i++ {
 				dst[rb+i] = float32(sums[i]-actSum) * (weightScale / actScale)
@@ -450,9 +465,8 @@ func matVecI2SI8SRange(dst []float32, packed []byte, rows, cols int, vec []int8,
 				idx := rb + rows*c
 				bi := idx / 128
 				decodeI2SBlock(block[:], packed[bi*32:bi*32+32])
-				for i := 0; i < 128; i++ {
-					sums[i] += int32(block[i]) * int32(vec[c])
-				}
+				v := int32(vec[c])
+				accumI2SBlock128(&sums, &block, v)
 			}
 			for i := 0; i < 128; i++ {
 				dst[rb+i] = float32(sums[i]-actSum) * (weightScale / actScale)
