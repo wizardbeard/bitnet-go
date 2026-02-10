@@ -143,6 +143,7 @@ var debugI2SScalar = os.Getenv("BITNET_I2S_SCALAR") == "1"
 var disableTopK = os.Getenv("BITNET_DISABLE_TOPK") == "1"
 var topPHeapCap = parseEnvInt("BITNET_TOPP_HEAP_CAP", 0)
 var topPSortPrefix = parseEnvInt("BITNET_TOPP_SORT_PREFIX", 0)
+var topPPrefilterK = parseEnvInt("BITNET_TOPP_PREFILTER_K", 0)
 var i8ScratchPool = sync.Pool{
 	New: func() any {
 		return make([]int8, 0)
@@ -2884,12 +2885,70 @@ func sampleFromTopP(logits []float32, temp float32, topP float32, rng *sampler, 
 	if len(logits) == 0 {
 		return -1
 	}
+	if topPPrefilterK > 0 && topPPrefilterK < len(logits) {
+		if id, ok := sampleFromTopPPrefilter(logits, temp, topP, rng, probs, idx, topPPrefilterK); ok {
+			return id
+		}
+	}
 	if topPHeapCap > 0 && topPHeapCap < len(logits) {
 		if id, ok := sampleFromTopPHeap(logits, temp, topP, rng, topPHeapCap); ok {
 			return id
 		}
 	}
 	return sampleFromTopPSort(logits, temp, topP, rng, probs, idx)
+}
+
+func sampleFromTopPPrefilter(logits []float32, temp float32, topP float32, rng *sampler, probs []float32, idx []int, k int) (int, bool) {
+	n := len(logits)
+	if n == 0 || len(idx) < n || k <= 0 || k >= n {
+		return -1, false
+	}
+	for i := 0; i < n; i++ {
+		idx[i] = i
+	}
+	maxLogit := logits[0] / temp
+	for i := 1; i < n; i++ {
+		v := logits[i] / temp
+		if v > maxLogit {
+			maxLogit = v
+		}
+	}
+	selectTopKIndices(idx[:n], logits, k)
+	sort.Slice(idx[:k], func(i, j int) bool {
+		return logits[idx[i]] > logits[idx[j]]
+	})
+
+	var total float32
+	for i := 0; i < n; i++ {
+		total += expForSampling(logits[i]/temp - maxLogit)
+	}
+	target := topP * total
+
+	var prefixSum float32
+	limit := k
+	for i := 0; i < k; i++ {
+		id := idx[i]
+		p := expForSampling(logits[id]/temp - maxLogit)
+		probs[id] = p
+		prefixSum += p
+		if prefixSum >= target {
+			limit = i + 1
+			break
+		}
+	}
+	if prefixSum < target {
+		return -1, false
+	}
+	r := rng.nextFloat() * prefixSum
+	var run float32
+	for i := 0; i < limit; i++ {
+		id := idx[i]
+		run += probs[id]
+		if r <= run {
+			return id, true
+		}
+	}
+	return idx[limit-1], true
 }
 
 type topPEntry struct {

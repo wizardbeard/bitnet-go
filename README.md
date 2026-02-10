@@ -63,6 +63,7 @@ Overrides:
 - `BITNET_I2S_I8S_POOL_WORKERS` (override fallback worker pool size; default `GOMAXPROCS`)
 - `BITNET_TOPP_HEAP_CAP` (opt-in bounded-heap top-p sampler candidate cap; default `0` = use existing full-sort top-p path)
 - `BITNET_TOPP_SORT_PREFIX` (initial prefix size for partial-selection top-p sort path; default `0` = full-sort, set `>0` to enable partial-selection)
+- `BITNET_TOPP_PREFILTER_K` (opt-in top-p prefilter candidate cap before full-sort fallback; default `0` = disabled)
 
 | Benchmark | Result | Notes |
 | --- | --- | --- |
