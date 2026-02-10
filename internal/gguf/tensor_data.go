@@ -6,7 +6,25 @@ import (
 	"io"
 	"math"
 	"os"
+	"runtime"
+	"strconv"
+	"sync"
 )
+
+var f16DecodeParallel = os.Getenv("BITNET_F16_DECODE_PARALLEL") == "1"
+var f16DecodeParallelMin = parseEnvInt("BITNET_F16_DECODE_PARALLEL_MIN", 1<<20)
+
+func parseEnvInt(key string, fallback int) int {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return fallback
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil {
+		return fallback
+	}
+	return v
+}
 
 const (
 	GGMLTypeF32      = 0
@@ -927,6 +945,32 @@ func readTensorF16AsF32(r io.Reader, name string, count uint64) ([]float32, erro
 	buf := make([]uint16, count)
 	if err := binary.Read(r, binary.LittleEndian, buf); err != nil {
 		return nil, fmt.Errorf("read tensor %q f16: %w", name, err)
+	}
+	if f16DecodeParallel && len(buf) >= f16DecodeParallelMin {
+		workers := runtime.GOMAXPROCS(0)
+		if workers > len(buf) {
+			workers = len(buf)
+		}
+		if workers > 1 {
+			chunk := (len(buf) + workers - 1) / workers
+			var wg sync.WaitGroup
+			wg.Add(workers)
+			for w := 0; w < workers; w++ {
+				start := w * chunk
+				end := start + chunk
+				if end > len(buf) {
+					end = len(buf)
+				}
+				go func(start, end int) {
+					defer wg.Done()
+					for i := start; i < end; i++ {
+						out[i] = float16ToFloat32(buf[i])
+					}
+				}(start, end)
+			}
+			wg.Wait()
+			return out, nil
+		}
 	}
 	for i := range buf {
 		out[i] = float16ToFloat32(buf[i])

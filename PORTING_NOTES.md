@@ -319,6 +319,9 @@
   - on i7-11800H this path regressed when enabled in current implementation, so default remains disabled; baseline run after gating (`--max-tokens=15`, procs=6) measured ~22.055s (`~0.680 tok/s`) for current code state.
 - update: refactored greedy argmax-direct path to use fused kernel helpers (`ArgmaxMatVecT` / `ArgmaxMatVecTF16`) instead of scalar projection loops.
   - A/B check (i7-11800H, i2_s fixture, prompt.txt, max-tokens=15, procs=6): `BITNET_FAST_GREEDY_ARGMAX=1` ~36.087s (`~0.416 tok/s`) vs default ~33.222s (`~0.452 tok/s`), so this remains experimental and disabled by default.
+- update: added opt-in parallel F16->F32 decode path in GGUF tensor loading (`BITNET_F16_DECODE_PARALLEL=1`, threshold `BITNET_F16_DECODE_PARALLEL_MIN`), but kept default disabled after profiling on i7-11800H showed regression when always-on.
+  - default path profile snapshot (i2_s fixture, `BITNET_PROFILE_LOAD=1`): `read_model_info~119.7ms`, `tokenizer~449.9ms`, `tensor_block~9.92s`, total ~10.49s.
+  - current end-to-end snapshot (`.bench/bitnet-go`, prompt.txt, max-tokens=15, procs=6): ~22.961s (`~0.653 tok/s`) in this run.
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).
