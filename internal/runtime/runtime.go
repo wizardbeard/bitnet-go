@@ -142,6 +142,7 @@ var debugI2SAltLayout = os.Getenv("BITNET_I2S_ALT_LAYOUT") == "1"
 var debugI2SScalar = os.Getenv("BITNET_I2S_SCALAR") == "1"
 var disableTopK = os.Getenv("BITNET_DISABLE_TOPK") == "1"
 var topPHeapCap = parseEnvInt("BITNET_TOPP_HEAP_CAP", 0)
+var topPSortPrefix = parseEnvInt("BITNET_TOPP_SORT_PREFIX", 256)
 var i8ScratchPool = sync.Pool{
 	New: func() any {
 		return make([]int8, 0)
@@ -2985,21 +2986,50 @@ func sampleFromTopPSort(logits []float32, temp float32, topP float32, rng *sampl
 	if len(idx) < len(logits) {
 		return sampleFromFull(logits, temp, rng, probs)
 	}
-	sort.Slice(idx[:len(logits)], func(i, j int) bool {
-		return logits[idx[i]] > logits[idx[j]]
-	})
-	maxLogit := logits[idx[0]] / temp
+	n := len(logits)
+	for i := 0; i < n; i++ {
+		idx[i] = i
+	}
+	k := topPSortPrefix
+	if k <= 0 {
+		k = n
+	}
+	if k > n {
+		k = n
+	}
+	limit := n
 	var cum float32
-	limit := len(logits)
-	for i := 0; i < len(logits); i++ {
-		id := idx[i]
-		val := logits[id]/temp - maxLogit
-		p := expForSampling(val)
-		probs[id] = p
-		cum += p
-		if cum >= topP {
-			limit = i + 1
+	maxLogit := logits[0] / temp
+	for i := 1; i < n; i++ {
+		v := logits[i] / temp
+		if v > maxLogit {
+			maxLogit = v
+		}
+	}
+	for {
+		selectTopKIndices(idx[:n], logits, k)
+		sort.Slice(idx[:k], func(i, j int) bool {
+			return logits[idx[i]] > logits[idx[j]]
+		})
+		cum = 0
+		limit = k
+		for i := 0; i < k; i++ {
+			id := idx[i]
+			val := logits[id]/temp - maxLogit
+			p := expForSampling(val)
+			probs[id] = p
+			cum += p
+			if cum >= topP {
+				limit = i + 1
+				break
+			}
+		}
+		if cum >= topP || k == n {
 			break
+		}
+		k *= 2
+		if k > n {
+			k = n
 		}
 	}
 	if cum == 0 {
@@ -3020,6 +3050,39 @@ func sampleFromTopPSort(logits []float32, temp float32, topP float32, rng *sampl
 		}
 	}
 	return idx[limit-1]
+}
+
+func selectTopKIndices(idx []int, logits []float32, k int) {
+	n := len(idx)
+	if k <= 0 || k >= n {
+		return
+	}
+	left, right := 0, n-1
+	target := k - 1
+	for left < right {
+		pivot := logits[idx[(left+right)/2]]
+		i, j := left, right
+		for i <= j {
+			for logits[idx[i]] > pivot {
+				i++
+			}
+			for logits[idx[j]] < pivot {
+				j--
+			}
+			if i <= j {
+				idx[i], idx[j] = idx[j], idx[i]
+				i++
+				j--
+			}
+		}
+		if target <= j {
+			right = j
+		} else if target >= i {
+			left = i
+		} else {
+			return
+		}
+	}
 }
 
 func expForSampling(x float32) float32 {
