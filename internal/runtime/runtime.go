@@ -117,7 +117,7 @@ var debugFastKQ = os.Getenv("BITNET_FAST_KQ_DOT") != "0" && !debugParityStrict
 var debugFastV = os.Getenv("BITNET_FAST_V_DOT") != "0" && !debugParityStrict
 var debugKVRowMajor = os.Getenv("BITNET_KV_ROWMAJOR") != "0"
 var debugFastQKVCol = os.Getenv("BITNET_FAST_QKV_COL") == "1" && !debugParityStrict
-var debugQKVFusedMax = parseEnvInt("BITNET_QKV_FUSED_MAX", 256*256)
+var debugQKVFusedMax = parseEnvInt("BITNET_QKV_FUSED_MAX", 512*512)
 var debugStrictAttnRef = os.Getenv("BITNET_STRICT_ATTENTION_REF") == "1"
 var debugStrictFFNRef = os.Getenv("BITNET_STRICT_FFN_REF") == "1"
 var debugMatchGGML = os.Getenv("BITNET_MATCH_GGML") == "1" || debugParityStrict

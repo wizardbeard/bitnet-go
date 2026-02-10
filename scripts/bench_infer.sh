@@ -8,29 +8,41 @@ MAX_TOKENS=${BITNET_BENCH_TOKENS:-64}
 TEMP=${BITNET_BENCH_TEMP:-0}
 PROCS=${BITNET_BENCH_PROCS:-0}
 BATCH=${BITNET_BENCH_BATCH:-1}
+SWEEP=${BITNET_BENCH_SWEEP:-0}
 
 if [ -n "${BITNET_BENCH_PROMPT_FILE:-}" ]; then
   PROMPT=$(cat "$BITNET_BENCH_PROMPT_FILE")
 fi
 
-start=$(date +%s%N)
-out=$(GOCACHE=/tmp/go-build go run ./cmd/bitnet \
-  --model "$MODEL" \
-  --chat-template \
-  --system "$SYSTEM" \
-  --user "$PROMPT" \
-  --max-tokens "$MAX_TOKENS" \
-  --temp "$TEMP" \
-  --procs "$PROCS" \
-  --batch "$BATCH")
-end=$(date +%s%N)
+run_once() {
+  batch=$1
+  start=$(date +%s%N)
+  out=$(GOCACHE=/tmp/go-build go run ./cmd/bitnet \
+    --model "$MODEL" \
+    --chat-template \
+    --system "$SYSTEM" \
+    --user "$PROMPT" \
+    --max-tokens "$MAX_TOKENS" \
+    --temp "$TEMP" \
+    --procs "$PROCS" \
+    --batch "$batch")
+  end=$(date +%s%N)
 
-elapsed=$(awk "BEGIN{printf \"%.3f\", ($end-$start)/1e9}")
-tokens=$(printf "%s\n" "$out" | awk 'match($0,/ tokens=([0-9]+)/,m){print m[1]; exit}')
-if [ -z "${tokens:-}" ]; then
-  tokens=$MAX_TOKENS
+  elapsed=$(awk "BEGIN{printf \"%.3f\", ($end-$start)/1e9}")
+  tokens=$(printf "%s\n" "$out" | awk 'match($0,/ tokens=([0-9]+)/,m){print m[1]; exit}')
+  if [ -z "${tokens:-}" ]; then
+    tokens=$MAX_TOKENS
+  fi
+  tokps=$(awk "BEGIN{if ($elapsed>0) printf \"%.3f\", $tokens/$elapsed; else print \"0\"}")
+
+  printf "bench: tokens=%s elapsed=%ss tok/s=%s batch=%s\n" "$tokens" "$elapsed" "$tokps" "$batch"
+  printf "%s\n" "$out"
+}
+
+if [ "$SWEEP" != "0" ]; then
+  for b in 1 2 4; do
+    run_once "$b"
+  done
+else
+  run_once "$BATCH"
 fi
-tokps=$(awk "BEGIN{if ($elapsed>0) printf \"%.3f\", $tokens/$elapsed; else print \"0\"}")
-
-printf "bench: tokens=%s elapsed=%ss tok/s=%s\n" "$tokens" "$elapsed" "$tokps"
-printf "%s\n" "$out"
