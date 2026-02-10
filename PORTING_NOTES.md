@@ -343,6 +343,10 @@
   - profile snapshot (i7-11800H, i2_s fixture, prompt.txt, max-tokens=15, procs=6): `total~9.122s` across 15 steps; FFN ~67.6%, attention ~21.5%, output ~10.9%, sampling/top-k ~0%.
 - update: tried FFN i2_s shared-quant path to reuse one `QuantizeRowI8S` result for `ffn_gate` + `ffn_up` in each layer (`BITNET_FFN_SHARE_I2S_QUANT=1`).
   - A/B check (`.bench/bitnet-go`, i2_s fixture, prompt.txt, max-tokens=15, procs=6): enabled ~25.247s vs disabled ~23.420s on this host, so default remains disabled (`BITNET_FFN_SHARE_I2S_QUANT=0`).
+- update: extended step profiling to include FFN substage attribution (`ffn_norm`, `ffn_gate_up`, `ffn_act`, `ffn_subnorm`, `ffn_down`) for bottleneck targeting.
+  - profile snapshot (i7-11800H, same fixture/settings): FFN substage totals over 15 steps were approximately `ffn_gate_up~4.13s`, `ffn_down~2.06s`, `ffn_act~13.0ms`, `ffn_norm~1.4ms`, `ffn_subnorm~4.8ms`.
+- update: added experimental opt-in parallel FFN gate/up projection (`BITNET_FFN_PAR_GATE_UP=1`) in the non-debug FFN path.
+  - end-to-end A/B (`.bench/bitnet-go`, i2_s fixture, prompt.txt, max-tokens=15, procs=6) regressed on this host: enabled ~26.560s vs disabled ~20.250s, so default remains disabled (`BITNET_FFN_PAR_GATE_UP=0`).
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).

@@ -173,6 +173,7 @@ var decodeCacheMaxTokensDefault = parseEnvInt("BITNET_DECODE_CACHE_MAX_TOKENS", 
 var profileLoad = os.Getenv("BITNET_PROFILE_LOAD") == "1"
 var profileStep = os.Getenv("BITNET_PROFILE_STEP") == "1"
 var ffnShareI2SQuant = os.Getenv("BITNET_FFN_SHARE_I2S_QUANT") == "1"
+var ffnParGateUp = os.Getenv("BITNET_FFN_PAR_GATE_UP") == "1"
 var useF16TokenEmbd = os.Getenv("BITNET_USE_F16_TOKEN_EMBD") == "1"
 var fastGreedyArgmax = os.Getenv("BITNET_FAST_GREEDY_ARGMAX") == "1"
 var useMmapI2S = os.Getenv("BITNET_MMAP_I2S") == "1"
@@ -1402,6 +1403,11 @@ type llamaStepProfile struct {
 	embed       time.Duration
 	attn        time.Duration
 	ffn         time.Duration
+	ffnNorm     time.Duration
+	ffnGateUp   time.Duration
+	ffnAct      time.Duration
+	ffnSubNorm  time.Duration
+	ffnDown     time.Duration
 	output      time.Duration
 	sample      time.Duration
 	topkCapture time.Duration
@@ -1425,7 +1431,7 @@ func (p *llamaStepProfile) log(block *tensorBlock) {
 	}
 	fmt.Fprintf(
 		os.Stderr,
-		"step_profile steps=%d layers=%d total=%s avg_step=%s embed=%s(%.1f%%) attn=%s(%.1f%%) ffn=%s(%.1f%%) output=%s(%.1f%%) sample=%s(%.1f%%) topk=%s(%.1f%%)\n",
+		"step_profile steps=%d layers=%d total=%s avg_step=%s embed=%s(%.1f%%) attn=%s(%.1f%%) ffn=%s(%.1f%%) ffn_norm=%s ffn_gate_up=%s ffn_act=%s ffn_subnorm=%s ffn_down=%s output=%s(%.1f%%) sample=%s(%.1f%%) topk=%s(%.1f%%)\n",
 		p.steps,
 		len(block.layers),
 		total,
@@ -1433,6 +1439,11 @@ func (p *llamaStepProfile) log(block *tensorBlock) {
 		p.embed, pct(p.embed),
 		p.attn, pct(p.attn),
 		p.ffn, pct(p.ffn),
+		p.ffnNorm,
+		p.ffnGateUp,
+		p.ffnAct,
+		p.ffnSubNorm,
+		p.ffnDown,
 		p.output, pct(p.output),
 		p.sample, pct(p.sample),
 		p.topkCapture, pct(p.topkCapture),
@@ -1700,12 +1711,47 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 		}
 		if !disableFFN {
 			if debugStrictFFNRef {
+				ffnNormStart := time.Time{}
+				if prof != nil {
+					ffnNormStart = time.Now()
+				}
 				rmsNormInto(n2, x, layer.ffnNorm, block.rmsEps)
+				if prof != nil {
+					prof.ffnNorm += time.Since(ffnNormStart)
+				}
+				gateUpStart := time.Time{}
+				if prof != nil {
+					gateUpStart = time.Now()
+				}
 				linearApplyIntoWeight(st.gate, layer.ffnGate, n2)
 				linearApplyIntoWeight(st.up, layer.ffnUp, n2)
+				if prof != nil {
+					prof.ffnGateUp += time.Since(gateUpStart)
+				}
+				actStart := time.Time{}
+				if prof != nil {
+					actStart = time.Now()
+				}
 				mulRelu2Reference(st.ffnAct, st.gate, st.up)
+				if prof != nil {
+					prof.ffnAct += time.Since(actStart)
+				}
+				subNormStart := time.Time{}
+				if prof != nil {
+					subNormStart = time.Now()
+				}
 				rmsNormInto(st.up, st.ffnAct, layer.ffnSubNorm, block.rmsEps)
+				if prof != nil {
+					prof.ffnSubNorm += time.Since(subNormStart)
+				}
+				downStart := time.Time{}
+				if prof != nil {
+					downStart = time.Now()
+				}
 				linearApplyIntoWeight(st.ffnDown, layer.ffnDown, st.up)
+				if prof != nil {
+					prof.ffnDown += time.Since(downStart)
+				}
 				kernels.AddScaled(x, st.ffnDown, 1.0)
 				if debugStages && shouldDebug(pos) && i == 0 {
 					debugStage("stage.ffn_sub_norm", st.up, block, stageNormBuf, false)
@@ -1726,12 +1772,23 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 			var actRef []float32
 			var haveFfnRef bool
 
+			ffnNormStart := time.Time{}
+			if prof != nil {
+				ffnNormStart = time.Now()
+			}
 			rmsNormInto(n2, x, layer.ffnNorm, block.rmsEps)
+			if prof != nil {
+				prof.ffnNorm += time.Since(ffnNormStart)
+			}
 			if debugStages && shouldDebug(pos) && i == 0 {
 				debugStage("stage.ffn_norm", n2, block, stageNormBuf, false)
 			}
 			if debugValues && shouldDebug(pos) && i == 0 {
 				debugVecValues("ffn_norm", n2, debugValuesN)
+			}
+			gateUpStart := time.Time{}
+			if prof != nil {
+				gateUpStart = time.Now()
 			}
 			if debugFFNRefF32 && shouldDebug(pos) && i == 0 {
 				if len(layer.debugFFNGateF32) == 0 || len(layer.debugFFNUpF32) == 0 {
@@ -1778,10 +1835,22 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 					linearApplyIntoWeightI2SQuantized(st.gate, layer.ffnGate, scratch, actScale, actSum)
 					linearApplyIntoWeightI2SQuantized(st.up, layer.ffnUp, scratch, actScale, actSum)
 					i8ScratchPool.Put(scratch[:0])
+				} else if ffnParGateUp {
+					var wg sync.WaitGroup
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+						linearApplyIntoWeight(st.gate, layer.ffnGate, n2)
+					}()
+					linearApplyIntoWeight(st.up, layer.ffnUp, n2)
+					wg.Wait()
 				} else {
 					linearApplyIntoWeight(st.gate, layer.ffnGate, n2)
 					linearApplyIntoWeight(st.up, layer.ffnUp, n2)
 				}
+			}
+			if prof != nil {
+				prof.ffnGateUp += time.Since(gateUpStart)
 			}
 			if debugFFNLoad && shouldDebug(pos) && i == 0 {
 				debugFfnCompare("ffn_gate", st.gate, layer.ffnGate, layer.debugFFNGateF32, n2)
@@ -1823,7 +1892,14 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 				debugVecStats("ffn_gate", st.gate)
 				debugVecStats("ffn_up", st.up)
 			}
+			actStart := time.Time{}
+			if prof != nil {
+				actStart = time.Now()
+			}
 			kernels.MulRelu2Into(st.ffnAct, st.gate, st.up)
+			if prof != nil {
+				prof.ffnAct += time.Since(actStart)
+			}
 			if debugFfnActRef && shouldDebug(pos) && i == 0 {
 				refAct := make([]float32, len(st.ffnAct))
 				mulRelu2Reference(refAct, st.gate, st.up)
@@ -1838,7 +1914,14 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 				debugVecValues("ffn_act", st.ffnAct, debugValuesN)
 				debugVecValues("ffn_out", st.ffnAct, debugValuesN)
 			}
+			subNormStart := time.Time{}
+			if prof != nil {
+				subNormStart = time.Now()
+			}
 			rmsNormInto(st.up, st.ffnAct, layer.ffnSubNorm, block.rmsEps)
+			if prof != nil {
+				prof.ffnSubNorm += time.Since(subNormStart)
+			}
 			if haveFfnRef {
 				upNormRef := make([]float32, len(st.up))
 				rmsNormInto(upNormRef, actRef, layer.ffnSubNorm, block.rmsEps)
@@ -1850,10 +1933,17 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 			if debugValues && shouldDebug(pos) && i == 0 {
 				debugVecValues("ffn_sub_norm", st.up, debugValuesN)
 			}
+			downStart := time.Time{}
+			if prof != nil {
+				downStart = time.Now()
+			}
 			if debugFFNTranspose {
 				linearApplyIntoWeightTransposed(st.ffnDown, layer.ffnDown, st.up, !layer.ffnDown.transposed)
 			} else {
 				linearApplyIntoWeight(st.ffnDown, layer.ffnDown, st.up)
+			}
+			if prof != nil {
+				prof.ffnDown += time.Since(downStart)
 			}
 			if haveFfnRef {
 				downRef := make([]float32, len(st.ffnDown))
