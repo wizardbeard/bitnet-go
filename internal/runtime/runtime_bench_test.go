@@ -609,7 +609,7 @@ func BenchmarkLlamaLayerStep(b *testing.B) {
 			b.SetBytes(int64((len(x) + len(n1) + len(n2) + len(logits)) * 4))
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				runLlamaStackStep(block, states, 0, i%c.steps, x, n1, n2, logits)
+				runLlamaStackStep(block, states, 0, i%c.steps, x, n1, n2, logits, true)
 			}
 		})
 	}

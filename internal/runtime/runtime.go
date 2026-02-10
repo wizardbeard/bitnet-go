@@ -171,6 +171,7 @@ var decodeCacheCapDefault = parseEnvInt("BITNET_DECODE_CACHE_CAP", 256)
 var decodeCacheMaxTokensDefault = parseEnvInt("BITNET_DECODE_CACHE_MAX_TOKENS", 64)
 var profileLoad = os.Getenv("BITNET_PROFILE_LOAD") == "1"
 var useF16TokenEmbd = os.Getenv("BITNET_USE_F16_TOKEN_EMBD") == "1"
+var fastGreedyArgmax = os.Getenv("BITNET_FAST_GREEDY_ARGMAX") == "1"
 var i8ScratchPool = sync.Pool{
 	New: func() any {
 		return make([]int8, 0)
@@ -1268,7 +1269,7 @@ func runForwardLlamaStack(block *tensorBlock, seed int64, promptTokens []int32, 
 	if len(promptTokens) > 0 {
 		currentToken = promptTokens[len(promptTokens)-1]
 		for pos := 0; pos < len(promptTokens)-1; pos++ {
-			runLlamaStackStep(block, layerStates, promptTokens[pos], pos, x, n1, n2, logits)
+			runLlamaStackStep(block, layerStates, promptTokens[pos], pos, x, n1, n2, logits, false)
 		}
 		startPos = len(promptTokens) - 1
 	}
@@ -1290,11 +1291,18 @@ func runForwardLlamaStack(block *tensorBlock, seed int64, promptTokens []int32, 
 		topkProbs = make([]float32, k)
 	}
 	for i := range out {
-		runLlamaStackStep(block, layerStates, currentToken, startPos+i, x, n1, n2, logits)
-		if topk != nil {
-			topk.append(i, logits)
+		stepPos := startPos + i
+		fastGreedy := fastGreedyArgmax && cfg.temp <= 0 && topk == nil && i >= len(forceTokens) && !debugStep0
+		var next int
+		if fastGreedy {
+			next = runLlamaStackStep(block, layerStates, currentToken, stepPos, x, n1, n2, logits, false)
+		} else {
+			runLlamaStackStep(block, layerStates, currentToken, stepPos, x, n1, n2, logits, true)
+			if topk != nil {
+				topk.append(i, logits)
+			}
+			next = sampleLogitsWithScratch(logits, cfg, sampler, probs, idx, topkEntries, topkProbs)
 		}
-		next := sampleLogitsWithScratch(logits, cfg, sampler, probs, idx, topkEntries, topkProbs)
 		if i < len(forceTokens) {
 			next = int(forceTokens[i])
 		}
@@ -1395,7 +1403,7 @@ func makeLlamaLayerState(layer llamaLayer, hiddenDim, maxSeq, heads int) llamaLa
 	return st
 }
 
-func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token int32, pos int, x, n1, n2, logits []float32) {
+func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token int32, pos int, x, n1, n2, logits []float32, computeLogits bool) int {
 	embedded := embedToken(x, block, token)
 	if !embedded {
 		fillTokenVector(x, token)
@@ -1443,7 +1451,7 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 		debugStep0Printed = true
 	}
 	if debugOutputOnly && debugStep0Printed {
-		return
+		return -1
 	}
 
 	if disableLayers {
@@ -1451,7 +1459,7 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 			fmt.Fprintln(os.Stderr, "debug layers: disabled")
 		}
 		rmsNormInto(n1, x, block.outputNorm, block.rmsEps)
-		linearApplyIntoWeight(logits, linearWeight{
+		w := linearWeight{
 			data:       block.outputWeight,
 			dataF16:    block.outputWeightF16,
 			rows:       block.outputRows,
@@ -1460,13 +1468,18 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 			qtype:      block.outputWeightType,
 			i2sPacked:  block.outputWeightPacked,
 			i2sScale:   block.outputWeightScale,
-		}, n1)
+		}
+		if computeLogits {
+			linearApplyIntoWeight(logits, w, n1)
+		} else {
+			return linearArgmaxWeight(w, n1)
+		}
 		if shouldDebug(pos) {
 			debugVecStats("output_norm", n1)
 			debugVecStats("logits", logits)
 			debugStep0Printed = true
 		}
-		return
+		return -1
 	}
 
 	for i := range block.layers {
@@ -1734,7 +1747,7 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 	if debugValues && shouldDebug(pos) {
 		debugVecValues("result_norm", n1, debugValuesN)
 	}
-	linearApplyIntoWeight(logits, linearWeight{
+	w := linearWeight{
 		data:       block.outputWeight,
 		dataF16:    block.outputWeightF16,
 		rows:       block.outputRows,
@@ -1743,12 +1756,17 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 		qtype:      block.outputWeightType,
 		i2sPacked:  block.outputWeightPacked,
 		i2sScale:   block.outputWeightScale,
-	}, n1)
-	if shouldDebug(pos) {
-		debugVecStats("output_norm", n1)
-		debugVecStats("logits", logits)
-		debugStep0Printed = true
 	}
+	if computeLogits {
+		linearApplyIntoWeight(logits, w, n1)
+		if shouldDebug(pos) {
+			debugVecStats("output_norm", n1)
+			debugVecStats("logits", logits)
+			debugStep0Printed = true
+		}
+		return -1
+	}
+	return linearArgmaxWeight(w, n1)
 }
 
 func causalAttentionMultiHeadIntoGeneric(dst, scores, q, keys, values []float32, steps, qHeads, kvHeads, kStepDim, vStepDim int, pos int) {
@@ -2501,6 +2519,88 @@ func i2sPackedSetLocal(packed []byte, idx int, val byte) {
 	shift := uint(6 - 2*group)
 	mask := byte(0x3 << shift)
 	packed[p] = (packed[p] & ^mask) | ((val & 0x3) << shift)
+}
+
+func linearArgmaxWeight(w linearWeight, x []float32) int {
+	if w.qtype == gguf.GGMLTypeF32 && len(w.data) > 0 {
+		if w.transposed {
+			if len(x) < w.rows || len(w.data) < w.rows*w.cols || w.cols <= 0 {
+				return -1
+			}
+			bestID := 0
+			bestVal := float32(-math.MaxFloat32)
+			for c := 0; c < w.cols; c++ {
+				base := w.rows * c
+				var sum float64
+				for r := 0; r < w.rows; r++ {
+					sum += float64(w.data[base+r]) * float64(x[r])
+				}
+				v := float32(sum)
+				if v > bestVal {
+					bestVal = v
+					bestID = c
+				}
+			}
+			return bestID
+		}
+		if len(x) < w.cols || len(w.data) < w.rows*w.cols || w.rows <= 0 {
+			return -1
+		}
+		bestID := 0
+		bestVal := float32(-math.MaxFloat32)
+		for r := 0; r < w.rows; r++ {
+			var sum float64
+			for c := 0; c < w.cols; c++ {
+				sum += float64(w.data[r+w.rows*c]) * float64(x[c])
+			}
+			v := float32(sum)
+			if v > bestVal {
+				bestVal = v
+				bestID = r
+			}
+		}
+		return bestID
+	}
+	if w.qtype == gguf.GGMLTypeF16 && len(w.dataF16) > 0 {
+		if w.transposed {
+			if len(x) < w.rows || len(w.dataF16) < w.rows*w.cols || w.cols <= 0 {
+				return -1
+			}
+			bestID := 0
+			bestVal := float32(-math.MaxFloat32)
+			for c := 0; c < w.cols; c++ {
+				base := w.rows * c
+				var sum float64
+				for r := 0; r < w.rows; r++ {
+					sum += float64(kernels.Float16ToFloat32(w.dataF16[base+r])) * float64(x[r])
+				}
+				v := float32(sum)
+				if v > bestVal {
+					bestVal = v
+					bestID = c
+				}
+			}
+			return bestID
+		}
+		if len(x) < w.cols || len(w.dataF16) < w.rows*w.cols || w.rows <= 0 {
+			return -1
+		}
+		bestID := 0
+		bestVal := float32(-math.MaxFloat32)
+		for r := 0; r < w.rows; r++ {
+			var sum float64
+			for c := 0; c < w.cols; c++ {
+				sum += float64(kernels.Float16ToFloat32(w.dataF16[r+w.rows*c])) * float64(x[c])
+			}
+			v := float32(sum)
+			if v > bestVal {
+				bestVal = v
+				bestID = r
+			}
+		}
+		return bestID
+	}
+	return -1
 }
 
 func transposeI2SPacked(packed []byte, rows, cols int) []byte {
