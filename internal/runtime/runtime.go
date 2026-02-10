@@ -3153,7 +3153,7 @@ func selectTopKIndices(idx []int, logits []float32, k int) {
 }
 
 func expForSampling(x float32) float32 {
-	if debugStrictExpf {
+	if debugStrictExpf || debugFastExpf {
 		return expf32(x)
 	}
 	return float32(math.Exp(float64(x)))

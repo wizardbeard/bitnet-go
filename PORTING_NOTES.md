@@ -284,6 +284,8 @@
   - end-to-end bench (`BenchmarkGenerateTopPCompare`, i2_s, 1x): prefix=256 ~2.603s vs full-sort ~2.479s, so default remains full-sort (`BITNET_TOPP_SORT_PREFIX=0`) and prefix path is opt-in.
 - update: added optional top-p prefilter path (`BITNET_TOPP_PREFILTER_K>0`) that samples from a bounded top-K candidate set when it contains sufficient cumulative mass, otherwise falls back to exact full-sort top-p.
   - current default is disabled (`BITNET_TOPP_PREFILTER_K=0`); on i7-11800H microbench (`BenchmarkSampleFromTopP`, 150ms), `K=2048` regressed (~1.85ms vs ~0.39ms for default), so this remains experimental.
+- update: wired sampling exp helper to honor `BITNET_FAST_EXPF=1` (previously only strict exp path affected sampling; fast exp flag already covered softmax paths).
+  - benchmark check (i7-11800H, `BenchmarkSampleFromTopP`, 150ms): default ~395,958 ns/op vs `BITNET_FAST_EXPF=1` ~487,386 ns/op, so fast-exp sampling remains opt-in and disabled by default.
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).
