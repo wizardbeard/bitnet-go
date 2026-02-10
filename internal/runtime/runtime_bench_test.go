@@ -322,6 +322,32 @@ func BenchmarkAppendTopKStep(b *testing.B) {
 	}
 }
 
+func BenchmarkSampleFromTopP(b *testing.B) {
+	const vocab = 128256
+	logits := make([]float32, vocab)
+	for i := range logits {
+		// Peaked distribution with long tail.
+		logits[i] = -0.0002 * float32(i)
+	}
+	probs := make([]float32, vocab)
+	idx := make([]int, vocab)
+	for i := range idx {
+		idx[i] = i
+	}
+	rng := newSampler(1)
+	const (
+		temp = float32(0.8)
+		topP = float32(0.9)
+	)
+
+	b.ReportAllocs()
+	b.SetBytes(int64(vocab * 4))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = sampleFromTopP(logits, temp, topP, rng, probs, idx)
+	}
+}
+
 func BenchmarkGenerateTopKToggle(b *testing.B) {
 	modelPath := os.Getenv("BITNET_BENCH_MODEL")
 	if modelPath == "" {

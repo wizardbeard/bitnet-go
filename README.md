@@ -61,6 +61,7 @@ Overrides:
 - Arm64-specific overrides use the same suffix with `BITNET_ARM64_` prefix (example: `BITNET_ARM64_I2S_I8S_BLOCK_MIN_ROWS=256`).
 - `BITNET_I2S_I8S_POOL` (set `0` to disable reusable fallback worker pool)
 - `BITNET_I2S_I8S_POOL_WORKERS` (override fallback worker pool size; default `GOMAXPROCS`)
+- `BITNET_TOPP_HEAP_CAP` (opt-in bounded-heap top-p sampler candidate cap; default `0` = use existing full-sort top-p path)
 
 | Benchmark | Result | Notes |
 | --- | --- | --- |

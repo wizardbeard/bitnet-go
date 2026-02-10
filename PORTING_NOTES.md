@@ -274,6 +274,9 @@
   - benchmark check (i7-11800H, `BenchmarkGenerateTopKToggle`, benchtime=1x, i2_s model):
     - fallback (`BITNET_I2S_I8S_DISABLE_FAST=1`): topk ~22.04s (from ~22.35s), no-topk ~20.99s (from ~21.98s), allocs near-parity.
     - fast path enabled: topk ~7.20s (from ~7.58s), no-topk ~7.47s (from ~7.54s), allocs near-parity.
+- update: added optional bounded-heap top-p sampler path (`BITNET_TOPP_HEAP_CAP>0`) with exact fallback to full-sort when heap mass is insufficient.
+  - default remains full-sort (`BITNET_TOPP_HEAP_CAP=0`) after microbench on i7-11800H favored sort for current synthetic distribution:
+    - `BenchmarkSampleFromTopP`: sort ~313,845 ns/op, heap(1024) ~2,010,590 ns/op.
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).

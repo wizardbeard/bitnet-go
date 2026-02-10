@@ -141,6 +141,7 @@ var debugI2SMap3To1 = os.Getenv("BITNET_I2S_MAP3_TO1") == "1"
 var debugI2SAltLayout = os.Getenv("BITNET_I2S_ALT_LAYOUT") == "1"
 var debugI2SScalar = os.Getenv("BITNET_I2S_SCALAR") == "1"
 var disableTopK = os.Getenv("BITNET_DISABLE_TOPK") == "1"
+var topPHeapCap = parseEnvInt("BITNET_TOPP_HEAP_CAP", 0)
 var i8ScratchPool = sync.Pool{
 	New: func() any {
 		return make([]int8, 0)
@@ -2871,6 +2872,113 @@ func sampleFromFull(logits []float32, temp float32, rng *sampler, probs []float3
 }
 
 func sampleFromTopP(logits []float32, temp float32, topP float32, rng *sampler, probs []float32, idx []int) int {
+	if len(logits) == 0 {
+		return -1
+	}
+	if topPHeapCap > 0 && topPHeapCap < len(logits) {
+		if id, ok := sampleFromTopPHeap(logits, temp, topP, rng, topPHeapCap); ok {
+			return id
+		}
+	}
+	return sampleFromTopPSort(logits, temp, topP, rng, probs, idx)
+}
+
+type topPEntry struct {
+	id int
+	p  float32
+}
+
+type topPMinHeap []topPEntry
+
+func topPHeapUp(h topPMinHeap, i int) {
+	for i > 0 {
+		p := (i - 1) / 2
+		if h[p].p <= h[i].p {
+			break
+		}
+		h[p], h[i] = h[i], h[p]
+		i = p
+	}
+}
+
+func topPHeapDown(h topPMinHeap, i int) {
+	n := len(h)
+	for {
+		l := 2*i + 1
+		if l >= n {
+			return
+		}
+		s := l
+		r := l + 1
+		if r < n && h[r].p < h[l].p {
+			s = r
+		}
+		if h[i].p <= h[s].p {
+			return
+		}
+		h[i], h[s] = h[s], h[i]
+		i = s
+	}
+}
+
+func sampleFromTopPHeap(logits []float32, temp float32, topP float32, rng *sampler, capN int) (int, bool) {
+	if len(logits) == 0 || capN <= 0 {
+		return -1, false
+	}
+	maxLogit := logits[0] / temp
+	for i := 1; i < len(logits); i++ {
+		v := logits[i] / temp
+		if v > maxLogit {
+			maxLogit = v
+		}
+	}
+	h := make(topPMinHeap, 0, capN)
+	var total, topSum float32
+	for id := range logits {
+		p := expForSampling(logits[id]/temp - maxLogit)
+		total += p
+		if len(h) < capN {
+			h = append(h, topPEntry{id: id, p: p})
+			topPHeapUp(h, len(h)-1)
+			topSum += p
+			continue
+		}
+		if p <= h[0].p {
+			continue
+		}
+		topSum += p - h[0].p
+		h[0] = topPEntry{id: id, p: p}
+		topPHeapDown(h, 0)
+	}
+	target := topP * total
+	if topSum < target {
+		return -1, false
+	}
+	sort.Slice(h, func(i, j int) bool { return h[i].p > h[j].p })
+	var cum float32
+	limit := len(h)
+	for i := range h {
+		cum += h[i].p
+		if cum >= target {
+			limit = i + 1
+			break
+		}
+	}
+	if cum == 0 {
+		return kernels.Argmax(logits), true
+	}
+	r := rng.nextFloat() * cum
+	var run float32
+	for i := 0; i < limit; i++ {
+		run += h[i].p
+		if r <= run {
+			return h[i].id, true
+		}
+	}
+	return h[limit-1].id, true
+}
+
+func sampleFromTopPSort(logits []float32, temp float32, topP float32, rng *sampler, probs []float32, idx []int) int {
 	if len(logits) == 0 {
 		return -1
 	}
