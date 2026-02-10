@@ -288,6 +288,7 @@
   - benchmark check (i7-11800H, `BenchmarkSampleFromTopP`, 150ms): default ~395,958 ns/op vs `BITNET_FAST_EXPF=1` ~487,386 ns/op, so fast-exp sampling remains opt-in and disabled by default.
 - update: removed remaining top-p sampling hot-path allocations by replacing closure-based `sort.Slice` calls with typed `slices.SortFunc` helpers over preallocated scratch buffers.
   - benchmark check (i7-11800H, `BenchmarkSampleFromTopP`, 200ms): ~397,702 ns/op, `0 B/op`, `0 allocs/op`.
+  - end-to-end check (`BenchmarkGenerateTopPCompare`, i2_s, 1x): default_prefix(256) ~3.341s / 1052 allocs vs full_sort ~2.426s / 1017 allocs; keep full-sort default and treat prefix path as opt-in tuning only.
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).
