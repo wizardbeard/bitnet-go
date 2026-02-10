@@ -86,9 +86,13 @@ func (w *topKWriter) result() []TopKStep {
 }
 
 type Runtime struct {
-	meta      Metadata
-	tokenizer *tokenizer.Tokenizer
-	block     *tensorBlock
+	meta             Metadata
+	tokenizer        *tokenizer.Tokenizer
+	block            *tensorBlock
+	promptCacheMu    sync.RWMutex
+	promptTokenCache map[string][]int32
+	promptCacheOrder []string
+	promptCacheCap   int
 }
 
 var debugStep0 = os.Getenv("BITNET_DEBUG_STEP0") == "1"
@@ -144,6 +148,7 @@ var disableTopK = os.Getenv("BITNET_DISABLE_TOPK") == "1"
 var topPHeapCap = parseEnvInt("BITNET_TOPP_HEAP_CAP", 0)
 var topPSortPrefix = parseEnvInt("BITNET_TOPP_SORT_PREFIX", 0)
 var topPPrefilterK = parseEnvInt("BITNET_TOPP_PREFILTER_K", 0)
+var promptCacheCapDefault = parseEnvInt("BITNET_PROMPT_CACHE_CAP", 128)
 var i8ScratchPool = sync.Pool{
 	New: func() any {
 		return make([]int8, 0)
@@ -350,13 +355,47 @@ func New(_ context.Context, modelPath string) (*Runtime, error) {
 			ContextLength: ctxLen,
 			VocabSize:     vocab,
 		},
-		tokenizer: tok,
-		block:     block,
+		tokenizer:        tok,
+		block:            block,
+		promptTokenCache: make(map[string][]int32),
+		promptCacheCap:   promptCacheCapDefault,
 	}, nil
 }
 
 func (r *Runtime) Metadata() Metadata {
 	return r.meta
+}
+
+func (r *Runtime) promptTokens(prompt string) []int32 {
+	if r.tokenizer == nil {
+		return nil
+	}
+	if r.promptCacheCap > 0 {
+		r.promptCacheMu.RLock()
+		if tok, ok := r.promptTokenCache[prompt]; ok {
+			r.promptCacheMu.RUnlock()
+			return tok
+		}
+		r.promptCacheMu.RUnlock()
+	}
+	tok := r.tokenizer.Tokenize(prompt)
+	if r.promptCacheCap <= 0 {
+		return tok
+	}
+	r.promptCacheMu.Lock()
+	if existing, ok := r.promptTokenCache[prompt]; ok {
+		r.promptCacheMu.Unlock()
+		return existing
+	}
+	for len(r.promptCacheOrder) >= r.promptCacheCap {
+		evict := r.promptCacheOrder[0]
+		r.promptCacheOrder = r.promptCacheOrder[1:]
+		delete(r.promptTokenCache, evict)
+	}
+	r.promptTokenCache[prompt] = tok
+	r.promptCacheOrder = append(r.promptCacheOrder, prompt)
+	r.promptCacheMu.Unlock()
+	return tok
 }
 
 func firstUint32(values ...any) uint32 {
@@ -394,10 +433,7 @@ func (r *Runtime) Generate(_ context.Context, req GenerateRequest) (struct {
 		}{}, nil
 	}
 
-	promptTokens := []int32{}
-	if r.tokenizer != nil {
-		promptTokens = r.tokenizer.Tokenize(req.Prompt)
-	}
+	promptTokens := r.promptTokens(req.Prompt)
 
 	// Phase-2 stepping stone: minimal forward loop with naive kernels and
 	// procedural weights. If model carries bitnet_go.* f32 tensors, use a first

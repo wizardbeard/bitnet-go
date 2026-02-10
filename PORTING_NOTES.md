@@ -293,6 +293,10 @@
   - benchmark check (i7-11800H, `BenchmarkGenerateTopPCompare`, i2_s, 2x):
     - default_prefix(256): ~2.430s/op, ~4.16 MB/op, ~830 allocs/op (from ~6.73 MB/op, ~1011 allocs/op).
     - full_sort: ~2.448s/op, ~1.57 MB/op, ~644 allocs/op (from ~6.73 MB/op, ~1012 allocs/op).
+- update: added bounded runtime prompt-token cache (`BITNET_PROMPT_CACHE_CAP`, default `128`) to reuse tokenizer output across repeated `Generate` calls with identical prompts.
+  - A/B check (i7-11800H, `BenchmarkGenerateTopPCompare`, i2_s, 4x):
+    - cache on: default_prefix ~2.484s/op, ~2.857 MB/op, ~732 allocs/op; full_sort ~2.444s/op, ~2.855 MB/op, ~731 allocs/op.
+    - cache off (`BITNET_PROMPT_CACHE_CAP=0`): default_prefix ~2.543s/op, ~2.858 MB/op, ~735 allocs/op; full_sort ~2.547s/op, ~2.855 MB/op, ~734 allocs/op.
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).
