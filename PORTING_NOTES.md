@@ -339,6 +339,10 @@
 - update: reduced temporary buffer overhead in the non-transposed chunked AVX2 path by pooling/reusing partial accumulation slabs (default still opt-in/disabled).
   - microbench refresh (`BenchmarkMatVecI2SI8SVariants`, r=2560/c=2560, `BITNET_I2S_I8S_FAST_PAR_NT_COLS_MIN=1`): `BITNET_MATVEC_THREADS=6` ~885,867 ns/op, ~1.8 KB/op, 19 allocs/op; `BITNET_MATVEC_THREADS=1` ~3,035,932 ns/op.
   - end-to-end check (`.bench/bitnet-go`, prompt.txt, max-tokens=15, procs=6) remains regressed when enabled on this host (~22.853s on vs ~20.780s off), so default remains disabled (`BITNET_I2S_I8S_FAST_PAR_NT_COLS_MIN=0`).
+- update: added optional generation step-stage profiler (`BITNET_PROFILE_STEP=1`) to attribute per-step time across embed/attention/FFN/output/sampling/top-k capture.
+  - profile snapshot (i7-11800H, i2_s fixture, prompt.txt, max-tokens=15, procs=6): `total~9.122s` across 15 steps; FFN ~67.6%, attention ~21.5%, output ~10.9%, sampling/top-k ~0%.
+- update: tried FFN i2_s shared-quant path to reuse one `QuantizeRowI8S` result for `ffn_gate` + `ffn_up` in each layer (`BITNET_FFN_SHARE_I2S_QUANT=1`).
+  - A/B check (`.bench/bitnet-go`, i2_s fixture, prompt.txt, max-tokens=15, procs=6): enabled ~25.247s vs disabled ~23.420s on this host, so default remains disabled (`BITNET_FFN_SHARE_I2S_QUANT=0`).
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).

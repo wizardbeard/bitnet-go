@@ -171,6 +171,8 @@ var promptCacheCapDefault = parseEnvInt("BITNET_PROMPT_CACHE_CAP", 128)
 var decodeCacheCapDefault = parseEnvInt("BITNET_DECODE_CACHE_CAP", 256)
 var decodeCacheMaxTokensDefault = parseEnvInt("BITNET_DECODE_CACHE_MAX_TOKENS", 64)
 var profileLoad = os.Getenv("BITNET_PROFILE_LOAD") == "1"
+var profileStep = os.Getenv("BITNET_PROFILE_STEP") == "1"
+var ffnShareI2SQuant = os.Getenv("BITNET_FFN_SHARE_I2S_QUANT") == "1"
 var useF16TokenEmbd = os.Getenv("BITNET_USE_F16_TOKEN_EMBD") == "1"
 var fastGreedyArgmax = os.Getenv("BITNET_FAST_GREEDY_ARGMAX") == "1"
 var useMmapI2S = os.Getenv("BITNET_MMAP_I2S") == "1"
@@ -1313,6 +1315,10 @@ func runForwardLlamaStack(block *tensorBlock, seed int64, promptTokens []int32, 
 	}
 	var topkEntries []TopKEntry
 	var topkProbs []float32
+	var stepProfile *llamaStepProfile
+	if profileStep {
+		stepProfile = &llamaStepProfile{}
+	}
 	if cfg.topK > 0 {
 		k := cfg.topK
 		if k > block.vocabDim {
@@ -1322,17 +1328,33 @@ func runForwardLlamaStack(block *tensorBlock, seed int64, promptTokens []int32, 
 		topkProbs = make([]float32, k)
 	}
 	for i := range out {
+		stepStart := time.Time{}
+		if stepProfile != nil {
+			stepStart = time.Now()
+		}
 		stepPos := startPos + i
 		fastGreedy := fastGreedyArgmax && cfg.temp <= 0 && topk == nil && i >= len(forceTokens) && !debugStep0
 		var next int
 		if fastGreedy {
-			next = runLlamaStackStep(block, layerStates, currentToken, stepPos, x, n1, n2, logits, false)
+			next = runLlamaStackStepProfile(block, layerStates, currentToken, stepPos, x, n1, n2, logits, false, stepProfile)
 		} else {
-			runLlamaStackStep(block, layerStates, currentToken, stepPos, x, n1, n2, logits, true)
+			runLlamaStackStepProfile(block, layerStates, currentToken, stepPos, x, n1, n2, logits, true, stepProfile)
 			if topk != nil {
-				topk.append(i, logits)
+				if stepProfile != nil {
+					t := time.Now()
+					topk.append(i, logits)
+					stepProfile.topkCapture += time.Since(t)
+				} else {
+					topk.append(i, logits)
+				}
 			}
-			next = sampleLogitsWithScratch(logits, cfg, sampler, probs, idx, topkEntries, topkProbs)
+			if stepProfile != nil {
+				t := time.Now()
+				next = sampleLogitsWithScratch(logits, cfg, sampler, probs, idx, topkEntries, topkProbs)
+				stepProfile.sample += time.Since(t)
+			} else {
+				next = sampleLogitsWithScratch(logits, cfg, sampler, probs, idx, topkEntries, topkProbs)
+			}
 		}
 		if i < len(forceTokens) {
 			next = int(forceTokens[i])
@@ -1344,7 +1366,11 @@ func runForwardLlamaStack(block *tensorBlock, seed int64, promptTokens []int32, 
 		}
 		out[i] = int32(next)
 		currentToken = out[i]
+		if stepProfile != nil {
+			stepProfile.addStep(time.Since(stepStart))
+		}
 	}
+	stepProfile.log(block)
 }
 
 type llamaLayerState struct {
@@ -1368,6 +1394,49 @@ type llamaRunScratch struct {
 	n2         []float32
 	logits     []float32
 	layerState []llamaLayerState
+}
+
+type llamaStepProfile struct {
+	steps       int
+	stepTotal   time.Duration
+	embed       time.Duration
+	attn        time.Duration
+	ffn         time.Duration
+	output      time.Duration
+	sample      time.Duration
+	topkCapture time.Duration
+}
+
+func (p *llamaStepProfile) addStep(total time.Duration) {
+	p.steps++
+	p.stepTotal += total
+}
+
+func (p *llamaStepProfile) log(block *tensorBlock) {
+	if p == nil || p.steps == 0 {
+		return
+	}
+	total := p.stepTotal
+	if total <= 0 {
+		return
+	}
+	pct := func(d time.Duration) float64 {
+		return float64(d) * 100 / float64(total)
+	}
+	fmt.Fprintf(
+		os.Stderr,
+		"step_profile steps=%d layers=%d total=%s avg_step=%s embed=%s(%.1f%%) attn=%s(%.1f%%) ffn=%s(%.1f%%) output=%s(%.1f%%) sample=%s(%.1f%%) topk=%s(%.1f%%)\n",
+		p.steps,
+		len(block.layers),
+		total,
+		total/time.Duration(p.steps),
+		p.embed, pct(p.embed),
+		p.attn, pct(p.attn),
+		p.ffn, pct(p.ffn),
+		p.output, pct(p.output),
+		p.sample, pct(p.sample),
+		p.topkCapture, pct(p.topkCapture),
+	)
 }
 
 var llamaRunScratchPool sync.Pool
@@ -1435,9 +1504,20 @@ func makeLlamaLayerState(layer llamaLayer, hiddenDim, maxSeq, heads int) llamaLa
 }
 
 func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token int32, pos int, x, n1, n2, logits []float32, computeLogits bool) int {
+	return runLlamaStackStepProfile(block, layerStates, token, pos, x, n1, n2, logits, computeLogits, nil)
+}
+
+func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState, token int32, pos int, x, n1, n2, logits []float32, computeLogits bool, prof *llamaStepProfile) int {
+	embedStart := time.Time{}
+	if prof != nil {
+		embedStart = time.Now()
+	}
 	embedded := embedToken(x, block, token)
 	if !embedded {
 		fillTokenVector(x, token)
+	}
+	if prof != nil {
+		prof.embed += time.Since(embedStart)
 	}
 
 	var stageNormBuf []float32
@@ -1517,6 +1597,10 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 		layer := block.layers[i]
 		st := &layerStates[i]
 
+		attnStart := time.Time{}
+		if prof != nil {
+			attnStart = time.Now()
+		}
 		if !disableAttn {
 			rmsNormInto(n1, x, layer.attnNorm, block.rmsEps)
 			if debugStages && shouldDebug(pos) && i == 0 {
@@ -1606,7 +1690,14 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 		} else if shouldDebug(pos) && i == 0 {
 			fmt.Fprintln(os.Stderr, "debug attn: disabled")
 		}
+		if prof != nil {
+			prof.attn += time.Since(attnStart)
+		}
 
+		ffnStart := time.Time{}
+		if prof != nil {
+			ffnStart = time.Now()
+		}
 		if !disableFFN {
 			if debugStrictFFNRef {
 				rmsNormInto(n2, x, layer.ffnNorm, block.rmsEps)
@@ -1624,6 +1715,9 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 					debugVecStats("ffn_act", st.ffnAct)
 					debugVecStats("ffn_down", st.ffnDown)
 					debugVecStats("x.post_ffn", x)
+				}
+				if prof != nil {
+					prof.ffn += time.Since(ffnStart)
 				}
 				continue
 			}
@@ -1664,8 +1758,30 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 				linearApplyIntoWeightTransposed(st.gate, layer.ffnGate, n2, !layer.ffnGate.transposed)
 				linearApplyIntoWeightTransposed(st.up, layer.ffnUp, n2, !layer.ffnUp.transposed)
 			} else {
-				linearApplyIntoWeight(st.gate, layer.ffnGate, n2)
-				linearApplyIntoWeight(st.up, layer.ffnUp, n2)
+				if ffnShareI2SQuant &&
+					layer.ffnGate.qtype == gguf.GGMLTypeI2_S && len(layer.ffnGate.i2sPacked) > 0 &&
+					layer.ffnUp.qtype == gguf.GGMLTypeI2_S && len(layer.ffnUp.i2sPacked) > 0 &&
+					!debugI2SFloat {
+					scratch := i8ScratchPool.Get().([]int8)
+					if cap(scratch) < len(n2) {
+						scratch = make([]int8, len(n2))
+					} else {
+						scratch = scratch[:len(n2)]
+					}
+					actScale, actSum := kernels.QuantizeRowI8S(scratch, n2)
+					if debugI2SDisableActSum {
+						actSum = 0
+					}
+					if debugI2SInvertActScale && actScale != 0 {
+						actScale = 1 / actScale
+					}
+					linearApplyIntoWeightI2SQuantized(st.gate, layer.ffnGate, scratch, actScale, actSum)
+					linearApplyIntoWeightI2SQuantized(st.up, layer.ffnUp, scratch, actScale, actSum)
+					i8ScratchPool.Put(scratch[:0])
+				} else {
+					linearApplyIntoWeight(st.gate, layer.ffnGate, n2)
+					linearApplyIntoWeight(st.up, layer.ffnUp, n2)
+				}
 			}
 			if debugFFNLoad && shouldDebug(pos) && i == 0 {
 				debugFfnCompare("ffn_gate", st.gate, layer.ffnGate, layer.debugFFNGateF32, n2)
@@ -1769,8 +1885,15 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 		} else if shouldDebug(pos) && i == 0 {
 			fmt.Fprintln(os.Stderr, "debug ffn: disabled")
 		}
+		if prof != nil {
+			prof.ffn += time.Since(ffnStart)
+		}
 	}
 
+	outputStart := time.Time{}
+	if prof != nil {
+		outputStart = time.Now()
+	}
 	rmsNormInto(n1, x, block.outputNorm, block.rmsEps)
 	if debugStages && shouldDebug(pos) {
 		debugStage("stage.output_norm", n1, block, stageNormBuf, true)
@@ -1790,12 +1913,18 @@ func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token 
 	}
 	if computeLogits {
 		linearApplyIntoWeight(logits, w, n1)
+		if prof != nil {
+			prof.output += time.Since(outputStart)
+		}
 		if shouldDebug(pos) {
 			debugVecStats("output_norm", n1)
 			debugVecStats("logits", logits)
 			debugStep0Printed = true
 		}
 		return -1
+	}
+	if prof != nil {
+		prof.output += time.Since(outputStart)
 	}
 	return linearArgmaxWeight(w, n1)
 }
@@ -2646,67 +2775,7 @@ func linearApplyIntoWeight(dst []float32, w linearWeight, x []float32) {
 		if debugI2SInvertActScale && actScale != 0 {
 			actScale = 1 / actScale
 		}
-		if debugI2SRefOnce && !debugI2SRefOncePrinted {
-			ref := make([]float32, len(dst))
-			if w.transposed {
-				kernels.MatVecTI2SI8SRef(ref, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale)
-			} else {
-				kernels.MatVecI2SI8SRef(ref, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale)
-			}
-			var maxAbs, maxRel float32
-			for i := range ref {
-				diff := float32(math.Abs(float64(dst[i] - ref[i])))
-				if diff > maxAbs {
-					maxAbs = diff
-				}
-				den := float32(math.Abs(float64(ref[i]))) + 1e-9
-				rel := diff / den
-				if rel > maxRel {
-					maxRel = rel
-				}
-			}
-			fmt.Fprintf(os.Stderr, "debug i2s_ref_once max_abs=%g max_rel=%g act_sum=%d act_scale=%g\n", maxAbs, maxRel, actSum, actScale)
-			debugI2SRefOncePrinted = true
-		}
-		if debugI2SRefDot {
-			if w.transposed {
-				kernels.MatVecTI2SI8SRef(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale)
-			} else {
-				kernels.MatVecI2SI8SRef(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale)
-			}
-		} else {
-			if w.transposed {
-				if debugI2SMap3To1 {
-					kernels.MatVecTI2SI8SMap(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
-				} else if debugI2SAltLayout {
-					kernels.MatVecTI2SI8SAlt(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
-				} else if debugI2SScalar {
-					kernels.MatVecTI2SI8SScalar(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
-				} else {
-					kernels.MatVecTI2SI8S(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
-				}
-			} else {
-				if debugI2SMap3To1 {
-					kernels.MatVecI2SI8SMap(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
-				} else if debugI2SAltLayout {
-					kernels.MatVecI2SI8SAlt(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
-				} else if debugI2SScalar {
-					kernels.MatVecI2SI8SScalar(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
-				} else {
-					kernels.MatVecI2SI8S(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
-				}
-			}
-		}
-		if debugI2SMatvecRef && !debugI2SMatvecPrinted {
-			ref := make([]float32, len(dst))
-			if w.transposed {
-				kernels.MatVecTI2SI8SRef(ref, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale)
-			} else {
-				kernels.MatVecI2SI8SRef(ref, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale)
-			}
-			debugVecDiff("i2s_matvec.ref.diff", dst, ref)
-			debugI2SMatvecPrinted = true
-		}
+		linearApplyIntoWeightI2SQuantized(dst, w, scratch, actScale, actSum)
 		i8ScratchPool.Put(scratch[:0])
 		return
 	}
@@ -2732,6 +2801,70 @@ func linearApplyIntoWeight(dst []float32, w linearWeight, x []float32) {
 		return
 	}
 	kernels.MatVec(dst, w.data, w.rows, w.cols, x)
+}
+
+func linearApplyIntoWeightI2SQuantized(dst []float32, w linearWeight, scratch []int8, actScale float32, actSum int32) {
+	if debugI2SRefOnce && !debugI2SRefOncePrinted {
+		ref := make([]float32, len(dst))
+		if w.transposed {
+			kernels.MatVecTI2SI8SRef(ref, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale)
+		} else {
+			kernels.MatVecI2SI8SRef(ref, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale)
+		}
+		var maxAbs, maxRel float32
+		for i := range ref {
+			diff := float32(math.Abs(float64(dst[i] - ref[i])))
+			if diff > maxAbs {
+				maxAbs = diff
+			}
+			den := float32(math.Abs(float64(ref[i]))) + 1e-9
+			rel := diff / den
+			if rel > maxRel {
+				maxRel = rel
+			}
+		}
+		fmt.Fprintf(os.Stderr, "debug i2s_ref_once max_abs=%g max_rel=%g act_sum=%d act_scale=%g\n", maxAbs, maxRel, actSum, actScale)
+		debugI2SRefOncePrinted = true
+	}
+	if debugI2SRefDot {
+		if w.transposed {
+			kernels.MatVecTI2SI8SRef(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale)
+		} else {
+			kernels.MatVecI2SI8SRef(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale)
+		}
+	} else {
+		if w.transposed {
+			if debugI2SMap3To1 {
+				kernels.MatVecTI2SI8SMap(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
+			} else if debugI2SAltLayout {
+				kernels.MatVecTI2SI8SAlt(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
+			} else if debugI2SScalar {
+				kernels.MatVecTI2SI8SScalar(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
+			} else {
+				kernels.MatVecTI2SI8S(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
+			}
+		} else {
+			if debugI2SMap3To1 {
+				kernels.MatVecI2SI8SMap(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
+			} else if debugI2SAltLayout {
+				kernels.MatVecI2SI8SAlt(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
+			} else if debugI2SScalar {
+				kernels.MatVecI2SI8SScalar(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
+			} else {
+				kernels.MatVecI2SI8S(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
+			}
+		}
+	}
+	if debugI2SMatvecRef && !debugI2SMatvecPrinted {
+		ref := make([]float32, len(dst))
+		if w.transposed {
+			kernels.MatVecTI2SI8SRef(ref, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale)
+		} else {
+			kernels.MatVecI2SI8SRef(ref, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale)
+		}
+		debugVecDiff("i2s_matvec.ref.diff", dst, ref)
+		debugI2SMatvecPrinted = true
+	}
 }
 
 func linearApplyIntoWeightTransposed(dst []float32, w linearWeight, x []float32, transposed bool) {
