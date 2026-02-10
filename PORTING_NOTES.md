@@ -301,6 +301,8 @@
   - benchmark check (i7-11800H, `BenchmarkGenerateTopPCompare`, i2_s, 4x with capture disabled in benchmark request): default_prefix ~2.485s/op, ~2.860 MB/op, ~730 allocs/op; full_sort ~2.502s/op, ~2.859 MB/op, ~730 allocs/op.
 - update: optimized GPT2/BPE decode path to avoid per-rune temporary string allocations by switching byte decoder lookups to `map[rune]byte` and using `utf8.AppendRune` for non-byte symbols.
   - added `BenchmarkDecodeBPE`; current snapshot on i7-11800H: ~495 ns/op, `112 B/op`, `2 allocs/op`.
+- update: added session-level decoded-text cache for short generated suffixes (`BITNET_DECODE_CACHE_CAP`, default `256`; `BITNET_DECODE_CACHE_MAX_TOKENS`, default `64`) keyed by token-id sequence hash with token-slice collision checks.
+  - end-to-end check (i7-11800H, `BenchmarkGenerateTopPCompare`, i2_s, 2x): default_prefix ~2.657s/op, ~4.151 MB/op, ~824 allocs/op; full_sort ~2.693s/op, ~4.155 MB/op, ~825 allocs/op (small alloc drop vs prior ~827/~828).
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).

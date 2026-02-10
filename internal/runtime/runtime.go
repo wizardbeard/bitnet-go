@@ -94,6 +94,22 @@ type Runtime struct {
 	promptTokenCache map[string][]int32
 	promptCacheOrder []string
 	promptCacheCap   int
+	decodeCacheMu    sync.RWMutex
+	decodeTextCache  map[decodeCacheKey][]decodeCacheEntry
+	decodeCacheOrder []decodeCacheKey
+	decodeCacheCap   int
+	decodeCacheMax   int
+}
+
+type decodeCacheKey struct {
+	h1 uint64
+	h2 uint64
+	n  int
+}
+
+type decodeCacheEntry struct {
+	tokens []int32
+	text   string
 }
 
 var debugStep0 = os.Getenv("BITNET_DEBUG_STEP0") == "1"
@@ -150,6 +166,8 @@ var topPHeapCap = parseEnvInt("BITNET_TOPP_HEAP_CAP", 0)
 var topPSortPrefix = parseEnvInt("BITNET_TOPP_SORT_PREFIX", 0)
 var topPPrefilterK = parseEnvInt("BITNET_TOPP_PREFILTER_K", 0)
 var promptCacheCapDefault = parseEnvInt("BITNET_PROMPT_CACHE_CAP", 128)
+var decodeCacheCapDefault = parseEnvInt("BITNET_DECODE_CACHE_CAP", 256)
+var decodeCacheMaxTokensDefault = parseEnvInt("BITNET_DECODE_CACHE_MAX_TOKENS", 64)
 var i8ScratchPool = sync.Pool{
 	New: func() any {
 		return make([]int8, 0)
@@ -360,6 +378,9 @@ func New(_ context.Context, modelPath string) (*Runtime, error) {
 		block:            block,
 		promptTokenCache: make(map[string][]int32),
 		promptCacheCap:   promptCacheCapDefault,
+		decodeTextCache:  make(map[decodeCacheKey][]decodeCacheEntry),
+		decodeCacheCap:   decodeCacheCapDefault,
+		decodeCacheMax:   decodeCacheMaxTokensDefault,
 	}, nil
 }
 
@@ -472,7 +493,62 @@ func (r *Runtime) decodeTokens(tokens []int32) string {
 	if r.tokenizer == nil {
 		return ""
 	}
-	return r.tokenizer.Decode(tokens)
+	if len(tokens) == 0 || r.decodeCacheCap <= 0 || r.decodeCacheMax <= 0 || len(tokens) > r.decodeCacheMax {
+		return r.tokenizer.Decode(tokens)
+	}
+	key := makeDecodeCacheKey(tokens)
+	r.decodeCacheMu.RLock()
+	if bucket, ok := r.decodeTextCache[key]; ok {
+		for i := range bucket {
+			if slices.Equal(bucket[i].tokens, tokens) {
+				text := bucket[i].text
+				r.decodeCacheMu.RUnlock()
+				return text
+			}
+		}
+	}
+	r.decodeCacheMu.RUnlock()
+
+	text := r.tokenizer.Decode(tokens)
+
+	r.decodeCacheMu.Lock()
+	if bucket, ok := r.decodeTextCache[key]; ok {
+		for i := range bucket {
+			if slices.Equal(bucket[i].tokens, tokens) {
+				text = bucket[i].text
+				r.decodeCacheMu.Unlock()
+				return text
+			}
+		}
+	}
+	for len(r.decodeCacheOrder) >= r.decodeCacheCap {
+		evict := r.decodeCacheOrder[0]
+		r.decodeCacheOrder = r.decodeCacheOrder[1:]
+		delete(r.decodeTextCache, evict)
+	}
+	copied := append([]int32(nil), tokens...)
+	r.decodeTextCache[key] = append(r.decodeTextCache[key], decodeCacheEntry{
+		tokens: copied,
+		text:   text,
+	})
+	r.decodeCacheOrder = append(r.decodeCacheOrder, key)
+	r.decodeCacheMu.Unlock()
+	return text
+}
+
+func makeDecodeCacheKey(tokens []int32) decodeCacheKey {
+	// Two independent 64-bit mixes to keep collision probability negligible.
+	h1 := uint64(1469598103934665603)
+	h2 := uint64(1099511628211)
+	for _, tok := range tokens {
+		v := uint64(uint32(tok))
+		h1 ^= v + 0x9e3779b97f4a7c15 + (h1 << 6) + (h1 >> 2)
+		h1 *= 1099511628211
+		h2 += v*0x517cc1b727220a95 + (h2 << 7) + (h2 >> 3)
+		h2 ^= h2 >> 33
+		h2 *= 0xff51afd7ed558ccd
+	}
+	return decodeCacheKey{h1: h1, h2: h2, n: len(tokens)}
 }
 
 type tensorBlock struct {
