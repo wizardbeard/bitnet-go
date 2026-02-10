@@ -11,6 +11,7 @@ Training support (diverges from upstream) will live in this same repo so we can 
 - `BITNET_ENFORCE_YARN=1 go test ./... -run TestParityAgainstYarnVectors -count=1`
 - `./scripts/fetch_testdata_gguf.sh`
 - `sh ./scripts/bench_infer.sh`
+- `sh ./scripts/bench_i2s_kernels.sh`
 - Chat prompt template (Llama):
 `go run ./cmd/bitnet --chat-template --system "You are helpful." --user "Hello"`
 - Chat history (repeatable):
@@ -46,6 +47,7 @@ Overrides:
 - `BITNET_BENCH_TEMP`
 - `BITNET_BENCH_PROCS`
 - `BITNET_BENCH_BATCH`
+- `BITNET_BENCH_SWEEP=1` (run batch sweep 1/2/4)
 - `BITNET_FORCE_AVX2=1` (force AVX2 i2_s i8_s matvec fast path on amd64+cgo; auto-detects when available)
 - `BITNET_MATVEC_THREADS` (enable parallel i2_s i8_s matvec when AVX2 is unavailable; try `NumCPU-2`)
 
@@ -88,6 +90,7 @@ CI note:
   `BITNET_I2S_2B_MODEL_URL` set to the BitNet 2B i2_s GGUF, so the 2B smoke parity
   test can run when enabled.
 - CI also runs non-gating benchmark jobs (`bench-smoke`, `bench-kernels`, `bench-runtime`) to track perf regressions.
+- CI also runs a non-gating targeted i2_s+i8_s kernel benchmark (`bench-i2s-kernels`) and uploads the result artifact (`.bench/i2s-kernels.txt`).
 
 Optional IQ fixture hash:
 - `BITNET_FETCH_IQ=1 ./scripts/fetch_testdata_gguf.sh`

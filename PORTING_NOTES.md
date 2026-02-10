@@ -207,6 +207,18 @@
 - update: AVX2 i2_s i8_s fast paths now auto-detect AVX2 when cgo is available (env override still supported).
 - update: added `BITNET_MATVEC_THREADS` to enable parallel i2_s i8_s matvec when AVX2 is unavailable.
 - update: inference benchmark without forcing AVX2 now hits ~0.27 tok/s on i7-11800H (auto-detect working).
+- update: AVX2 vector dot added to `MatVecTI2SI8S` block path; microbench now ~1.67 ms/op (from ~2.0 ms/op) on i7-11800H.
+- update: AVX2 vectorized block accumulation added to `MatVecI2SI8S` block path; microbench now ~2.03 ms/op (from ~2.32 ms/op) on i7-11800H.
+- update: inference benchmark after AVX2 matvec vectorization: ~0.283 tok/s (64 tokens, greedy, chat prompt) on i7-11800H.
+- update: batch sweep (i7-11800H, `ggml-model-i2_s.gguf`): batch=1 ~0.284 tok/s, batch=2 ~0.538 tok/s, batch=4 ~0.931 tok/s (aggregate throughput).
+- update: short-token sweep (32 tokens, same model): batch=1 ~0.166 tok/s, batch=2 ~0.274 tok/s, batch=4 ~0.482 tok/s (aggregate throughput).
+- update: reverted SIMD dot path for attention (`dotF32FastN`) after no end-to-end gain.
+- update: softmax unroll increased for `BITNET_FAST_EXPF=1`; bench did not improve on i7-11800H (dispatch ~1.80us).
+- update: raised `BITNET_QKV_FUSED_MAX` default to `512*512`; QKV bench still favors separate matvec for 1024, so default may be fine for mid-sized layers.
+- update: expanded i2_s+i8_s kernel microbench coverage to shape/variant suites:
+  - `BenchmarkMatVecI2SI8SVariants` and `BenchmarkMatVecTI2SI8SVariants` now run `dispatch`, `generic_block`, and `scalar` variants over 512/1024/2560 shapes.
+  - added `scripts/bench_i2s_kernels.sh` to run targeted kernels-only benches and write `.bench/i2s-kernels.txt`.
+  - CI now runs `bench-i2s-kernels` (non-gating) and uploads `.bench/i2s-kernels.txt` as an artifact for regression tracking.
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).
@@ -227,4 +239,4 @@ AGENTS.md progress snapshot:
 Next steps aligned to AGENTS.md:
 - Phase 2: tighten i2_s parity tolerances where possible (focus on logits/top‑K policy and remaining drift characterization).
 - Phase 2: extend parity vectors to cover 1.58B/2B i2_s fixtures with consistent teacher‑forced logits.
-- Phase 3: add kernel microbench coverage for i2_s + i8_s path and track regressions in CI.
+- Phase 3: add tunable tiling parameters for remaining hot kernels and validate with targeted microbench sweeps.

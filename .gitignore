@@ -1,3 +1,4 @@
 .ref/
 .idea/
 *.gguf
+.bench/

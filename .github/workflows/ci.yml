@@ -75,6 +75,17 @@ jobs:
           else
             echo "Skipping i2_s 2B smoke parity (fixture missing)"
           fi
+      - name: bench-i2s-kernels
+        run: |
+          ./scripts/bench_i2s_kernels.sh
+        continue-on-error: true
+      - name: upload-bench-i2s-kernels
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-i2s-kernels
+          path: .bench/i2s-kernels.txt
+          if-no-files-found: warn
       - name: bench-smoke
         run: |
           go test ./... -bench . -benchmem
