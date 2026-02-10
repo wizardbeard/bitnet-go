@@ -329,6 +329,7 @@
   - end-to-end A/B (`.bench/bitnet-go`, prompt.txt, max-tokens=15, procs=6):
     - mmap on: ~24.759s (`~0.606 tok/s`)
     - mmap off: ~21.737s (`~0.690 tok/s`)
+- update: tested persistent `MatVecT` worker-pool scheduling for large output projections; regressed on i7-11800H (max-tokens=15, procs=6), so reverted to per-call goroutine split path.
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).
