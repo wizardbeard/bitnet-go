@@ -910,6 +910,16 @@ func runForwardProjectionBlock(block *tensorBlock, seed int64, promptTokens []in
 	for i := range idx {
 		idx[i] = i
 	}
+	var topkEntries []TopKEntry
+	var topkProbs []float32
+	if cfg.topK > 0 {
+		k := cfg.topK
+		if k > block.vocabDim {
+			k = block.vocabDim
+		}
+		topkEntries = make([]TopKEntry, k)
+		topkProbs = make([]float32, k)
+	}
 
 	mixState(state, tokenVec, int32(seed))
 	for _, tok := range promptTokens {
@@ -929,7 +939,7 @@ func runForwardProjectionBlock(block *tensorBlock, seed int64, promptTokens []in
 			topk.append(i, logits)
 		}
 
-		next := sampleLogitsWithScratch(logits, cfg, sampler, probs, idx)
+		next := sampleLogitsWithScratch(logits, cfg, sampler, probs, idx, topkEntries, topkProbs)
 		if next < 0 {
 			out[i] = 0
 			continue
@@ -950,6 +960,16 @@ func runForwardEmbeddingOutputBlock(block *tensorBlock, seed int64, promptTokens
 	idx := make([]int, block.vocabDim)
 	for i := range idx {
 		idx[i] = i
+	}
+	var topkEntries []TopKEntry
+	var topkProbs []float32
+	if cfg.topK > 0 {
+		k := cfg.topK
+		if k > block.vocabDim {
+			k = block.vocabDim
+		}
+		topkEntries = make([]TopKEntry, k)
+		topkProbs = make([]float32, k)
 	}
 
 	fillTokenVector(state, int32(seed))
@@ -974,7 +994,7 @@ func runForwardEmbeddingOutputBlock(block *tensorBlock, seed int64, promptTokens
 			topk.append(i, logits)
 		}
 
-		next := sampleLogitsWithScratch(logits, cfg, sampler, probs, idx)
+		next := sampleLogitsWithScratch(logits, cfg, sampler, probs, idx, topkEntries, topkProbs)
 		if next < 0 {
 			out[i] = 0
 			continue
@@ -1042,12 +1062,22 @@ func runForwardLlamaStack(block *tensorBlock, seed int64, promptTokens []int32, 
 	for i := range idx {
 		idx[i] = i
 	}
+	var topkEntries []TopKEntry
+	var topkProbs []float32
+	if cfg.topK > 0 {
+		k := cfg.topK
+		if k > block.vocabDim {
+			k = block.vocabDim
+		}
+		topkEntries = make([]TopKEntry, k)
+		topkProbs = make([]float32, k)
+	}
 	for i := range out {
 		runLlamaStackStep(block, layerStates, currentToken, startPos+i, x, n1, n2, logits)
 		if topk != nil {
 			topk.append(i, logits)
 		}
-		next := sampleLogitsWithScratch(logits, cfg, sampler, probs, idx)
+		next := sampleLogitsWithScratch(logits, cfg, sampler, probs, idx, topkEntries, topkProbs)
 		if i < len(forceTokens) {
 			next = int(forceTokens[i])
 		}
@@ -2560,6 +2590,16 @@ func runForwardStub(vocabSize uint32, seed int64, promptTokens []int32, out []in
 	for i := range idx {
 		idx[i] = i
 	}
+	var topkEntries []TopKEntry
+	var topkProbs []float32
+	if cfg.topK > 0 {
+		k := cfg.topK
+		if k > logitsCap {
+			k = logitsCap
+		}
+		topkEntries = make([]TopKEntry, k)
+		topkProbs = make([]float32, k)
+	}
 	for i := range out {
 		for id := 0; id < logitsCap; id++ {
 			fillTokenVector(tokenVec, int32(id))
@@ -2569,7 +2609,7 @@ func runForwardStub(vocabSize uint32, seed int64, promptTokens []int32, out []in
 			topk.append(i, logits)
 		}
 
-		next := sampleLogitsWithScratch(logits, cfg, sampler, probs, idx)
+		next := sampleLogitsWithScratch(logits, cfg, sampler, probs, idx, topkEntries, topkProbs)
 		if next < 0 {
 			out[i] = 0
 			continue
@@ -2699,7 +2739,7 @@ func fillTopK(entries []TopKEntry, logits []float32, k int) int {
 	return count
 }
 
-func sampleLogitsWithScratch(logits []float32, cfg samplingConfig, rng *sampler, probs []float32, idx []int) int {
+func sampleLogitsWithScratch(logits []float32, cfg samplingConfig, rng *sampler, probs []float32, idx []int, topkEntries []TopKEntry, topkProbs []float32) int {
 	if len(logits) == 0 {
 		return -1
 	}
@@ -2711,12 +2751,19 @@ func sampleLogitsWithScratch(logits []float32, cfg samplingConfig, rng *sampler,
 		if k > len(logits) {
 			k = len(logits)
 		}
-		entries := make([]TopKEntry, k)
-		n := fillTopK(entries, logits, k)
+		entries := topkEntries
+		if len(entries) < k {
+			entries = make([]TopKEntry, k)
+		}
+		n := fillTopK(entries[:k], logits, k)
 		if n == 0 {
 			return kernels.Argmax(logits)
 		}
-		return sampleFromTopK(entries[:n], cfg.temp, cfg.topP, rng)
+		probsTopK := topkProbs
+		if len(probsTopK) < n {
+			probsTopK = make([]float32, n)
+		}
+		return sampleFromTopK(entries[:n], cfg.temp, cfg.topP, rng, probsTopK[:n])
 	}
 	if cfg.topP < 1 {
 		return sampleFromTopP(logits, cfg.temp, cfg.topP, rng, probs, idx)
@@ -2724,7 +2771,7 @@ func sampleLogitsWithScratch(logits []float32, cfg samplingConfig, rng *sampler,
 	return sampleFromFull(logits, cfg.temp, rng, probs)
 }
 
-func sampleFromTopK(entries []TopKEntry, temp float32, topP float32, rng *sampler) int {
+func sampleFromTopK(entries []TopKEntry, temp float32, topP float32, rng *sampler, probs []float32) int {
 	if len(entries) == 0 {
 		return -1
 	}
@@ -2735,7 +2782,10 @@ func sampleFromTopK(entries []TopKEntry, temp float32, topP float32, rng *sample
 			maxLogit = val
 		}
 	}
-	probs := make([]float32, len(entries))
+	if len(probs) < len(entries) {
+		probs = make([]float32, len(entries))
+	}
+	probs = probs[:len(entries)]
 	var sum float32
 	for i := range entries {
 		val := entries[i].Logit/temp - maxLogit

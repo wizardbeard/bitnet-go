@@ -270,6 +270,10 @@
   - `chunk_512`: avg dispatch ~863,114 ns
   - `block_128`: avg dispatch ~728,748 ns
   - defaults unchanged (`rows_min=512`, `cols_min=512`, `chunk=auto`, `block_min_rows=256`).
+- update: runtime sampling path now reuses top-k scratch buffers (`TopKEntry[]`, `probs[]`) across token steps in all forward paths (`stub`, projection, embedding/output, llama stack), avoiding per-step allocations in top-k sampling.
+  - benchmark check (i7-11800H, `BenchmarkGenerateTopKToggle`, benchtime=1x, i2_s model):
+    - fallback (`BITNET_I2S_I8S_DISABLE_FAST=1`): topk ~22.04s (from ~22.35s), no-topk ~20.99s (from ~21.98s), allocs near-parity.
+    - fast path enabled: topk ~7.20s (from ~7.58s), no-topk ~7.47s (from ~7.54s), allocs near-parity.
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).
