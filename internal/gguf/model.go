@@ -1,6 +1,7 @@
 package gguf
 
 import (
+	"bufio"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -45,7 +46,7 @@ func ReadModelInfo(path string) (ModelInfo, error) {
 		return ModelInfo{}, err
 	}
 	defer f.Close()
-	return DecodeModelInfo(f)
+	return DecodeModelInfo(bufio.NewReaderSize(f, 4<<20))
 }
 
 func DecodeModelInfo(r io.Reader) (ModelInfo, error) {

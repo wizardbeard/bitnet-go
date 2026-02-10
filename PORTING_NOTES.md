@@ -307,6 +307,11 @@
   - reference (`.ref/bin/ref-infer`, `-n 16`, ended at 15 generated tokens): cold wall ~11.013s (`~1.362 tok/s` cold), internal eval ~584.25 ms / 15 tokens (`~25.67 tok/s` generation-only), load ~10.152s.
   - Go (`.bench/bitnet-go`, `--max-tokens 15`): cold wall ~123.418s (`~0.122 tok/s` cold); load-only (`--max-tokens 0`) ~109.252s; estimated generation-only ~14.166s / 15 tokens (`~1.059 tok/s`).
   - current gap on this host: ~0.09x cold throughput (`0.122/1.362`) and ~0.04x generation-only throughput (`1.059/25.67`) relative to reference.
+- update: load-path profiling showed `ReadModelInfo` was dominating cold start on this host; added buffered GGUF metadata decode (`bufio.Reader`, 4 MiB) and optional load profiler (`BITNET_PROFILE_LOAD=1`).
+  - before (i7-11800H, i2_s fixture): `read_model_info~1m41.68s`, `tokenizer~0.36s`, `tensor_block~7.55s`, total ~1m49.59s.
+  - after: `read_model_info~88.8ms`, `tokenizer~0.31s`, `tensor_block~12.31s`, total ~12.71s.
+  - updated Go throughput snapshot (`.bench/bitnet-go`, `--max-tokens 15`, same settings): cold wall ~24.763s (`~0.606 tok/s` cold), load-only ~12.550s, estimated generation-only ~12.213s / 15 (`~1.228 tok/s`).
+  - updated cold gap vs reference: ~0.45x cold throughput (`0.606/1.362`) on this host (generation-only gap remains the primary Phase 3 bottleneck).
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).

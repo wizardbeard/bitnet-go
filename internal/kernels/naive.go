@@ -1,5 +1,7 @@
 package kernels
 
+import "math"
+
 func Dot(a, b []float32) float32 {
 	n := len(a)
 	if len(b) < n {
@@ -84,6 +86,40 @@ func MatVecT(dst, mat []float32, rows, cols int, vec []float32) {
 	matVecTImpl(dst, mat, rows, cols, vec)
 }
 
+// MatVecTF16 computes dst = transpose(mat) * vec where mat is GGML column-major [rows][cols]
+// with contiguous dimension ne0=rows and float16 elements.
+func MatVecTF16(dst []float32, mat []uint16, rows, cols int, vec []float32) {
+	matVecTF16Generic(dst, mat, rows, cols, vec)
+}
+
+func Float16ToFloat32(h uint16) float32 {
+	sign := uint32(h&0x8000) << 16
+	exp := int((h >> 10) & 0x1f)
+	mant := uint32(h & 0x03ff)
+
+	switch exp {
+	case 0:
+		if mant == 0 {
+			return math.Float32frombits(sign)
+		}
+		exp32 := int32(113)
+		for (mant & 0x0400) == 0 {
+			mant <<= 1
+			exp32--
+		}
+		mant &= 0x03ff
+		bits := sign | (uint32(exp32) << 23) | (mant << 13)
+		return math.Float32frombits(bits)
+	case 0x1f:
+		bits := sign | 0x7f800000 | (mant << 13)
+		return math.Float32frombits(bits)
+	default:
+		exp32 := uint32(exp + (127 - 15))
+		bits := sign | (exp32 << 23) | (mant << 13)
+		return math.Float32frombits(bits)
+	}
+}
+
 func matVecGeneric(dst, mat []float32, rows, cols int, vec []float32) {
 	if rows <= 0 || cols <= 0 {
 		return
@@ -129,6 +165,23 @@ func matVecTGeneric(dst, mat []float32, rows, cols int, vec []float32) {
 		base := rows * c
 		for r := 0; r < rows; r++ {
 			sum += float64(mat[base+r]) * float64(vec[r])
+		}
+		dst[c] = float32(sum)
+	}
+}
+
+func matVecTF16Generic(dst []float32, mat []uint16, rows, cols int, vec []float32) {
+	if rows <= 0 || cols <= 0 {
+		return
+	}
+	if len(dst) < cols || len(vec) < rows || len(mat) < rows*cols {
+		return
+	}
+	for c := 0; c < cols; c++ {
+		var sum float64
+		base := rows * c
+		for r := 0; r < rows; r++ {
+			sum += float64(Float16ToFloat32(mat[base+r])) * float64(vec[r])
 		}
 		dst[c] = float32(sum)
 	}

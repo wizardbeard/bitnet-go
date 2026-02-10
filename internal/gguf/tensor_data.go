@@ -80,6 +80,15 @@ func ReadTensorF32(path string, info ModelInfo, name string) ([]float32, error) 
 }
 
 func ReadTensorAsF32(path string, info ModelInfo, name string) ([]float32, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return ReadTensorAsF32FromFile(f, info, name)
+}
+
+func ReadTensorAsF32FromFile(f *os.File, info ModelInfo, name string) ([]float32, error) {
 	t, ok := info.TensorByName(name)
 	if !ok {
 		return nil, fmt.Errorf("tensor not found: %s", name)
@@ -93,78 +102,79 @@ func ReadTensorAsF32(path string, info ModelInfo, name string) ([]float32, error
 		return nil, fmt.Errorf("tensor %q too large to load", name)
 	}
 
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	start := info.TensorDataOffset + t.Offset
-	if _, err := f.Seek(int64(start), io.SeekStart); err != nil {
-		return nil, fmt.Errorf("seek tensor %q: %w", name, err)
-	}
+	start := int64(info.TensorDataOffset + t.Offset)
+	r := io.NewSectionReader(f, start, 1<<63-1)
 
 	switch t.Type {
 	case GGMLTypeF32:
 		out := make([]float32, count)
-		if err := binary.Read(f, binary.LittleEndian, out); err != nil {
+		if err := binary.Read(r, binary.LittleEndian, out); err != nil {
 			return nil, fmt.Errorf("read tensor %q f32: %w", name, err)
 		}
 		return out, nil
 	case GGMLTypeF16:
-		return readTensorF16AsF32(f, name, count)
+		return readTensorF16AsF32(r, name, count)
 	case GGMLTypeQ4_0:
-		return readTensorQ40AsF32(f, name, count)
+		return readTensorQ40AsF32(r, name, count)
 	case GGMLTypeQ4_1:
-		return readTensorQ41AsF32(f, name, count)
+		return readTensorQ41AsF32(r, name, count)
 	case GGMLTypeQ5_0:
-		return readTensorQ50AsF32(f, name, count)
+		return readTensorQ50AsF32(r, name, count)
 	case GGMLTypeQ5_1:
-		return readTensorQ51AsF32(f, name, count)
+		return readTensorQ51AsF32(r, name, count)
 	case GGMLTypeQ8_0:
-		return readTensorQ80AsF32(f, name, count)
+		return readTensorQ80AsF32(r, name, count)
 	case GGMLTypeQ2_K:
-		return readTensorQ2KAsF32(f, name, count)
+		return readTensorQ2KAsF32(r, name, count)
 	case GGMLTypeQ3_K:
-		return readTensorQ3KAsF32(f, name, count)
+		return readTensorQ3KAsF32(r, name, count)
 	case GGMLTypeQ4_K:
-		return readTensorQ4KAsF32(f, name, count)
+		return readTensorQ4KAsF32(r, name, count)
 	case GGMLTypeQ5_K:
-		return readTensorQ5KAsF32(f, name, count)
+		return readTensorQ5KAsF32(r, name, count)
 	case GGMLTypeQ6_K:
-		return readTensorQ6KAsF32(f, name, count)
+		return readTensorQ6KAsF32(r, name, count)
 	case GGMLTypeQ8_K:
-		return readTensorQ8KAsF32(f, name, count)
+		return readTensorQ8KAsF32(r, name, count)
 	case GGMLTypeTQ1_0:
-		return readTensorTQ10AsF32(f, name, count)
+		return readTensorTQ10AsF32(r, name, count)
 	case GGMLTypeTQ2_0:
-		return readTensorTQ20AsF32(f, name, count)
+		return readTensorTQ20AsF32(r, name, count)
 	case GGMLTypeI2_S:
-		return readTensorI2SAsF32(f, name, count)
+		return readTensorI2SAsF32(r, name, count)
 	case GGMLTypeIQ2_XXS:
-		return readTensorIQ2XXSAsF32(f, name, count)
+		return readTensorIQ2XXSAsF32(r, name, count)
 	case GGMLTypeIQ2_XS:
-		return readTensorIQ2XSAsF32(f, name, count)
+		return readTensorIQ2XSAsF32(r, name, count)
 	case GGMLTypeIQ2_S:
-		return readTensorIQ2SAsF32(f, name, count)
+		return readTensorIQ2SAsF32(r, name, count)
 	case GGMLTypeIQ3_XXS:
-		return readTensorIQ3XXSAsF32(f, name, count)
+		return readTensorIQ3XXSAsF32(r, name, count)
 	case GGMLTypeIQ3_S:
-		return readTensorIQ3SAsF32(f, name, count)
+		return readTensorIQ3SAsF32(r, name, count)
 	case GGMLTypeIQ1_S:
-		return readTensorIQ1SAsF32(f, name, count)
+		return readTensorIQ1SAsF32(r, name, count)
 	case GGMLTypeIQ1_M:
-		return readTensorIQ1MAsF32(f, name, count)
+		return readTensorIQ1MAsF32(r, name, count)
 	case GGMLTypeIQ4_NL:
-		return readTensorIQ4NLAsF32(f, name, count)
+		return readTensorIQ4NLAsF32(r, name, count)
 	case GGMLTypeIQ4_XS:
-		return readTensorIQ4XSAsF32(f, name, count)
+		return readTensorIQ4XSAsF32(r, name, count)
 	default:
 		return nil, fmt.Errorf("tensor %q type=%d not supported", name, t.Type)
 	}
 }
 
 func ReadTensorI2SPacked(path string, info ModelInfo, name string) ([]byte, float32, uint64, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	defer f.Close()
+	return ReadTensorI2SPackedFromFile(f, info, name)
+}
+
+func ReadTensorI2SPackedFromFile(f *os.File, info ModelInfo, name string) ([]byte, float32, uint64, error) {
 	t, ok := info.TensorByName(name)
 	if !ok {
 		return nil, 0, 0, fmt.Errorf("tensor not found: %s", name)
@@ -180,28 +190,53 @@ func ReadTensorI2SPacked(path string, info ModelInfo, name string) ([]byte, floa
 		return nil, 0, 0, fmt.Errorf("tensor %q has too many i2_s elements", name)
 	}
 
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, 0, 0, err
-	}
-	defer f.Close()
-
-	start := info.TensorDataOffset + t.Offset
-	if _, err := f.Seek(int64(start), io.SeekStart); err != nil {
-		return nil, 0, 0, fmt.Errorf("seek tensor %q: %w", name, err)
-	}
+	start := int64(info.TensorDataOffset + t.Offset)
+	r := io.NewSectionReader(f, start, 1<<63-1)
 
 	const block = 128
 	const blockBytes = 32
 	packed := make([]byte, (count+block-1)/block*blockBytes)
-	if _, err := io.ReadFull(f, packed); err != nil {
+	if _, err := io.ReadFull(r, packed); err != nil {
 		return nil, 0, 0, fmt.Errorf("read tensor %q i2_s packed: %w", name, err)
 	}
 	var scale float32
-	if err := binary.Read(f, binary.LittleEndian, &scale); err != nil {
+	if err := binary.Read(r, binary.LittleEndian, &scale); err != nil {
 		return nil, 0, 0, fmt.Errorf("read tensor %q i2_s scale: %w", name, err)
 	}
 	return packed, scale, count, nil
+}
+
+func ReadTensorF16Raw(path string, info ModelInfo, name string) ([]uint16, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return ReadTensorF16RawFromFile(f, info, name)
+}
+
+func ReadTensorF16RawFromFile(f *os.File, info ModelInfo, name string) ([]uint16, error) {
+	t, ok := info.TensorByName(name)
+	if !ok {
+		return nil, fmt.Errorf("tensor not found: %s", name)
+	}
+	if t.Type != GGMLTypeF16 {
+		return nil, fmt.Errorf("tensor %q type=%d is not f16", name, t.Type)
+	}
+	count, err := TensorElementCount(t)
+	if err != nil {
+		return nil, err
+	}
+	if count > uint64(math.MaxInt/2) {
+		return nil, fmt.Errorf("tensor %q too large to load as f16", name)
+	}
+	start := int64(info.TensorDataOffset + t.Offset)
+	r := io.NewSectionReader(f, start, 1<<63-1)
+	out := make([]uint16, count)
+	if err := binary.Read(r, binary.LittleEndian, out); err != nil {
+		return nil, fmt.Errorf("read tensor %q f16: %w", name, err)
+	}
+	return out, nil
 }
 
 func readTensorTQ10AsF32(r io.Reader, name string, count uint64) ([]float32, error) {
