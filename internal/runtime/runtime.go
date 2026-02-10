@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"math"
 	"os"
@@ -172,6 +173,7 @@ var decodeCacheMaxTokensDefault = parseEnvInt("BITNET_DECODE_CACHE_MAX_TOKENS", 
 var profileLoad = os.Getenv("BITNET_PROFILE_LOAD") == "1"
 var useF16TokenEmbd = os.Getenv("BITNET_USE_F16_TOKEN_EMBD") == "1"
 var fastGreedyArgmax = os.Getenv("BITNET_FAST_GREEDY_ARGMAX") == "1"
+var useMmapI2S = os.Getenv("BITNET_MMAP_I2S") == "1"
 var i8ScratchPool = sync.Pool{
 	New: func() any {
 		return make([]int8, 0)
@@ -639,8 +641,9 @@ type linearWeight struct {
 }
 
 type modelTensorLoader struct {
-	info gguf.ModelInfo
-	f    *os.File
+	info     gguf.ModelInfo
+	f        *os.File
+	mmapData []byte
 }
 
 func newModelTensorLoader(path string, info gguf.ModelInfo) (*modelTensorLoader, error) {
@@ -648,7 +651,13 @@ func newModelTensorLoader(path string, info gguf.ModelInfo) (*modelTensorLoader,
 	if err != nil {
 		return nil, err
 	}
-	return &modelTensorLoader{info: info, f: f}, nil
+	l := &modelTensorLoader{info: info, f: f}
+	if useMmapI2S {
+		if data, err := mmapReadOnly(f); err == nil {
+			l.mmapData = data
+		}
+	}
+	return l, nil
 }
 
 func (l *modelTensorLoader) close() error {
@@ -663,6 +672,28 @@ func (l *modelTensorLoader) readTensorAsF32(name string) ([]float32, error) {
 }
 
 func (l *modelTensorLoader) readTensorI2SPacked(name string) ([]byte, float32, uint64, error) {
+	if len(l.mmapData) > 0 {
+		t, ok := l.info.TensorByName(name)
+		if !ok {
+			return nil, 0, 0, fmt.Errorf("tensor not found: %s", name)
+		}
+		if t.Type != gguf.GGMLTypeI2_S {
+			return nil, 0, 0, fmt.Errorf("tensor %q type=%d is not i2_s", name, t.Type)
+		}
+		count, err := gguf.TensorElementCount(t)
+		if err != nil {
+			return nil, 0, 0, err
+		}
+		packedLen := int((count+127)/128*32)
+		start := int(l.info.TensorDataOffset + t.Offset)
+		end := start + packedLen + 4
+		if start < 0 || end < start || end > len(l.mmapData) {
+			return nil, 0, 0, fmt.Errorf("tensor %q mmap bounds out of range", name)
+		}
+		packed := l.mmapData[start : start+packedLen]
+		scale := math.Float32frombits(binary.LittleEndian.Uint32(l.mmapData[start+packedLen : end]))
+		return packed, scale, count, nil
+	}
 	return gguf.ReadTensorI2SPackedFromFile(l.f, l.info, name)
 }
 

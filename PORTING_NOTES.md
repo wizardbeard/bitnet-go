@@ -322,6 +322,13 @@
 - update: added opt-in parallel F16->F32 decode path in GGUF tensor loading (`BITNET_F16_DECODE_PARALLEL=1`, threshold `BITNET_F16_DECODE_PARALLEL_MIN`), but kept default disabled after profiling on i7-11800H showed regression when always-on.
   - default path profile snapshot (i2_s fixture, `BITNET_PROFILE_LOAD=1`): `read_model_info~119.7ms`, `tokenizer~449.9ms`, `tensor_block~9.92s`, total ~10.49s.
   - current end-to-end snapshot (`.bench/bitnet-go`, prompt.txt, max-tokens=15, procs=6): ~22.961s (`~0.653 tok/s`) in this run.
+- update: added optional mmap-backed i2_s packed tensor loading (`BITNET_MMAP_I2S=1`) to avoid copying packed weights at load time; default remains disabled (`0`) due end-to-end regression on this host.
+  - load profile A/B (i7-11800H, `BITNET_PROFILE_LOAD=1`, i2_s fixture):
+    - mmap on: `tensor_block~7.97s`, total ~8.36s
+    - mmap off: `tensor_block~8.47s`, total ~8.90s
+  - end-to-end A/B (`.bench/bitnet-go`, prompt.txt, max-tokens=15, procs=6):
+    - mmap on: ~24.759s (`~0.606 tok/s`)
+    - mmap off: ~21.737s (`~0.690 tok/s`)
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).
