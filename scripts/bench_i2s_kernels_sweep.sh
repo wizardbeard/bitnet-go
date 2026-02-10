@@ -2,12 +2,14 @@
 set -eu
 
 OUT_FILE=${BITNET_I2S_SWEEP_OUT:-.bench/i2s-kernels-sweep.txt}
+SUMMARY_FILE=${BITNET_I2S_SWEEP_SUMMARY:-.bench/i2s-kernels-sweep-summary.tsv}
 BENCH_TIME=${BITNET_I2S_BENCH_TIME:-60ms}
 THREADS=${BITNET_I2S_SWEEP_THREADS:-6}
 GOCACHE=${GOCACHE:-/tmp/go-build}
 
 mkdir -p "$(dirname "$OUT_FILE")"
 : >"$OUT_FILE"
+printf "label\trows_min\tcols_min\tchunk_rows\tchunk_cols\tblock_min_rows\tthreads\tavg_dispatch_ns\n" >"$SUMMARY_FILE"
 
 bench_pat='BenchmarkMatVec(T)?I2SI8SVariants'
 
@@ -36,6 +38,8 @@ run_cfg() {
   cat "$tmp" >>"$OUT_FILE"
   avg_ns=$(awk '/BenchmarkMatVec(T)?I2SI8SVariants\/r=.*\/dispatch-/ {sum+=$3; n++} END {if (n>0) printf "%.0f", sum/n; else print "NA"}' "$tmp")
   printf "avg_dispatch_ns=%s\n" "$avg_ns" | tee -a "$OUT_FILE"
+  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+    "$label" "$rows_min" "$cols_min" "$chunk_rows" "$chunk_cols" "$block_min_rows" "$THREADS" "$avg_ns" >>"$SUMMARY_FILE"
   rm -f "$tmp"
 }
 

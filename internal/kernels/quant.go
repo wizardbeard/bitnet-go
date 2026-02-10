@@ -99,12 +99,12 @@ var i2sDecodeTable = func() [256][4]int8 {
 
 var matVecI2SI8SFast func(dst []float32, packed []byte, rows, cols int, vec []int8, weightScale, actScale float32, actSum int32)
 var matVecTI2SI8SFast func(dst []float32, packed []byte, rows, cols int, vec []int8, weightScale, actScale float32, actSum int32)
-var i2sI8SParallelRowsMin = envInt("BITNET_I2S_I8S_PAR_ROWS_MIN", 512)
-var i2sI8SParallelColsMin = envInt("BITNET_I2S_I8S_PAR_COLS_MIN", 512)
-var i2sI8SParallelChunkRows = envInt("BITNET_I2S_I8S_PAR_CHUNK_ROWS", 0)
-var i2sI8SParallelChunkCols = envInt("BITNET_I2S_I8S_PAR_CHUNK_COLS", 0)
-var i2sI8SFastMinElems = envInt("BITNET_I2S_I8S_FAST_MIN_ELEMS", 0)
-var i2sI8SBlockMinRows = envInt("BITNET_I2S_I8S_BLOCK_MIN_ROWS", 256)
+var i2sI8SParallelRowsMin = envIntArch("BITNET_I2S_I8S_PAR_ROWS_MIN", 512)
+var i2sI8SParallelColsMin = envIntArch("BITNET_I2S_I8S_PAR_COLS_MIN", 512)
+var i2sI8SParallelChunkRows = envIntArch("BITNET_I2S_I8S_PAR_CHUNK_ROWS", 0)
+var i2sI8SParallelChunkCols = envIntArch("BITNET_I2S_I8S_PAR_CHUNK_COLS", 0)
+var i2sI8SFastMinElems = envIntArch("BITNET_I2S_I8S_FAST_MIN_ELEMS", 0)
+var i2sI8SBlockMinRows = envIntArch("BITNET_I2S_I8S_BLOCK_MIN_ROWS", 256)
 
 func useI2SI8SFast(rows, cols int) bool {
 	if i2sI8SFastMinElems <= 0 {

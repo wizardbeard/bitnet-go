@@ -13,6 +13,7 @@ Training support (diverges from upstream) will live in this same repo so we can 
 - `sh ./scripts/bench_infer.sh`
 - `sh ./scripts/bench_i2s_kernels.sh`
 - `sh ./scripts/bench_i2s_kernels_sweep.sh`
+- `sh ./scripts/select_i2s_defaults.sh .bench/i2s-kernels-sweep-summary.tsv`
 - Chat prompt template (Llama):
 `go run ./cmd/bitnet --chat-template --system "You are helpful." --user "Hello"`
 - Chat history (repeatable):
@@ -57,6 +58,7 @@ Overrides:
 - `BITNET_I2S_I8S_BLOCK_MIN_ROWS` (minimum rows for block-decode path in fallback kernels, default `256`)
 - `BITNET_I2S_I8S_FAST_MIN_ELEMS` (minimum `rows*cols` to use AVX2 fast path when available, default `0`)
   - sweep note (i7-11800H, fallback path): current defaults outperformed tested alternatives (`min_1024`, fixed chunk sizes, `block_min_rows=128`)
+- Arm64-specific overrides use the same suffix with `BITNET_ARM64_` prefix (example: `BITNET_ARM64_I2S_I8S_BLOCK_MIN_ROWS=256`).
 - `BITNET_I2S_I8S_POOL` (set `0` to disable reusable fallback worker pool)
 - `BITNET_I2S_I8S_POOL_WORKERS` (override fallback worker pool size; default `GOMAXPROCS`)
 
@@ -101,6 +103,7 @@ CI note:
 - CI also runs non-gating benchmark jobs (`bench-smoke`, `bench-kernels`, `bench-runtime`) to track perf regressions.
 - CI also runs a non-gating targeted i2_s+i8_s kernel benchmark (`bench-i2s-kernels`) and uploads the result artifact (`.bench/i2s-kernels.txt`).
 - CI also runs a non-gating arm64 i2_s benchmark+sweep job and uploads arm64 artifacts (`bench-i2s-kernels-arm64`, `bench-i2s-sweep-arm64`).
+  - arm64 job also uploads machine-readable sweep summary (`bench-i2s-sweep-summary-arm64`) and suggested env defaults (`i2s-defaults-arm64`).
 
 Optional IQ fixture hash:
 - `BITNET_FETCH_IQ=1 ./scripts/fetch_testdata_gguf.sh`

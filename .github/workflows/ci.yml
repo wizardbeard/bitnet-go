@@ -116,6 +116,9 @@ jobs:
           BITNET_I2S_BENCH_TIME=40ms \
           BITNET_I2S_SWEEP_THREADS=4 \
           ./scripts/bench_i2s_kernels_sweep.sh
+      - name: select-i2s-defaults-arm64
+        run: |
+          ./scripts/select_i2s_defaults.sh .bench/i2s-kernels-sweep-summary.tsv
       - name: upload-bench-i2s-kernels-arm64
         if: always()
         uses: actions/upload-artifact@v4
@@ -129,4 +132,18 @@ jobs:
         with:
           name: bench-i2s-sweep-arm64
           path: .bench/i2s-kernels-sweep.txt
+          if-no-files-found: warn
+      - name: upload-bench-i2s-sweep-summary-arm64
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-i2s-sweep-summary-arm64
+          path: .bench/i2s-kernels-sweep-summary.tsv
+          if-no-files-found: warn
+      - name: upload-i2s-defaults-arm64
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: i2s-defaults-arm64
+          path: .bench/i2s-kernels-defaults.env
           if-no-files-found: warn

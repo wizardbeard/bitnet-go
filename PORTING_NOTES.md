@@ -238,6 +238,15 @@
   - runs `scripts/bench_i2s_kernels.sh`
   - runs `scripts/bench_i2s_kernels_sweep.sh`
   - uploads `.bench/i2s-kernels.txt` and `.bench/i2s-kernels-sweep.txt` artifacts for arm64 tuning data.
+- update: sweep script now emits machine-readable summary `.bench/i2s-kernels-sweep-summary.tsv` (`label`, params, `avg_dispatch_ns`).
+- update: added `scripts/select_i2s_defaults.sh` to pick the best sweep row and emit `.bench/i2s-kernels-defaults.env` with `BITNET_ARM64_I2S_I8S_*` suggestions.
+- update: kernel threshold env parsing now supports arm64-prefixed overrides:
+  - `BITNET_ARM64_I2S_I8S_PAR_ROWS_MIN`
+  - `BITNET_ARM64_I2S_I8S_PAR_COLS_MIN`
+  - `BITNET_ARM64_I2S_I8S_PAR_CHUNK_ROWS`
+  - `BITNET_ARM64_I2S_I8S_PAR_CHUNK_COLS`
+  - `BITNET_ARM64_I2S_I8S_BLOCK_MIN_ROWS`
+  - `BITNET_ARM64_I2S_I8S_FAST_MIN_ELEMS`
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).
