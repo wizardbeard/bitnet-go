@@ -317,6 +317,8 @@
   - end-to-end check (`.bench/bitnet-go`, i2_s fixture, prompt.txt, max-tokens=15, procs=6): `BITNET_MATVECT_PAR_WORKERS=6` ~27.233s (`~0.551 tok/s`) vs `BITNET_MATVECT_PAR_WORKERS=1` ~32.981s (`~0.455 tok/s`), so parallel path remains enabled by default for large projections.
 - update: added experimental greedy argmax-direct token selection path (`BITNET_FAST_GREEDY_ARGMAX=1`) in llama generation loop to bypass full logits materialization.
   - on i7-11800H this path regressed when enabled in current implementation, so default remains disabled; baseline run after gating (`--max-tokens=15`, procs=6) measured ~22.055s (`~0.680 tok/s`) for current code state.
+- update: refactored greedy argmax-direct path to use fused kernel helpers (`ArgmaxMatVecT` / `ArgmaxMatVecTF16`) instead of scalar projection loops.
+  - A/B check (i7-11800H, i2_s fixture, prompt.txt, max-tokens=15, procs=6): `BITNET_FAST_GREEDY_ARGMAX=1` ~36.087s (`~0.416 tok/s`) vs default ~33.222s (`~0.452 tok/s`), so this remains experimental and disabled by default.
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).

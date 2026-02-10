@@ -2524,24 +2524,7 @@ func i2sPackedSetLocal(packed []byte, idx int, val byte) {
 func linearArgmaxWeight(w linearWeight, x []float32) int {
 	if w.qtype == gguf.GGMLTypeF32 && len(w.data) > 0 {
 		if w.transposed {
-			if len(x) < w.rows || len(w.data) < w.rows*w.cols || w.cols <= 0 {
-				return -1
-			}
-			bestID := 0
-			bestVal := float32(-math.MaxFloat32)
-			for c := 0; c < w.cols; c++ {
-				base := w.rows * c
-				var sum float64
-				for r := 0; r < w.rows; r++ {
-					sum += float64(w.data[base+r]) * float64(x[r])
-				}
-				v := float32(sum)
-				if v > bestVal {
-					bestVal = v
-					bestID = c
-				}
-			}
-			return bestID
+			return kernels.ArgmaxMatVecT(w.data, w.rows, w.cols, x)
 		}
 		if len(x) < w.cols || len(w.data) < w.rows*w.cols || w.rows <= 0 {
 			return -1
@@ -2563,24 +2546,7 @@ func linearArgmaxWeight(w linearWeight, x []float32) int {
 	}
 	if w.qtype == gguf.GGMLTypeF16 && len(w.dataF16) > 0 {
 		if w.transposed {
-			if len(x) < w.rows || len(w.dataF16) < w.rows*w.cols || w.cols <= 0 {
-				return -1
-			}
-			bestID := 0
-			bestVal := float32(-math.MaxFloat32)
-			for c := 0; c < w.cols; c++ {
-				base := w.rows * c
-				var sum float64
-				for r := 0; r < w.rows; r++ {
-					sum += float64(kernels.Float16ToFloat32(w.dataF16[base+r])) * float64(x[r])
-				}
-				v := float32(sum)
-				if v > bestVal {
-					bestVal = v
-					bestID = c
-				}
-			}
-			return bestID
+			return kernels.ArgmaxMatVecTF16(w.dataF16, w.rows, w.cols, x)
 		}
 		if len(x) < w.cols || len(w.dataF16) < w.rows*w.cols || w.rows <= 0 {
 			return -1

@@ -86,6 +86,64 @@ func MatVecT(dst, mat []float32, rows, cols int, vec []float32) {
 	matVecTImpl(dst, mat, rows, cols, vec)
 }
 
+// ArgmaxMatVecT computes argmax_c(dot(mat[:,c], vec)) for GGML column-major mat [rows][cols].
+func ArgmaxMatVecT(mat []float32, rows, cols int, vec []float32) int {
+	if rows <= 0 || cols <= 0 {
+		return -1
+	}
+	if len(vec) < rows || len(mat) < rows*cols {
+		return -1
+	}
+	bestID := 0
+	bestVal := float32(-math.MaxFloat32)
+	for c := 0; c < cols; c++ {
+		base := rows * c
+		var sum0, sum1, sum2, sum3 float64
+		r := 0
+		for ; r+3 < rows; r += 4 {
+			sum0 += float64(mat[base+r]) * float64(vec[r])
+			sum1 += float64(mat[base+r+1]) * float64(vec[r+1])
+			sum2 += float64(mat[base+r+2]) * float64(vec[r+2])
+			sum3 += float64(mat[base+r+3]) * float64(vec[r+3])
+		}
+		sum := sum0 + sum1 + sum2 + sum3
+		for ; r < rows; r++ {
+			sum += float64(mat[base+r]) * float64(vec[r])
+		}
+		v := float32(sum)
+		if v > bestVal {
+			bestVal = v
+			bestID = c
+		}
+	}
+	return bestID
+}
+
+// ArgmaxMatVecTF16 computes argmax_c(dot(mat_f16[:,c], vec)) for GGML column-major mat [rows][cols].
+func ArgmaxMatVecTF16(mat []uint16, rows, cols int, vec []float32) int {
+	if rows <= 0 || cols <= 0 {
+		return -1
+	}
+	if len(vec) < rows || len(mat) < rows*cols {
+		return -1
+	}
+	bestID := 0
+	bestVal := float32(-math.MaxFloat32)
+	for c := 0; c < cols; c++ {
+		base := rows * c
+		var sum float64
+		for r := 0; r < rows; r++ {
+			sum += float64(Float16ToFloat32(mat[base+r])) * float64(vec[r])
+		}
+		v := float32(sum)
+		if v > bestVal {
+			bestVal = v
+			bestID = c
+		}
+	}
+	return bestID
+}
+
 // MatVecTF16 computes dst = transpose(mat) * vec where mat is GGML column-major [rows][cols]
 // with contiguous dimension ne0=rows and float16 elements.
 func MatVecTF16(dst []float32, mat []uint16, rows, cols int, vec []float32) {
