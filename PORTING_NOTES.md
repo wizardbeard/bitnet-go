@@ -263,6 +263,13 @@
       - r=512/c=512: ~134,791 ns/op (from ~147,593 ns/op)
       - r=1024/c=1024: ~313,878 ns/op (from ~346,650 ns/op)
       - r=2560/c=2560: ~1,701,235 ns/op (from ~1,782,858 ns/op)
+- update: reran full disabled-fast-path sweep after fallback I/TI loop optimizations (i7-11800H, `BITNET_I2S_I8S_DISABLE_FAST=1`, threads=6, benchtime=20ms):
+  - `auto_default`: avg dispatch ~653,704 ns (best)
+  - `min_1024`: avg dispatch ~757,906 ns
+  - `chunk_256`: avg dispatch ~721,996 ns
+  - `chunk_512`: avg dispatch ~863,114 ns
+  - `block_128`: avg dispatch ~728,748 ns
+  - defaults unchanged (`rows_min=512`, `cols_min=512`, `chunk=auto`, `block_min_rows=256`).
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).
