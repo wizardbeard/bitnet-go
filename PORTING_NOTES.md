@@ -219,6 +219,19 @@
   - `BenchmarkMatVecI2SI8SVariants` and `BenchmarkMatVecTI2SI8SVariants` now run `dispatch`, `generic_block`, and `scalar` variants over 512/1024/2560 shapes.
   - added `scripts/bench_i2s_kernels.sh` to run targeted kernels-only benches and write `.bench/i2s-kernels.txt`.
   - CI now runs `bench-i2s-kernels` (non-gating) and uploads `.bench/i2s-kernels.txt` as an artifact for regression tracking.
+- update: added tunable i2_s+i8_s fallback/dispatch controls:
+  - `BITNET_I2S_I8S_PAR_ROWS_MIN`, `BITNET_I2S_I8S_PAR_COLS_MIN`
+  - `BITNET_I2S_I8S_PAR_CHUNK_ROWS`, `BITNET_I2S_I8S_PAR_CHUNK_COLS`
+  - `BITNET_I2S_I8S_BLOCK_MIN_ROWS`, `BITNET_I2S_I8S_FAST_MIN_ELEMS`
+  - `BITNET_I2S_I8S_DISABLE_FAST=1` to disable AVX2 fast path for tuning sweeps.
+- update: added `scripts/bench_i2s_kernels_sweep.sh` for quick threshold/chunk sweeps (fast path disabled).
+- update: sweep results on i7-11800H (`BITNET_I2S_I8S_DISABLE_FAST=1`, threads=6, benchtime=20ms):
+  - `auto_default` (`rows_min=512`, `cols_min=512`, `chunk=auto`, `block_min_rows=256`): avg dispatch ~760,137 ns (best)
+  - `min_1024`: avg dispatch ~816,783 ns
+  - `chunk_256`: avg dispatch ~811,673 ns
+  - `chunk_512`: avg dispatch ~973,375 ns
+  - `block_128`: avg dispatch ~785,859 ns
+  - defaults kept at `BITNET_I2S_I8S_PAR_ROWS_MIN=512`, `BITNET_I2S_I8S_PAR_COLS_MIN=512`, auto chunking, and `BITNET_I2S_I8S_BLOCK_MIN_ROWS=256`.
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).
@@ -239,4 +252,4 @@ AGENTS.md progress snapshot:
 Next steps aligned to AGENTS.md:
 - Phase 2: tighten i2_s parity tolerances where possible (focus on logits/top‑K policy and remaining drift characterization).
 - Phase 2: extend parity vectors to cover 1.58B/2B i2_s fixtures with consistent teacher‑forced logits.
-- Phase 3: add tunable tiling parameters for remaining hot kernels and validate with targeted microbench sweeps.
+- Phase 3: reduce fallback parallel matvec allocations (goroutine/WaitGroup overhead) and re-run threshold sweeps on arm64 hosts.

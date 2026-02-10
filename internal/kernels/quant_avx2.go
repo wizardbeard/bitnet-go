@@ -22,6 +22,9 @@ import (
 )
 
 func init() {
+	if os.Getenv("BITNET_I2S_I8S_DISABLE_FAST") == "1" {
+		return
+	}
 	if os.Getenv("BITNET_FORCE_AVX2") == "1" || C.bitnet_has_avx2() != 0 {
 		matVecI2SI8SFast = matVecI2SI8SAVX2
 		matVecTI2SI8SFast = matVecTI2SI8SAVX2

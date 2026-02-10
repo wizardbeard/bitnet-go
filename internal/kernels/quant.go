@@ -99,6 +99,27 @@ var i2sDecodeTable = func() [256][4]int8 {
 
 var matVecI2SI8SFast func(dst []float32, packed []byte, rows, cols int, vec []int8, weightScale, actScale float32, actSum int32)
 var matVecTI2SI8SFast func(dst []float32, packed []byte, rows, cols int, vec []int8, weightScale, actScale float32, actSum int32)
+var i2sI8SParallelRowsMin = envInt("BITNET_I2S_I8S_PAR_ROWS_MIN", 512)
+var i2sI8SParallelColsMin = envInt("BITNET_I2S_I8S_PAR_COLS_MIN", 512)
+var i2sI8SParallelChunkRows = envInt("BITNET_I2S_I8S_PAR_CHUNK_ROWS", 0)
+var i2sI8SParallelChunkCols = envInt("BITNET_I2S_I8S_PAR_CHUNK_COLS", 0)
+var i2sI8SFastMinElems = envInt("BITNET_I2S_I8S_FAST_MIN_ELEMS", 0)
+var i2sI8SBlockMinRows = envInt("BITNET_I2S_I8S_BLOCK_MIN_ROWS", 256)
+
+func useI2SI8SFast(rows, cols int) bool {
+	if i2sI8SFastMinElems <= 0 {
+		return true
+	}
+	return rows*cols >= i2sI8SFastMinElems
+}
+
+func useI2SBlockPath(rows int) bool {
+	blockMin := i2sI8SBlockMinRows
+	if blockMin < 128 {
+		blockMin = 128
+	}
+	return rows%128 == 0 && rows >= blockMin
+}
 
 func decodeI2SBlock(dst []int8, packed []byte) {
 	if len(dst) < 128 || len(packed) < 32 {
@@ -125,15 +146,15 @@ func MatVecI2SI8S(dst []float32, packed []byte, rows, cols int, vec []int8, weig
 	if rows*cols == 0 || len(packed) < i2sPackedLen(rows*cols) {
 		return
 	}
-	if matVecThreads() > 1 && rows >= 512 && matVecI2SI8SFast == nil {
-		matVecI2SI8SParallel(dst, packed, rows, cols, vec, weightScale, actScale, actSum)
-		return
-	}
-	if matVecI2SI8SFast != nil {
+	if matVecI2SI8SFast != nil && useI2SI8SFast(rows, cols) {
 		matVecI2SI8SFast(dst, packed, rows, cols, vec, weightScale, actScale, actSum)
 		return
 	}
-	if rows%128 == 0 {
+	if matVecThreads() > 1 && rows >= i2sI8SParallelRowsMin {
+		matVecI2SI8SParallel(dst, packed, rows, cols, vec, weightScale, actScale, actSum)
+		return
+	}
+	if useI2SBlockPath(rows) {
 		var block [128]int8
 		var sums [128]int32
 		for rb := 0; rb < rows; rb += 128 {
@@ -235,7 +256,7 @@ func MatVecI2SI8SMap(dst []float32, packed []byte, rows, cols int, vec []int8, w
 	if rows*cols == 0 || len(packed) < i2sPackedLen(rows*cols) {
 		return
 	}
-	if rows%128 == 0 {
+	if useI2SBlockPath(rows) {
 		var block [128]int8
 		var sums [128]int32
 		for rb := 0; rb < rows; rb += 128 {
@@ -315,16 +336,16 @@ func MatVecTI2SI8S(dst []float32, packed []byte, rows, cols int, vec []int8, wei
 	if rows*cols == 0 || len(packed) < i2sPackedLen(rows*cols) {
 		return
 	}
-	if matVecThreads() > 1 && cols >= 512 && matVecTI2SI8SFast == nil {
-		matVecTI2SI8SParallel(dst, packed, rows, cols, vec, weightScale, actScale, actSum)
-		return
-	}
-	if matVecTI2SI8SFast != nil {
+	if matVecTI2SI8SFast != nil && useI2SI8SFast(rows, cols) {
 		matVecTI2SI8SFast(dst, packed, rows, cols, vec, weightScale, actScale, actSum)
 		return
 	}
+	if matVecThreads() > 1 && cols >= i2sI8SParallelColsMin {
+		matVecTI2SI8SParallel(dst, packed, rows, cols, vec, weightScale, actScale, actSum)
+		return
+	}
 	var block [128]int8
-	blockAligned := rows%128 == 0
+	blockAligned := useI2SBlockPath(rows)
 	for c := 0; c < cols; c++ {
 		var sum int32
 		r := 0
@@ -369,13 +390,19 @@ func matVecI2SI8SParallel(dst []float32, packed []byte, rows, cols int, vec []in
 	if threads < 1 {
 		threads = 1
 	}
-	blockAligned := rows%128 == 0
+	blockAligned := useI2SBlockPath(rows)
 	chunk := rows / threads
+	if i2sI8SParallelChunkRows > 0 {
+		chunk = i2sI8SParallelChunkRows
+	}
 	if blockAligned {
 		chunk = (chunk / 128) * 128
 		if chunk == 0 {
 			chunk = 128
 		}
+	}
+	if chunk < 1 {
+		chunk = 1
 	}
 	var wg sync.WaitGroup
 	for start := 0; start < rows; start += chunk {
@@ -402,7 +429,7 @@ func matVecI2SI8SRange(dst []float32, packed []byte, rows, cols int, vec []int8,
 	if rStart >= rEnd {
 		return
 	}
-	if rows%128 == 0 {
+	if useI2SBlockPath(rows) {
 		var block [128]int8
 		var sums [128]int32
 		for rb := rStart; rb < rEnd; rb += 128 {
@@ -446,6 +473,9 @@ func matVecTI2SI8SParallel(dst []float32, packed []byte, rows, cols int, vec []i
 		threads = 1
 	}
 	chunk := cols / threads
+	if i2sI8SParallelChunkCols > 0 {
+		chunk = i2sI8SParallelChunkCols
+	}
 	if chunk < 1 {
 		chunk = 1
 	}
@@ -475,7 +505,7 @@ func matVecTI2SI8SRange(dst []float32, packed []byte, rows, cols int, vec []int8
 		return
 	}
 	var block [128]int8
-	blockAligned := rows%128 == 0
+	blockAligned := useI2SBlockPath(rows)
 	for c := cStart; c < cEnd; c++ {
 		var sum int32
 		r := 0
@@ -553,7 +583,7 @@ func MatVecTI2SI8SMap(dst []float32, packed []byte, rows, cols int, vec []int8, 
 		return
 	}
 	var block [128]int8
-	blockAligned := rows%128 == 0
+	blockAligned := useI2SBlockPath(rows)
 	for c := 0; c < cols; c++ {
 		var sum int32
 		r := 0
