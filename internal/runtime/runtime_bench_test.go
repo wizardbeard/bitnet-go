@@ -385,12 +385,13 @@ func BenchmarkGenerateTopPCompare(b *testing.B) {
 		b.Fatalf("New() error: %v", err)
 	}
 	req := GenerateRequest{
-		Prompt:    "Hello",
-		Seed:      1,
-		MaxTokens: 2,
-		Temp:      0.8,
-		TopP:      0.9,
-		TopK:      0,
+		Prompt:             "Hello",
+		Seed:               1,
+		MaxTokens:          2,
+		Temp:               0.8,
+		TopP:               0.9,
+		TopK:               0,
+		DisableTopKCapture: true,
 	}
 
 	b.Run("default_prefix", func(b *testing.B) {

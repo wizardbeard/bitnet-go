@@ -8,12 +8,13 @@ import (
 )
 
 type GenerateRequest struct {
-	Prompt    string
-	Seed      int64
-	MaxTokens int
-	Temp      float32
-	TopP      float32
-	TopK      int
+	Prompt             string
+	Seed               int64
+	MaxTokens          int
+	Temp               float32
+	TopP               float32
+	TopK               int
+	DisableTopKCapture bool
 }
 
 type GenerateResult struct {
@@ -72,12 +73,13 @@ func (s *Session) Generate(ctx context.Context, req GenerateRequest) (GenerateRe
 		return GenerateResult{}, fmt.Errorf("max tokens must be >= 0")
 	}
 	raw, err := s.rt.Generate(ctx, runtime.GenerateRequest{
-		Prompt:    req.Prompt,
-		Seed:      req.Seed,
-		MaxTokens: req.MaxTokens,
-		Temp:      req.Temp,
-		TopP:      req.TopP,
-		TopK:      req.TopK,
+		Prompt:             req.Prompt,
+		Seed:               req.Seed,
+		MaxTokens:          req.MaxTokens,
+		Temp:               req.Temp,
+		TopP:               req.TopP,
+		TopK:               req.TopK,
+		DisableTopKCapture: req.DisableTopKCapture,
 	})
 	if err != nil {
 		return GenerateResult{}, err

@@ -297,6 +297,8 @@
   - A/B check (i7-11800H, `BenchmarkGenerateTopPCompare`, i2_s, 4x):
     - cache on: default_prefix ~2.484s/op, ~2.857 MB/op, ~732 allocs/op; full_sort ~2.444s/op, ~2.855 MB/op, ~731 allocs/op.
     - cache off (`BITNET_PROMPT_CACHE_CAP=0`): default_prefix ~2.543s/op, ~2.858 MB/op, ~735 allocs/op; full_sort ~2.547s/op, ~2.855 MB/op, ~734 allocs/op.
+- update: added per-request TopK capture opt-out (`GenerateRequest.DisableTopKCapture`) and wired CLI generation calls to disable TopK capture by default (CLI does not consume `TopK` in its output path).
+  - benchmark check (i7-11800H, `BenchmarkGenerateTopPCompare`, i2_s, 4x with capture disabled in benchmark request): default_prefix ~2.485s/op, ~2.860 MB/op, ~730 allocs/op; full_sort ~2.502s/op, ~2.859 MB/op, ~730 allocs/op.
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).

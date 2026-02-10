@@ -92,12 +92,13 @@ func main() {
 	}
 	if *batch == 1 {
 		result, err := session.Generate(context.Background(), bitnet.GenerateRequest{
-			Prompt:    finalPrompt,
-			Seed:      *seed,
-			MaxTokens: *maxTokens,
-			Temp:      float32(*temp),
-			TopP:      float32(*topP),
-			TopK:      *topK,
+			Prompt:             finalPrompt,
+			Seed:               *seed,
+			MaxTokens:          *maxTokens,
+			Temp:               float32(*temp),
+			TopP:               float32(*topP),
+			TopK:               *topK,
+			DisableTopKCapture: true,
 		})
 		if err != nil {
 			log.Fatalf("generate: %v", err)
@@ -130,12 +131,13 @@ func main() {
 		go func(idx int) {
 			defer wg.Done()
 			res, err := session.Generate(context.Background(), bitnet.GenerateRequest{
-				Prompt:    finalPrompt,
-				Seed:      *seed + int64(idx),
-				MaxTokens: *maxTokens,
-				Temp:      float32(*temp),
-				TopP:      float32(*topP),
-				TopK:      *topK,
+				Prompt:             finalPrompt,
+				Seed:               *seed + int64(idx),
+				MaxTokens:          *maxTokens,
+				Temp:               float32(*temp),
+				TopP:               float32(*topP),
+				TopK:               *topK,
+				DisableTopKCapture: true,
 			})
 			results[idx] = batchResult{res: res, err: err}
 		}(i)

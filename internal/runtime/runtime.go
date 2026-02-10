@@ -16,12 +16,13 @@ import (
 )
 
 type GenerateRequest struct {
-	Prompt    string
-	Seed      int64
-	MaxTokens int
-	Temp      float32
-	TopP      float32
-	TopK      int
+	Prompt             string
+	Seed               int64
+	MaxTokens          int
+	Temp               float32
+	TopP               float32
+	TopK               int
+	DisableTopKCapture bool
 }
 
 type Metadata struct {
@@ -440,7 +441,7 @@ func (r *Runtime) Generate(_ context.Context, req GenerateRequest) (struct {
 	// tensor-backed block path instead.
 	tokens := make([]int32, req.MaxTokens)
 	var topkWriter *topKWriter
-	if !disableTopK {
+	if !disableTopK && !req.DisableTopKCapture {
 		topkWriter = newTopKWriter(req.MaxTokens, 5)
 	}
 	cfg := samplingConfig{
