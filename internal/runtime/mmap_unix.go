@@ -18,4 +18,3 @@ func mmapReadOnly(f *os.File) ([]byte, error) {
 	}
 	return syscall.Mmap(int(f.Fd()), 0, size, syscall.PROT_READ, syscall.MAP_SHARED)
 }
-

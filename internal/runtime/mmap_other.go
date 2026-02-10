@@ -10,4 +10,3 @@ import (
 func mmapReadOnly(_ *os.File) ([]byte, error) {
 	return nil, errors.New("mmap not supported on this platform")
 }
-

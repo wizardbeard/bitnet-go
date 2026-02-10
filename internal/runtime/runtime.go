@@ -684,7 +684,7 @@ func (l *modelTensorLoader) readTensorI2SPacked(name string) ([]byte, float32, u
 		if err != nil {
 			return nil, 0, 0, err
 		}
-		packedLen := int((count+127)/128*32)
+		packedLen := int((count + 127) / 128 * 32)
 		start := int(l.info.TensorDataOffset + t.Offset)
 		end := start + packedLen + 4
 		if start < 0 || end < start || end > len(l.mmapData) {
