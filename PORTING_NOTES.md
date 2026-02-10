@@ -257,6 +257,12 @@
       - r=512/c=512: ~138,029 ns/op (from ~145,776 ns/op)
       - r=1024/c=1024: ~271,849 ns/op (from ~346,465 ns/op)
       - r=2560/c=2560: ~1,722,160 ns/op (from ~1,772,051 ns/op)
+- update: tuned fallback `MatVecTI2SI8S` block dot loop with explicit 8-way unrolling in both direct and parallel range paths.
+  - benchmark check (i7-11800H, `BITNET_I2S_I8S_DISABLE_FAST=1`, `BITNET_MATVEC_THREADS=6`, 120ms benches):
+    - `MatVecTI2SI8S` dispatch:
+      - r=512/c=512: ~134,791 ns/op (from ~147,593 ns/op)
+      - r=1024/c=1024: ~313,878 ns/op (from ~346,650 ns/op)
+      - r=2560/c=2560: ~1,701,235 ns/op (from ~1,782,858 ns/op)
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).

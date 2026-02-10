@@ -549,7 +549,18 @@ func matVecTI2SI8SRange(dst []float32, packed []byte, rows, cols int, vec []int8
 				idx0 := r + rows*c
 				bi := idx0 / 128
 				decodeI2SBlock(block[:], packed[bi*32:bi*32+32])
-				for i := 0; i < 128; i++ {
+				i := 0
+				for ; i+7 < 128; i += 8 {
+					sum += int32(block[i]) * int32(vec[r+i])
+					sum += int32(block[i+1]) * int32(vec[r+i+1])
+					sum += int32(block[i+2]) * int32(vec[r+i+2])
+					sum += int32(block[i+3]) * int32(vec[r+i+3])
+					sum += int32(block[i+4]) * int32(vec[r+i+4])
+					sum += int32(block[i+5]) * int32(vec[r+i+5])
+					sum += int32(block[i+6]) * int32(vec[r+i+6])
+					sum += int32(block[i+7]) * int32(vec[r+i+7])
+				}
+				for ; i < 128; i++ {
 					sum += int32(block[i]) * int32(vec[r+i])
 				}
 			}
