@@ -303,6 +303,10 @@
   - added `BenchmarkDecodeBPE`; current snapshot on i7-11800H: ~495 ns/op, `112 B/op`, `2 allocs/op`.
 - update: added session-level decoded-text cache for short generated suffixes (`BITNET_DECODE_CACHE_CAP`, default `256`; `BITNET_DECODE_CACHE_MAX_TOKENS`, default `64`) keyed by token-id sequence hash with token-slice collision checks.
   - end-to-end check (i7-11800H, `BenchmarkGenerateTopPCompare`, i2_s, 2x): default_prefix ~2.657s/op, ~4.151 MB/op, ~824 allocs/op; full_sort ~2.693s/op, ~4.155 MB/op, ~825 allocs/op (small alloc drop vs prior ~827/~828).
+- update: Phase 3 throughput validation snapshot against C++ reference (`testdata/ggml-model-i2_s.gguf`, `testdata/prompt.txt`, threads=6, seed=1, temp=0, top-p=1):
+  - reference (`.ref/bin/ref-infer`, `-n 16`, ended at 15 generated tokens): cold wall ~11.013s (`~1.362 tok/s` cold), internal eval ~584.25 ms / 15 tokens (`~25.67 tok/s` generation-only), load ~10.152s.
+  - Go (`.bench/bitnet-go`, `--max-tokens 15`): cold wall ~123.418s (`~0.122 tok/s` cold); load-only (`--max-tokens 0`) ~109.252s; estimated generation-only ~14.166s / 15 tokens (`~1.059 tok/s`).
+  - current gap on this host: ~0.09x cold throughput (`0.122/1.362`) and ~0.04x generation-only throughput (`1.059/25.67`) relative to reference.
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).
