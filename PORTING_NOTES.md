@@ -333,6 +333,9 @@
 - update: added an experimental chunked AVX2 range hook for transposed i2_s+i8_s matvec to allow multi-thread split execution (`BITNET_I2S_I8S_FAST_PAR_COLS_MIN`).
   - microbench (`BenchmarkMatVecTI2SI8SVariants`, r=2560/c=2560, `BITNET_I2S_I8S_FAST_PAR_COLS_MIN=1`): `BITNET_MATVEC_THREADS=6` ~487,699 ns/op vs `BITNET_MATVEC_THREADS=1` ~2,078,384 ns/op (~4.26x).
   - end-to-end check (`.bench/bitnet-go`, i2_s fixture, prompt.txt, max-tokens=15, procs=6) regressed when enabled on this host (~22.262s on vs ~18.914s off), so default is disabled (`BITNET_I2S_I8S_FAST_PAR_COLS_MIN=0`).
+- update: added an experimental chunked AVX2 range hook for non-transposed i2_s+i8_s matvec with column-split partial reduction (`BITNET_I2S_I8S_FAST_PAR_NT_COLS_MIN`).
+  - microbench (`BenchmarkMatVecI2SI8SVariants`, r=2560/c=2560, `BITNET_I2S_I8S_FAST_PAR_NT_COLS_MIN=1`): `BITNET_MATVEC_THREADS=6` ~665,487 ns/op vs `BITNET_MATVEC_THREADS=1` ~2,766,987 ns/op (~4.16x), with temporary partial-buffer overhead.
+  - end-to-end check (`.bench/bitnet-go`, i2_s fixture, prompt.txt, max-tokens=15, procs=6) regressed when enabled on this host (~25.741s on vs ~19.607s off), so default is disabled (`BITNET_I2S_I8S_FAST_PAR_NT_COLS_MIN=0`).
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).
