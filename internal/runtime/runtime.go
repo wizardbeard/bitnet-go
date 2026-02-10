@@ -1048,14 +1048,13 @@ func runForwardLlamaStack(block *tensorBlock, seed int64, promptTokens []int32, 
 		maxSeq = 1
 	}
 
-	x := make([]float32, block.hiddenDim)
-	n1 := make([]float32, block.hiddenDim)
-	n2 := make([]float32, block.hiddenDim)
-	logits := make([]float32, block.vocabDim)
-	layerStates := make([]llamaLayerState, len(block.layers))
-	for i := range block.layers {
-		layerStates[i] = makeLlamaLayerState(block.layers[i], block.hiddenDim, maxSeq, block.attnHeads)
-	}
+	scratch := getLlamaRunScratch(block, maxSeq)
+	defer putLlamaRunScratch(scratch)
+	x := scratch.x
+	n1 := scratch.n1
+	n2 := scratch.n2
+	logits := scratch.logits
+	layerStates := scratch.layerState
 
 	currentToken := seedToken(seed, block.vocabDim)
 	startPos := 0
@@ -1117,7 +1116,24 @@ type llamaLayerState struct {
 	values  []float32
 }
 
-func makeLlamaLayerState(layer llamaLayer, hiddenDim, maxSeq, heads int) llamaLayerState {
+type llamaRunScratch struct {
+	x          []float32
+	n1         []float32
+	n2         []float32
+	logits     []float32
+	layerState []llamaLayerState
+}
+
+var llamaRunScratchPool sync.Pool
+
+func resizeF32(buf []float32, n int) []float32 {
+	if cap(buf) < n {
+		return make([]float32, n)
+	}
+	return buf[:n]
+}
+
+func ensureLlamaLayerState(st *llamaLayerState, layer llamaLayer, hiddenDim, maxSeq, heads int) {
 	kdim := linearOutputLen(layer.attnK)
 	vdim := linearOutputLen(layer.attnV)
 	qdim := linearOutputLen(layer.attnQ)
@@ -1125,20 +1141,51 @@ func makeLlamaLayerState(layer llamaLayer, hiddenDim, maxSeq, heads int) llamaLa
 	if heads <= 0 {
 		heads = 1
 	}
-	return llamaLayerState{
-		q:       make([]float32, qdim),
-		k:       make([]float32, kdim),
-		v:       make([]float32, vdim),
-		attnAcc: make([]float32, qdim),
-		attnOut: make([]float32, hiddenDim),
-		gate:    make([]float32, ffnDim),
-		up:      make([]float32, linearOutputLen(layer.ffnUp)),
-		ffnAct:  make([]float32, ffnDim),
-		ffnDown: make([]float32, hiddenDim),
-		scores:  make([]float32, maxSeq*heads),
-		keys:    make([]float32, maxSeq*kdim),
-		values:  make([]float32, maxSeq*vdim),
+	st.q = resizeF32(st.q, qdim)
+	st.k = resizeF32(st.k, kdim)
+	st.v = resizeF32(st.v, vdim)
+	st.attnAcc = resizeF32(st.attnAcc, qdim)
+	st.attnOut = resizeF32(st.attnOut, hiddenDim)
+	st.gate = resizeF32(st.gate, ffnDim)
+	st.up = resizeF32(st.up, linearOutputLen(layer.ffnUp))
+	st.ffnAct = resizeF32(st.ffnAct, ffnDim)
+	st.ffnDown = resizeF32(st.ffnDown, hiddenDim)
+	st.scores = resizeF32(st.scores, maxSeq*heads)
+	st.keys = resizeF32(st.keys, maxSeq*kdim)
+	st.values = resizeF32(st.values, maxSeq*vdim)
+}
+
+func getLlamaRunScratch(block *tensorBlock, maxSeq int) *llamaRunScratch {
+	s, _ := llamaRunScratchPool.Get().(*llamaRunScratch)
+	if s == nil {
+		s = &llamaRunScratch{}
 	}
+	s.x = resizeF32(s.x, block.hiddenDim)
+	s.n1 = resizeF32(s.n1, block.hiddenDim)
+	s.n2 = resizeF32(s.n2, block.hiddenDim)
+	s.logits = resizeF32(s.logits, block.vocabDim)
+	if cap(s.layerState) < len(block.layers) {
+		s.layerState = make([]llamaLayerState, len(block.layers))
+	} else {
+		s.layerState = s.layerState[:len(block.layers)]
+	}
+	for i := range block.layers {
+		ensureLlamaLayerState(&s.layerState[i], block.layers[i], block.hiddenDim, maxSeq, block.attnHeads)
+	}
+	return s
+}
+
+func putLlamaRunScratch(s *llamaRunScratch) {
+	if s == nil {
+		return
+	}
+	llamaRunScratchPool.Put(s)
+}
+
+func makeLlamaLayerState(layer llamaLayer, hiddenDim, maxSeq, heads int) llamaLayerState {
+	var st llamaLayerState
+	ensureLlamaLayerState(&st, layer, hiddenDim, maxSeq, heads)
+	return st
 }
 
 func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token int32, pos int, x, n1, n2, logits []float32) {

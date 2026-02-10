@@ -289,6 +289,10 @@
 - update: removed remaining top-p sampling hot-path allocations by replacing closure-based `sort.Slice` calls with typed `slices.SortFunc` helpers over preallocated scratch buffers.
   - benchmark check (i7-11800H, `BenchmarkSampleFromTopP`, 200ms): ~397,702 ns/op, `0 B/op`, `0 allocs/op`.
   - end-to-end check (`BenchmarkGenerateTopPCompare`, i2_s, 1x): default_prefix(256) ~3.341s / 1052 allocs vs full_sort ~2.426s / 1017 allocs; keep full-sort default and treat prefix path as opt-in tuning only.
+- update: pooled llama forward workspace allocations across `Generate` calls (`sync.Pool` for per-run hidden/logits and per-layer Q/K/V/FFN/KV-cache scratch), avoiding repeated per-call buffer construction.
+  - benchmark check (i7-11800H, `BenchmarkGenerateTopPCompare`, i2_s, 2x):
+    - default_prefix(256): ~2.430s/op, ~4.16 MB/op, ~830 allocs/op (from ~6.73 MB/op, ~1011 allocs/op).
+    - full_sort: ~2.448s/op, ~1.57 MB/op, ~644 allocs/op (from ~6.73 MB/op, ~1012 allocs/op).
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).
