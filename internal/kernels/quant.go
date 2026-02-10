@@ -2,7 +2,6 @@ package kernels
 
 import (
 	"math"
-	"sync"
 )
 
 // QuantizeRowI8S quantizes src into dst using i8_s rules and returns the
@@ -404,7 +403,7 @@ func matVecI2SI8SParallel(dst []float32, packed []byte, rows, cols int, vec []in
 	if chunk < 1 {
 		chunk = 1
 	}
-	var wg sync.WaitGroup
+	wg := acquireI2SI8SWG()
 	for start := 0; start < rows; start += chunk {
 		end := start + chunk
 		if end > rows {
@@ -423,10 +422,11 @@ func matVecI2SI8SParallel(dst []float32, packed []byte, rows, cols int, vec []in
 			actSum:     actSum,
 			start:      start,
 			end:        end,
-			wg:         &wg,
+			wg:         wg,
 		})
 	}
 	wg.Wait()
+	releaseI2SI8SWG(wg)
 }
 
 func matVecI2SI8SRange(dst []float32, packed []byte, rows, cols int, vec []int8, weightScale, actScale float32, actSum int32, rStart, rEnd int) {
@@ -489,7 +489,7 @@ func matVecTI2SI8SParallel(dst []float32, packed []byte, rows, cols int, vec []i
 	if chunk < 1 {
 		chunk = 1
 	}
-	var wg sync.WaitGroup
+	wg := acquireI2SI8SWG()
 	for start := 0; start < cols; start += chunk {
 		end := start + chunk
 		if end > cols {
@@ -508,10 +508,11 @@ func matVecTI2SI8SParallel(dst []float32, packed []byte, rows, cols int, vec []i
 			actSum:     actSum,
 			start:      start,
 			end:        end,
-			wg:         &wg,
+			wg:         wg,
 		})
 	}
 	wg.Wait()
+	releaseI2SI8SWG(wg)
 }
 
 func matVecTI2SI8SRange(dst []float32, packed []byte, rows, cols int, vec []int8, weightScale, actScale float32, actSum int32, cStart, cEnd int) {

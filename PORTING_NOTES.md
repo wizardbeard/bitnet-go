@@ -247,6 +247,10 @@
   - `BITNET_ARM64_I2S_I8S_PAR_CHUNK_COLS`
   - `BITNET_ARM64_I2S_I8S_BLOCK_MIN_ROWS`
   - `BITNET_ARM64_I2S_I8S_FAST_MIN_ELEMS`
+- update: removed remaining fallback dispatch allocation by pooling `sync.WaitGroup` instances in the i2_s worker scheduler.
+  - benchmark check (i7-11800H, `BITNET_I2S_I8S_DISABLE_FAST=1`, `BITNET_MATVEC_THREADS=6`, r=512/c=512 dispatch):
+    - `MatVecI2SI8S` ~175,669 ns/op, `0 allocs/op`
+    - `MatVecTI2SI8S` ~142,580 ns/op, `0 allocs/op`
 - Replace current greedy tokenizer scaffold with exact tokenizer behavior parity vs upstream (SPM/BPE rules).
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).

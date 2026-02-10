@@ -27,6 +27,11 @@ var i2sI8SPoolWorkers = envInt("BITNET_I2S_I8S_POOL_WORKERS", 0)
 var (
 	i2sI8SPoolOnce sync.Once
 	i2sI8SPoolCh   chan i2sI8STask
+	i2sI8SWGPool   = sync.Pool{
+		New: func() any {
+			return new(sync.WaitGroup)
+		},
+	}
 )
 
 func initI2SI8SPool() {
@@ -63,4 +68,12 @@ func submitI2SI8STask(task i2sI8STask) {
 	}
 	i2sI8SPoolOnce.Do(initI2SI8SPool)
 	i2sI8SPoolCh <- task
+}
+
+func acquireI2SI8SWG() *sync.WaitGroup {
+	return i2sI8SWGPool.Get().(*sync.WaitGroup)
+}
+
+func releaseI2SI8SWG(wg *sync.WaitGroup) {
+	i2sI8SWGPool.Put(wg)
 }
