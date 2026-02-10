@@ -27,6 +27,7 @@ type Tokenizer struct {
 	bpeRanksPair     map[bpePair]int
 	byteEncode       [256]string
 	byteDecode       map[string]byte
+	byteDecodeRune   map[rune]byte
 	trie             *trieNode
 	byteTok          [256]int32
 	bpeBuf           []string
@@ -117,6 +118,7 @@ func NewFromModelInfo(info gguf.ModelInfo) (*Tokenizer, error) {
 	}
 	t.byteEncode = buildByteEncoder()
 	t.byteDecode = buildByteDecoder(t.byteEncode[:])
+	t.byteDecodeRune = buildByteRuneDecoder(t.byteEncode[:])
 
 	if merges, ok := info.KeyValues["tokenizer.ggml.merges"].([]string); ok {
 		t.hasBPEMerges = len(merges) > 0
@@ -191,18 +193,17 @@ func (t *Tokenizer) Decode(tokens []int32) string {
 		return ""
 	}
 	if t.hasBPEMerges || t.model == "gpt2" {
-		var out []byte
+		out := make([]byte, 0, len(tokens)*4)
 		for _, id := range tokens {
 			if id < 0 || int(id) >= len(t.tokens) {
 				continue
 			}
 			piece := t.tokens[id]
 			for _, r := range piece {
-				rs := string(r)
-				if b, ok := t.byteDecode[rs]; ok {
+				if b, ok := t.byteDecodeRune[r]; ok {
 					out = append(out, b)
 				} else {
-					out = append(out, rs...)
+					out = utf8.AppendRune(out, r)
 				}
 			}
 		}
@@ -872,6 +873,15 @@ func buildByteDecoder(encoder []string) map[string]byte {
 	dec := make(map[string]byte, 256)
 	for b := 0; b < 256; b++ {
 		dec[encoder[b]] = byte(b)
+	}
+	return dec
+}
+
+func buildByteRuneDecoder(encoder []string) map[rune]byte {
+	dec := make(map[rune]byte, 256)
+	for b := 0; b < 256; b++ {
+		r, _ := utf8.DecodeRuneInString(encoder[b])
+		dec[r] = byte(b)
 	}
 	return dec
 }
