@@ -302,7 +302,7 @@ func TestTokenizerYarnFixturePrompt(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping yarn fixture in short mode")
 	}
-	assertFixturePromptTokensFromModelFixture(
+	assertFixturePromptTokensFromModelFixtureIfPresent(
 		t,
 		"model_fixture_yarn.txt",
 		"yarn.prompt.txt",

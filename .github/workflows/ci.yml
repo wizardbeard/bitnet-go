@@ -41,6 +41,10 @@ jobs:
               BITNET_ENFORCE_I2S=1 \
               BITNET_PARITY_FORCE=1 \
               BITNET_PARITY_STRICT=1 \
+              BITNET_I2S_FORCE_LOGIT_ATOL=8e-2 \
+              BITNET_I2S_FORCE_LOGIT_RTOL=8e-2 \
+              BITNET_I2S_TOPK_STRICT=3 \
+              BITNET_PARITY_FORCE_RELAX_TOPK=1 \
               go test ./pkg/bitnet -run TestParityAgainstI2SVectors -count=1
             else
               echo "Skipping i2_s parity (model missing: testdata/$model)"
@@ -59,12 +63,36 @@ jobs:
               BITNET_ENFORCE_I2S_2B=1 \
               BITNET_PARITY_FORCE=1 \
               BITNET_PARITY_STRICT=1 \
+              BITNET_I2S_FORCE_LOGIT_ATOL=8e-2 \
+              BITNET_I2S_FORCE_LOGIT_RTOL=8e-2 \
+              BITNET_I2S_TOPK_STRICT=3 \
+              BITNET_PARITY_FORCE_RELAX_TOPK=1 \
               go test ./pkg/bitnet -run TestParityAgainstI2S2BVectors -count=1
             else
               echo "Skipping i2_s 2B parity (model missing: testdata/$model)"
             fi
           else
             echo "Skipping i2_s 2B parity (fixture missing)"
+          fi
+      - name: parity-yarn
+        run: |
+          if [ -f testdata/model_fixture_yarn.txt ]; then
+            model=$(sed -n '1p' testdata/model_fixture_yarn.txt)
+            if [ -n "$model" ] && [ -f "testdata/$model" ]; then
+              if strings "testdata/$model" | grep -q "blk.0.attn_sub_norm.weight"; then
+                BITNET_ENFORCE_YARN=1 \
+                BITNET_PARITY_LOGIT_ATOL=1e-3 \
+                BITNET_PARITY_LOGIT_RTOL=3e-2 \
+                BITNET_PARITY_TOPK_STRICT=1 \
+                go test ./pkg/bitnet -run TestParityAgainstYarnVectors -count=1
+              else
+                echo "Skipping YaRN parity (fixture missing blk.0.attn_sub_norm.weight)"
+              fi
+            else
+              echo "Skipping YaRN parity (model missing: testdata/$model)"
+            fi
+          else
+            echo "Skipping YaRN parity (fixture missing)"
           fi
       - name: seed-determinism-fixtures
         run: |

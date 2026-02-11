@@ -419,3 +419,12 @@ Progress against step 2 (fixture + CI coverage):
 - validation:
   - `BITNET_ENFORCE_I2S_SMOKE=1 BITNET_PARITY_FORCE=1 BITNET_PARITY_STRICT=1 go test ./pkg/bitnet -run TestParityAgainstI2SSmoke -count=1`
   - `BITNET_ENFORCE_I2S_2B_SMOKE=1 BITNET_PARITY_FORCE=1 BITNET_PARITY_STRICT=1 go test ./pkg/bitnet -run TestParityAgainstI2S2BSmoke -count=1`
+
+Progress against step 6 (freeze/document tolerance policy):
+- update: froze and documented the parity tolerance policy in `README.md` with explicit defaults:
+  - base parity: `BITNET_PARITY_LOGIT_ATOL=1e-3`, `BITNET_PARITY_LOGIT_RTOL=1e-3`, `BITNET_PARITY_TOPK_STRICT=1`
+  - YaRN parity override: `BITNET_PARITY_LOGIT_RTOL=3e-2`, `BITNET_PARITY_TOPK_STRICT=1`
+  - i2_s/i2_s_2b parity defaults: `BITNET_I2S_LOGIT_ATOL=2e-1`, `BITNET_I2S_LOGIT_RTOL=1e-1`, `BITNET_I2S_TOPK_STRICT=3`, `BITNET_I2S_RELAX_TOPK=1`
+  - i2_s/i2_s_2b teacher-forced defaults: `BITNET_I2S_FORCE_LOGIT_ATOL=8e-2`, `BITNET_I2S_FORCE_LOGIT_RTOL=8e-2`, `BITNET_PARITY_FORCE_RELAX_TOPK=1`
+- update: CI parity jobs now set explicit env values for i2_s, i2_s_2b, and YaRN parity checks so tolerances are policy-pinned (not implicit code defaults).
+  - YaRN parity CI is conditional on fixture compatibility (`blk.0.attn_sub_norm.weight` present) to avoid false failures on incompatible YaRN snapshots.

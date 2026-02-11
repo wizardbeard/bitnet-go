@@ -212,12 +212,17 @@ If upstream CLI output differs, provide a wrapper command via `BITNET_REF_RUN_CM
   - Optional logits parity uses:
     - `BITNET_PARITY_LOGIT_ATOL` (default `1e-3`)
     - `BITNET_PARITY_LOGIT_RTOL` (default `1e-3`)
+    - `BITNET_PARITY_TOPK_STRICT` (default `1`; compare top-1 exactly unless overridden)
+  - YaRN parity override:
+    - `BITNET_PARITY_LOGIT_RTOL` default is `3e-2` in `TestParityAgainstYarnVectors`
+    - `BITNET_PARITY_TOPK_STRICT` default remains `1`
   - i2_s parity uses relaxed tolerances due to FFN activation amplification:
     - `BITNET_I2S_LOGIT_ATOL` (default `2e-1`)
     - `BITNET_I2S_LOGIT_RTOL` (default `1e-1`)
     - `BITNET_I2S_TOPK_STRICT` (default `3`)
     - `BITNET_I2S_RELAX_TOPK` (default `1`, compares top‑K as a set when enabled)
-    - `BITNET_I2S_FORCE_LOGIT_ATOL` / `BITNET_I2S_FORCE_LOGIT_RTOL` (default `7e-1`)
+    - `BITNET_I2S_FORCE_LOGIT_ATOL` / `BITNET_I2S_FORCE_LOGIT_RTOL` (default `8e-2` when `BITNET_PARITY_FORCE=1`)
+    - `BITNET_PARITY_FORCE_RELAX_TOPK` (default `1` when `BITNET_PARITY_FORCE=1`)
   - CI will run i2_s parity only when the referenced model fixtures exist in `testdata/`.
   - Set `BITNET_DISABLE_TOPK=1` to skip top‑K capture (perf optimization outside parity runs).
   - `BITNET_FAST_COL_MATVEC_AUTO=1` (default) enables a faster column‑accumulation matvec for large f32 projections when not in parity‑strict mode.
