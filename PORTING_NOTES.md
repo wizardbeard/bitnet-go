@@ -437,3 +437,25 @@ Progress against step 6 (freeze/document tolerance policy):
   - result: `TestParityAgainstYarnVectors` now passes again under frozen YaRN tolerances.
 - update: added runtime unit coverage for FFN activation dispatch (`TestFFNActivateDispatchMatchesReference`) to lock SiLU-vs-ReLU2 behavior.
 - update: CI YaRN parity step now runs with `BITNET_PARITY_STRICT=1` in addition to frozen YaRN tolerance envs.
+
+CPU parity status matrix snapshot:
+- Base (`model_fixture.txt`)
+  - tokenizer prompt vectors: yes
+  - strict token/logit parity vectors: not CI-enforced by default (`BITNET_ENFORCE_PARITY` gated)
+  - seed determinism: not fixture-enforced
+- YaRN (`model_fixture_yarn.txt`)
+  - tokenizer prompt vectors: conditional (fixture present)
+  - token/logit parity vectors: conditional (fixture present; CI runs with strict + frozen YaRN tolerances)
+  - seed determinism: not fixture-enforced
+- i2_s (`model_fixture_i2s.txt`)
+  - tokenizer prompt vectors: conditional (fixture present)
+  - token/logit parity vectors: CI-enforced (teacher-forced strict + frozen i2_s tolerances)
+  - smoke parity: CI-enforced
+  - seed determinism: CI-enforced (shared fixture determinism test)
+- i2_s 2B (`model_fixture_i2s_2b.txt`)
+  - tokenizer prompt vectors: conditional (fixture present)
+  - token/logit parity vectors: CI-enforced (teacher-forced strict + frozen i2_s tolerances)
+  - smoke parity: CI-enforced
+  - seed determinism: CI-enforced (shared fixture determinism test)
+- Maintained fixture GGUF compatibility:
+  - `TestMaintainedFixtureTensorTypesSupported` enforces tensor-type decode support for all maintained fixtures that are present locally.

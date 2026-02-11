@@ -240,3 +240,22 @@ If upstream CLI output differs, provide a wrapper command via `BITNET_REF_RUN_CM
   - `BITNET_I2S_ALT_LAYOUT=1` treats packed i2_s weights as row‑major for debug/layout comparison.
   - `BITNET_I2S_SCALAR=1` forces scalar i2_s dot (no block decode) for drift analysis.
   - `BITNET_REF_I2S_DOT=1` (ref tracer) emits a ggml i2_s dot for `ffn_norm-0` against `BITNET_REF_I2S_DOT_TENSOR` and `BITNET_REF_I2S_DOT_ROW`.
+
+## CPU Parity Status Matrix
+
+Legend:
+- `Yes` = covered and enforced in current CI flow.
+- `Cond` = covered when fixture/model is present on host/runner.
+- `No` = not currently enforced.
+
+| Fixture family | Tokenizer prompt vectors | Token/logit parity vectors | Smoke parity | Seed determinism | GGUF type compatibility |
+| --- | --- | --- | --- | --- | --- |
+| Base (`model_fixture.txt`) | Yes (`expected.prompt_tokens.json`) | No (`BITNET_ENFORCE_PARITY` gated) | N/A | No | Cond |
+| YaRN (`model_fixture_yarn.txt`) | Cond (`expected.yarn.prompt_tokens.json`) | Cond (`BITNET_ENFORCE_YARN=1`) | N/A | No | Cond |
+| i2_s (`model_fixture_i2s.txt`) | Cond (`expected.i2s.prompt_tokens.json`) | Yes (teacher-forced strict in CI) | Yes | Yes | Cond |
+| i2_s 2B (`model_fixture_i2s_2b.txt`) | Cond (`expected.i2s_2b.prompt_tokens.json`) | Yes (teacher-forced strict in CI) | Yes | Yes | Cond |
+| Tokenizer vocab-only (gpt2/falcon/qwen2) | Yes/Cond (qwen2 may skip in short mode) | N/A | N/A | N/A | N/A |
+
+Notes:
+- `TestMaintainedFixtureTensorTypesSupported` enforces GGUF tensor-type decode support for all maintained fixtures that are present locally.
+- CI currently fetches i2_s 2B by default; YaRN parity remains conditional on a populated YaRN fixture in `testdata/`.
