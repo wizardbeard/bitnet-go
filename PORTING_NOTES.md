@@ -368,6 +368,9 @@
     - down-share on (default): `default_prefix ~2.821s/op, 771 allocs/op`; `full_sort ~2.545s/op, 763 allocs/op`
     - down-share off: `default_prefix ~2.841s/op, 863 allocs/op`; `full_sort ~2.555s/op, 848 allocs/op`
   - quick end-to-end A/B on this host (`.bench/bitnet-go`, i2_s fixture, prompt=`Hello BitNet`, max-tokens=15, procs=6, temp=0) was effectively neutral (~44.70s both runs), so this is currently a memory/consistency improvement with small microbench upside.
+- update: added a direct non-debug i2_s quantized matvec fast path in `linearApplyIntoWeightI2SQuantized` (skips debug branch fan-out when all i2_s debug flags are off).
+  - profile refresh (`BITNET_PROFILE_STEP=1`, i2_s fixture, prompt=`Hello BitNet`, max-tokens=15, procs=6): `ffn_gate_up~4.181s`, `ffn_down~2.085s`, FFN remains dominant (~68.2% of step time).
+  - microbench check (`BenchmarkGenerateTopPCompare`, i2_s fixture, benchtime=2x): `default_prefix ~2.400s/op`, `full_sort ~2.147s/op`, with allocs in the same range as the prior shared-quant-down state.
 - update: extended step profiling to include FFN substage attribution (`ffn_norm`, `ffn_gate_up`, `ffn_act`, `ffn_subnorm`, `ffn_down`) for bottleneck targeting.
   - profile snapshot (i7-11800H, same fixture/settings): FFN substage totals over 15 steps were approximately `ffn_gate_up~4.13s`, `ffn_down~2.06s`, `ffn_act~13.0ms`, `ffn_norm~1.4ms`, `ffn_subnorm~4.8ms`.
 - update: added experimental opt-in parallel FFN gate/up projection (`BITNET_FFN_PAR_GATE_UP=1`) in the non-debug FFN path.

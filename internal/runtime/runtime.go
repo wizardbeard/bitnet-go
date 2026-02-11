@@ -158,6 +158,7 @@ var debugI2SPretransposeMax = parseEnvInt("BITNET_I2S_PRETRANSPOSE_MAX", 0)
 var debugI2SRefDot = os.Getenv("BITNET_I2S_REF_DOT") == "1"
 var debugI2SMatvecRef = os.Getenv("BITNET_DEBUG_I2S_MATVEC_REF") == "1"
 var debugI2SMatvecPrinted bool
+var i2sQuantFastPath = !debugI2SRefOnce && !debugI2SRefDot && !debugI2SMap3To1 && !debugI2SAltLayout && !debugI2SScalar && !debugI2SMatvecRef
 var debugI2SRefOnce = os.Getenv("BITNET_I2S_REF_ONCE") == "1"
 var debugI2SRefOncePrinted bool
 var debugI2SMap3To1 = os.Getenv("BITNET_I2S_MAP3_TO1") == "1"
@@ -2971,6 +2972,14 @@ func linearApplyIntoWeight(dst []float32, w linearWeight, x []float32) {
 }
 
 func linearApplyIntoWeightI2SQuantized(dst []float32, w linearWeight, scratch []int8, actScale float32, actSum int32) {
+	if i2sQuantFastPath {
+		if w.transposed {
+			kernels.MatVecTI2SI8S(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
+		} else {
+			kernels.MatVecI2SI8S(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale, actSum)
+		}
+		return
+	}
 	if debugI2SRefOnce && !debugI2SRefOncePrinted {
 		ref := make([]float32, len(dst))
 		if w.transposed {
