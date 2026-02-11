@@ -184,6 +184,8 @@ func MatVecI2SI8S(dst []float32, packed []byte, rows, cols int, vec []int8, weig
 	if rows*cols == 0 || len(packed) < i2sPackedLen(rows*cols) {
 		return
 	}
+	outScale := weightScale / actScale
+	corr := float32(actSum) * outScale
 	if matVecI2SI8SFast != nil && useI2SI8SFast(rows, cols) {
 		if matVecThreads() > 1 && i2sI8SFastParallelNTColsMin > 0 &&
 			cols >= i2sI8SFastParallelNTColsMin && matVecI2SI8SFastRange != nil {
@@ -212,7 +214,7 @@ func MatVecI2SI8S(dst []float32, packed []byte, rows, cols int, vec []int8, weig
 				accumI2SBlock128(&sums, &block, v)
 			}
 			for i := 0; i < 128; i++ {
-				dst[rb+i] = float32(sums[i]-actSum) * (weightScale / actScale)
+				dst[rb+i] = float32(sums[i])*outScale - corr
 			}
 		}
 		return
@@ -239,7 +241,7 @@ func MatVecI2SI8S(dst []float32, packed []byte, rows, cols int, vec []int8, weig
 			q := i2sPackedAt(packed, idx)
 			sum += int32(q) * int32(vec[c])
 		}
-		dst[r] = float32(sum-actSum) * (weightScale / actScale)
+		dst[r] = float32(sum)*outScale - corr
 	}
 }
 
@@ -322,6 +324,8 @@ func matVecI2SI8SRangeCols(dst []float32, packed []byte, rows, cols int, vec []i
 	if cStart >= cEnd {
 		return
 	}
+	outScale := weightScale / actScale
+	corr := float32(actSum) * outScale
 	if useI2SBlockPath(rows) {
 		var block [128]int8
 		var sums [128]int32
@@ -337,7 +341,7 @@ func matVecI2SI8SRangeCols(dst []float32, packed []byte, rows, cols int, vec []i
 				accumI2SBlock128(&sums, &block, v)
 			}
 			for i := 0; i < 128; i++ {
-				dst[rb+i] = float32(sums[i]-actSum) * (weightScale / actScale)
+				dst[rb+i] = float32(sums[i])*outScale - corr
 			}
 		}
 		return
@@ -349,7 +353,7 @@ func matVecI2SI8SRangeCols(dst []float32, packed []byte, rows, cols int, vec []i
 			q := i2sPackedAt(packed, idx)
 			sum += int32(q) * int32(vec[c])
 		}
-		dst[r] = float32(sum-actSum) * (weightScale / actScale)
+		dst[r] = float32(sum)*outScale - corr
 	}
 }
 
@@ -487,6 +491,8 @@ func MatVecTI2SI8S(dst []float32, packed []byte, rows, cols int, vec []int8, wei
 	if rows*cols == 0 || len(packed) < i2sPackedLen(rows*cols) {
 		return
 	}
+	outScale := weightScale / actScale
+	corr := float32(actSum) * outScale
 	if matVecTI2SI8SFast != nil && useI2SI8SFast(rows, cols) {
 		if matVecThreads() > 1 && i2sI8SFastParallelColsMin > 0 &&
 			cols >= i2sI8SFastParallelColsMin && matVecTI2SI8SFastRange != nil {
@@ -531,7 +537,7 @@ func MatVecTI2SI8S(dst []float32, packed []byte, rows, cols int, vec []int8, wei
 			q := i2sPackedAt(packed, idx)
 			sum += int32(q) * int32(vec[r])
 		}
-		dst[c] = float32(sum-actSum) * (weightScale / actScale)
+		dst[c] = float32(sum)*outScale - corr
 	}
 }
 
@@ -596,6 +602,8 @@ func matVecI2SI8SRange(dst []float32, packed []byte, rows, cols int, vec []int8,
 	if rStart >= rEnd {
 		return
 	}
+	outScale := weightScale / actScale
+	corr := float32(actSum) * outScale
 	if useI2SBlockPath(rows) {
 		var block [128]int8
 		var sums [128]int32
@@ -611,7 +619,7 @@ func matVecI2SI8SRange(dst []float32, packed []byte, rows, cols int, vec []int8,
 				accumI2SBlock128(&sums, &block, v)
 			}
 			for i := 0; i < 128; i++ {
-				dst[rb+i] = float32(sums[i]-actSum) * (weightScale / actScale)
+				dst[rb+i] = float32(sums[i])*outScale - corr
 			}
 		}
 		return
@@ -623,7 +631,7 @@ func matVecI2SI8SRange(dst []float32, packed []byte, rows, cols int, vec []int8,
 			q := i2sPackedAt(packed, idx)
 			sum += int32(q) * int32(vec[c])
 		}
-		dst[r] = float32(sum-actSum) * (weightScale / actScale)
+		dst[r] = float32(sum)*outScale - corr
 	}
 }
 
@@ -681,6 +689,8 @@ func matVecTI2SI8SRange(dst []float32, packed []byte, rows, cols int, vec []int8
 	if cStart >= cEnd {
 		return
 	}
+	outScale := weightScale / actScale
+	corr := float32(actSum) * outScale
 	if matVecTI2SI8SFastRange != nil && useI2SI8SFast(rows, cEnd-cStart) &&
 		matVecTI2SI8SFastRange(dst, packed, rows, cols, vec, weightScale, actScale, actSum, cStart, cEnd) {
 		return
@@ -716,7 +726,7 @@ func matVecTI2SI8SRange(dst []float32, packed []byte, rows, cols int, vec []int8
 			q := i2sPackedAt(packed, idx)
 			sum += int32(q) * int32(vec[r])
 		}
-		dst[c] = float32(sum-actSum) * (weightScale / actScale)
+		dst[c] = float32(sum)*outScale - corr
 	}
 }
 
