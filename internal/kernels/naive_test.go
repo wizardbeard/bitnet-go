@@ -64,6 +64,20 @@ func TestMulRelu2IntoMatchesOpt(t *testing.T) {
 	}
 }
 
+func TestMulSiluInto(t *testing.T) {
+	dst := make([]float32, 3)
+	gate := []float32{-2, 0, 2}
+	up := []float32{3, 4, 5}
+	MulSiluInto(dst, gate, up)
+
+	if !(dst[0] < 0 && dst[2] > 0) {
+		t.Fatalf("unexpected signs for silu output: %v", dst)
+	}
+	if dst[1] != 0 {
+		t.Fatalf("dst[1] = %f, want 0", dst[1])
+	}
+}
+
 func TestRMSNormInto(t *testing.T) {
 	dst := make([]float32, 2)
 	x := []float32{3, 4}

@@ -604,6 +604,7 @@ type tensorBlock struct {
 	outputWeightType     uint32
 	outputNorm           []float32
 	rmsEps               float32
+	ffnUseSilu           bool
 	layers               []llamaLayer
 }
 
@@ -945,6 +946,7 @@ func loadLlamaStack(info gguf.ModelInfo, loader *modelTensorLoader) (*tensorBloc
 		ropeYarnOrigCtx:    firstFloat32(info.KeyValues["llama.rope.scaling.original_context_length"], 0),
 		ropeYarnExtFactor:  firstFloat32(info.KeyValues["llama.rope.scaling.ext_factor"], 0),
 		ropeYarnAttnFactor: firstFloat32(info.KeyValues["llama.rope.scaling.attn_factor"], 1.0),
+		ffnUseSilu:         arch == "llama",
 	}
 	if b.attnHeads <= 0 {
 		b.attnHeads = 1
@@ -1740,7 +1742,7 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 				if prof != nil {
 					actStart = time.Now()
 				}
-				mulRelu2Reference(st.ffnAct, st.gate, st.up)
+				ffnActivateReference(st.ffnAct, st.gate, st.up, block.ffnUseSilu)
 				if prof != nil {
 					prof.ffnAct += time.Since(actStart)
 				}
@@ -1904,18 +1906,18 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 			if prof != nil {
 				actStart = time.Now()
 			}
-			kernels.MulRelu2Into(st.ffnAct, st.gate, st.up)
+			ffnActivateInto(st.ffnAct, st.gate, st.up, block.ffnUseSilu)
 			if prof != nil {
 				prof.ffnAct += time.Since(actStart)
 			}
 			if debugFfnActRef && shouldDebug(pos) && i == 0 {
 				refAct := make([]float32, len(st.ffnAct))
-				mulRelu2Reference(refAct, st.gate, st.up)
+				ffnActivateReference(refAct, st.gate, st.up, block.ffnUseSilu)
 				debugVecDiff("ffn_act.kernel_ref.diff", st.ffnAct, refAct)
 			}
 			if haveFfnRef {
 				actRef = make([]float32, len(st.ffnAct))
-				kernels.MulRelu2Into(actRef, gateRef, upRef)
+				ffnActivateInto(actRef, gateRef, upRef, block.ffnUseSilu)
 				debugVecDiff("ffn_act.ref.diff", st.ffnAct, actRef)
 			}
 			if debugValues && shouldDebug(pos) && i == 0 {
@@ -2310,6 +2312,39 @@ func mulRelu2Reference(dst, gate, up []float32) {
 	for i := n; i < len(dst); i++ {
 		dst[i] = 0
 	}
+}
+
+func mulSiluReference(dst, gate, up []float32) {
+	n := len(dst)
+	if len(gate) < n {
+		n = len(gate)
+	}
+	if len(up) < n {
+		n = len(up)
+	}
+	for i := 0; i < n; i++ {
+		g := gate[i]
+		dst[i] = (g / (1 + float32(math.Exp(float64(-g))))) * up[i]
+	}
+	for i := n; i < len(dst); i++ {
+		dst[i] = 0
+	}
+}
+
+func ffnActivateInto(dst, gate, up []float32, useSilu bool) {
+	if useSilu {
+		kernels.MulSiluInto(dst, gate, up)
+		return
+	}
+	kernels.MulRelu2Into(dst, gate, up)
+}
+
+func ffnActivateReference(dst, gate, up []float32, useSilu bool) {
+	if useSilu {
+		mulSiluReference(dst, gate, up)
+		return
+	}
+	mulRelu2Reference(dst, gate, up)
 }
 
 func expf32(x float32) float32 {

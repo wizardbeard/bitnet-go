@@ -74,6 +74,21 @@ func MulRelu2Into(dst, gate, up []float32) {
 	mulReluImpl(dst, gate, up)
 }
 
+// MulSiluInto computes dst[i] = (gate[i] / (1 + exp(-gate[i]))) * up[i].
+func MulSiluInto(dst, gate, up []float32) {
+	n := len(dst)
+	if len(gate) < n {
+		n = len(gate)
+	}
+	if len(up) < n {
+		n = len(up)
+	}
+	for i := 0; i < n; i++ {
+		g := gate[i]
+		dst[i] = (g / (1 + float32(math.Exp(float64(-g))))) * up[i]
+	}
+}
+
 // MatVec computes dst = mat * vec where mat is GGML column-major [rows][cols]
 // with contiguous dimension ne0=rows.
 func MatVec(dst, mat []float32, rows, cols int, vec []float32) {
