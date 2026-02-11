@@ -396,3 +396,10 @@ Progress against step 1 (tolerance tightening):
 - validation: same enforced parity commands still pass for both i2_s and i2_s 2B suites under strict teacher-forced mode.
 - update: tightened teacher-forced i2_s default logit tolerances again from `1e-1` to `8e-2`.
 - validation: same enforced parity commands still pass for both i2_s and i2_s 2B suites under strict teacher-forced mode.
+
+Progress against step 2 (fixture + CI coverage):
+- update: added base i2_s smoke parity test (`TestParityAgainstI2SSmoke`) to mirror existing 2B smoke coverage.
+- update: CI now runs both i2_s and i2_s 2B smoke parity with consistent teacher-forced strict settings (`BITNET_PARITY_FORCE=1`, `BITNET_PARITY_STRICT=1`).
+- validation:
+  - `BITNET_ENFORCE_I2S_SMOKE=1 BITNET_PARITY_FORCE=1 BITNET_PARITY_STRICT=1 go test ./pkg/bitnet -run TestParityAgainstI2SSmoke -count=1`
+  - `BITNET_ENFORCE_I2S_2B_SMOKE=1 BITNET_PARITY_FORCE=1 BITNET_PARITY_STRICT=1 go test ./pkg/bitnet -run TestParityAgainstI2S2BSmoke -count=1`

@@ -63,12 +63,30 @@ jobs:
           else
             echo "Skipping i2_s 2B parity (fixture missing)"
           fi
+      - name: parity-i2s-smoke
+        run: |
+          if [ -f testdata/model_fixture_i2s.txt ]; then
+            model=$(sed -n '1p' testdata/model_fixture_i2s.txt)
+            if [ -n "$model" ] && [ -f "testdata/$model" ]; then
+              BITNET_ENFORCE_I2S_SMOKE=1 \
+              BITNET_PARITY_FORCE=1 \
+              BITNET_PARITY_STRICT=1 \
+              go test ./pkg/bitnet -run TestParityAgainstI2SSmoke -count=1
+            else
+              echo "Skipping i2_s smoke parity (model missing: testdata/$model)"
+            fi
+          else
+            echo "Skipping i2_s smoke parity (fixture missing)"
+          fi
       - name: parity-2b-smoke
         run: |
           if [ -f testdata/model_fixture_i2s_2b.txt ]; then
             model=$(sed -n '1p' testdata/model_fixture_i2s_2b.txt)
             if [ -n "$model" ] && [ -f "testdata/$model" ]; then
-              BITNET_ENFORCE_I2S_2B_SMOKE=1 go test ./pkg/bitnet -run TestParityAgainstI2S2BSmoke -count=1
+              BITNET_ENFORCE_I2S_2B_SMOKE=1 \
+              BITNET_PARITY_FORCE=1 \
+              BITNET_PARITY_STRICT=1 \
+              go test ./pkg/bitnet -run TestParityAgainstI2S2BSmoke -count=1
             else
               echo "Skipping i2_s 2B smoke parity (model missing: testdata/$model)"
             fi
