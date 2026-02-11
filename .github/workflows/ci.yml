@@ -79,15 +79,11 @@ jobs:
           if [ -f testdata/model_fixture_yarn.txt ]; then
             model=$(sed -n '1p' testdata/model_fixture_yarn.txt)
             if [ -n "$model" ] && [ -f "testdata/$model" ]; then
-              if strings "testdata/$model" | grep -q "blk.0.attn_sub_norm.weight"; then
-                BITNET_ENFORCE_YARN=1 \
-                BITNET_PARITY_LOGIT_ATOL=1e-3 \
-                BITNET_PARITY_LOGIT_RTOL=3e-2 \
-                BITNET_PARITY_TOPK_STRICT=1 \
-                go test ./pkg/bitnet -run TestParityAgainstYarnVectors -count=1
-              else
-                echo "Skipping YaRN parity (fixture missing blk.0.attn_sub_norm.weight)"
-              fi
+              BITNET_ENFORCE_YARN=1 \
+              BITNET_PARITY_LOGIT_ATOL=1e-3 \
+              BITNET_PARITY_LOGIT_RTOL=3e-2 \
+              BITNET_PARITY_TOPK_STRICT=1 \
+              go test ./pkg/bitnet -run TestParityAgainstYarnVectors -count=1
             else
               echo "Skipping YaRN parity (model missing: testdata/$model)"
             fi

@@ -1047,11 +1047,13 @@ func loadLlamaLayer(info gguf.ModelInfo, loader *modelTensorLoader, layerIdx int
 	if len(l.attnNorm) != hidden {
 		return llamaLayer{}, fmt.Errorf("%sattn_norm.weight len=%d want=%d", prefix, len(l.attnNorm), hidden)
 	}
-	if l.attnSubNorm, err = loader.readTensorAsF32(prefix + "attn_sub_norm.weight"); err != nil {
-		return llamaLayer{}, err
-	}
-	if len(l.attnSubNorm) != hidden {
-		return llamaLayer{}, fmt.Errorf("%sattn_sub_norm.weight len=%d want=%d", prefix, len(l.attnSubNorm), hidden)
+	if _, ok := info.TensorByName(prefix + "attn_sub_norm.weight"); ok {
+		if l.attnSubNorm, err = loader.readTensorAsF32(prefix + "attn_sub_norm.weight"); err != nil {
+			return llamaLayer{}, err
+		}
+		if len(l.attnSubNorm) != hidden {
+			return llamaLayer{}, fmt.Errorf("%sattn_sub_norm.weight len=%d want=%d", prefix, len(l.attnSubNorm), hidden)
+		}
 	}
 	if l.ffnNorm, err = loader.readTensorAsF32(prefix + "ffn_norm.weight"); err != nil {
 		return llamaLayer{}, err
@@ -1095,11 +1097,13 @@ func loadLlamaLayer(info gguf.ModelInfo, loader *modelTensorLoader, layerIdx int
 	if l.ffnUp, err = loadLinearWeight(info, loader, prefix+"ffn_up.weight", hidden); err != nil {
 		return llamaLayer{}, err
 	}
-	if l.ffnSubNorm, err = loader.readTensorAsF32(prefix + "ffn_sub_norm.weight"); err != nil {
-		return llamaLayer{}, err
-	}
-	if len(l.ffnSubNorm) != linearOutputLen(l.ffnGate) {
-		return llamaLayer{}, fmt.Errorf("%sffn_sub_norm.weight len=%d want=%d", prefix, len(l.ffnSubNorm), linearOutputLen(l.ffnGate))
+	if _, ok := info.TensorByName(prefix + "ffn_sub_norm.weight"); ok {
+		if l.ffnSubNorm, err = loader.readTensorAsF32(prefix + "ffn_sub_norm.weight"); err != nil {
+			return llamaLayer{}, err
+		}
+		if len(l.ffnSubNorm) != linearOutputLen(l.ffnGate) {
+			return llamaLayer{}, fmt.Errorf("%sffn_sub_norm.weight len=%d want=%d", prefix, len(l.ffnSubNorm), linearOutputLen(l.ffnGate))
+		}
 	}
 	if linearOutputLen(l.ffnGate) != linearOutputLen(l.ffnUp) {
 		return llamaLayer{}, fmt.Errorf("%sincompatible ffn gate/up dims", prefix)
@@ -1125,9 +1129,13 @@ func loadLlamaLayer(info gguf.ModelInfo, loader *modelTensorLoader, layerIdx int
 		fmt.Fprintf(os.Stderr, "debug ffn meta: up rows=%d cols=%d transposed=%v qtype=%d\n", l.ffnUp.rows, l.ffnUp.cols, l.ffnUp.transposed, l.ffnUp.qtype)
 		fmt.Fprintf(os.Stderr, "debug ffn meta: down rows=%d cols=%d transposed=%v qtype=%d\n", l.ffnDown.rows, l.ffnDown.cols, l.ffnDown.transposed, l.ffnDown.qtype)
 		debugVecStats("debug attn_norm.weight", l.attnNorm)
-		debugVecStats("debug attn_sub_norm.weight", l.attnSubNorm)
+		if len(l.attnSubNorm) > 0 {
+			debugVecStats("debug attn_sub_norm.weight", l.attnSubNorm)
+		}
 		debugVecStats("debug ffn_norm.weight", l.ffnNorm)
-		debugVecStats("debug ffn_sub_norm.weight", l.ffnSubNorm)
+		if len(l.ffnSubNorm) > 0 {
+			debugVecStats("debug ffn_sub_norm.weight", l.ffnSubNorm)
+		}
 	}
 	return l, nil
 }
@@ -1672,7 +1680,7 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 				causalAttentionMultiHeadInto(st.attnAcc, st.scores, st.q, st.keys, st.values, pos+1, block.attnHeads, block.kvHeads, len(st.k), len(st.v), pos)
 			}
 
-			rmsNormInto(n2, st.attnAcc, layer.attnSubNorm, block.rmsEps)
+			applySubNormOrIdentity(n2, st.attnAcc, layer.attnSubNorm, block.rmsEps)
 			if debugStages && shouldDebug(pos) && i == 0 {
 				debugStage("stage.attn_sub_norm", n2, block, stageNormBuf, false)
 			}
@@ -1740,7 +1748,7 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 				if prof != nil {
 					subNormStart = time.Now()
 				}
-				rmsNormInto(st.up, st.ffnAct, layer.ffnSubNorm, block.rmsEps)
+				applySubNormOrIdentity(st.up, st.ffnAct, layer.ffnSubNorm, block.rmsEps)
 				if prof != nil {
 					prof.ffnSubNorm += time.Since(subNormStart)
 				}
@@ -1918,13 +1926,13 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 			if prof != nil {
 				subNormStart = time.Now()
 			}
-			rmsNormInto(st.up, st.ffnAct, layer.ffnSubNorm, block.rmsEps)
+			applySubNormOrIdentity(st.up, st.ffnAct, layer.ffnSubNorm, block.rmsEps)
 			if prof != nil {
 				prof.ffnSubNorm += time.Since(subNormStart)
 			}
 			if haveFfnRef {
 				upNormRef := make([]float32, len(st.up))
-				rmsNormInto(upNormRef, actRef, layer.ffnSubNorm, block.rmsEps)
+				applySubNormOrIdentity(upNormRef, actRef, layer.ffnSubNorm, block.rmsEps)
 				debugVecDiff("ffn_sub_norm.ref.diff", st.up, upNormRef)
 			}
 			if debugStages && shouldDebug(pos) && i == 0 {
@@ -2508,6 +2516,14 @@ func ropeYarnCorrDims(betaFast, betaSlow float32) (float32, float32) {
 
 func rmsNormInto(dst, x, weight []float32, eps float32) {
 	kernels.RMSNormInto(dst, x, weight, eps)
+}
+
+func applySubNormOrIdentity(dst, x, weight []float32, eps float32) {
+	if len(weight) == len(x) && len(x) > 0 {
+		rmsNormInto(dst, x, weight, eps)
+		return
+	}
+	copy(dst, x)
 }
 
 func debugVecStats(label string, v []float32) {

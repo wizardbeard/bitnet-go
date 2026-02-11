@@ -427,4 +427,5 @@ Progress against step 6 (freeze/document tolerance policy):
   - i2_s/i2_s_2b parity defaults: `BITNET_I2S_LOGIT_ATOL=2e-1`, `BITNET_I2S_LOGIT_RTOL=1e-1`, `BITNET_I2S_TOPK_STRICT=3`, `BITNET_I2S_RELAX_TOPK=1`
   - i2_s/i2_s_2b teacher-forced defaults: `BITNET_I2S_FORCE_LOGIT_ATOL=8e-2`, `BITNET_I2S_FORCE_LOGIT_RTOL=8e-2`, `BITNET_PARITY_FORCE_RELAX_TOPK=1`
 - update: CI parity jobs now set explicit env values for i2_s, i2_s_2b, and YaRN parity checks so tolerances are policy-pinned (not implicit code defaults).
-  - YaRN parity CI is conditional on fixture compatibility (`blk.0.attn_sub_norm.weight` present) to avoid false failures on incompatible YaRN snapshots.
+- update: runtime llama-layer loader now treats `blk.N.attn_sub_norm.weight` and `blk.N.ffn_sub_norm.weight` as optional; when missing, forward uses identity (no extra sub-norm), which aligns with fixtures that omit these tensors.
+- update: YaRN parity CI no longer needs a sub-norm tensor-presence gate; it runs directly when the configured YaRN model fixture exists.

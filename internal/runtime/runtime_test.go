@@ -182,7 +182,7 @@ func TestGenerateUsesLlamaEmbeddingOutputBlockI2S(t *testing.T) {
 }
 
 func TestGenerateUsesLlamaStackWhenPresent(t *testing.T) {
-	modelPath := buildLlamaBlock0Model(t)
+	modelPath := buildLlamaBlock0Model(t, true)
 
 	rt, err := New(context.Background(), modelPath)
 	if err != nil {
@@ -248,6 +248,54 @@ func TestGenerateUsesLlamaStackWhenPresent(t *testing.T) {
 	}
 	if same {
 		t.Fatalf("different prompt token streams should affect llama block0 output: %v vs %v", pa, pb)
+	}
+}
+
+func TestGenerateUsesLlamaStackWithoutSubNormTensors(t *testing.T) {
+	modelPath := buildLlamaBlock0Model(t, false)
+
+	rt, err := New(context.Background(), modelPath)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	if rt.block == nil {
+		t.Fatal("expected tensor block to be loaded")
+	}
+	if rt.block.mode != tensorBlockModeLlamaStack {
+		t.Fatalf("block mode = %d, want llama stack", rt.block.mode)
+	}
+	if len(rt.block.layers) == 0 {
+		t.Fatal("expected at least one layer")
+	}
+	for i, layer := range rt.block.layers {
+		if len(layer.attnSubNorm) != 0 {
+			t.Fatalf("layer %d attnSubNorm should be optional/missing", i)
+		}
+		if len(layer.ffnSubNorm) != 0 {
+			t.Fatalf("layer %d ffnSubNorm should be optional/missing", i)
+		}
+	}
+
+	a, err := rt.Generate(context.Background(), GenerateRequest{
+		Prompt:    "hello",
+		Seed:      5,
+		MaxTokens: 4,
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	b, err := rt.Generate(context.Background(), GenerateRequest{
+		Prompt:    "hello",
+		Seed:      5,
+		MaxTokens: 4,
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	for i := range a.TokenIDs {
+		if a.TokenIDs[i] != b.TokenIDs[i] {
+			t.Fatalf("token[%d] mismatch: %d vs %d", i, a.TokenIDs[i], b.TokenIDs[i])
+		}
 	}
 }
 
@@ -447,7 +495,7 @@ func buildLlamaEmbeddingOutputModelI2S(t *testing.T) string {
 	return path
 }
 
-func buildLlamaBlock0Model(t *testing.T) string {
+func buildLlamaBlock0Model(t *testing.T, includeSubNorm bool) string {
 	t.Helper()
 
 	const (
@@ -537,7 +585,6 @@ func buildLlamaBlock0Model(t *testing.T) string {
 		},
 		{name: "blk.0.attn_output.weight", dims: []uint64{hidden, hidden}, data: makeIdentity(hidden, 0.5)},
 		{name: "blk.0.attn_norm.weight", dims: []uint64{hidden}, data: []float32{1, 1, 1, 1}},
-		{name: "blk.0.attn_sub_norm.weight", dims: []uint64{hidden}, data: []float32{1, 1, 1, 1}},
 		{
 			name: "blk.0.ffn_gate.weight",
 			dims: []uint64{ffn, hidden},
@@ -578,7 +625,6 @@ func buildLlamaBlock0Model(t *testing.T) string {
 			}(),
 		},
 		{name: "blk.0.ffn_norm.weight", dims: []uint64{hidden}, data: []float32{1, 1, 1, 1}},
-		{name: "blk.0.ffn_sub_norm.weight", dims: []uint64{ffn}, data: []float32{1, 1, 1, 1, 1, 1}},
 		{name: "blk.1.attn_q.weight", dims: []uint64{hidden, hidden}, data: makeIdentity(hidden, 0.9)},
 		{
 			name: "blk.1.attn_k.weight",
@@ -602,7 +648,6 @@ func buildLlamaBlock0Model(t *testing.T) string {
 		},
 		{name: "blk.1.attn_output.weight", dims: []uint64{hidden, hidden}, data: makeIdentity(hidden, 0.4)},
 		{name: "blk.1.attn_norm.weight", dims: []uint64{hidden}, data: []float32{1, 1, 1, 1}},
-		{name: "blk.1.attn_sub_norm.weight", dims: []uint64{hidden}, data: []float32{1, 1, 1, 1}},
 		{
 			name: "blk.1.ffn_gate.weight",
 			dims: []uint64{ffn, hidden},
@@ -643,7 +688,14 @@ func buildLlamaBlock0Model(t *testing.T) string {
 			}(),
 		},
 		{name: "blk.1.ffn_norm.weight", dims: []uint64{hidden}, data: []float32{1, 1, 1, 1}},
-		{name: "blk.1.ffn_sub_norm.weight", dims: []uint64{ffn}, data: []float32{1, 1, 1, 1, 1, 1}},
+	}
+	if includeSubNorm {
+		tensors = append(tensors,
+			tensorSpec{name: "blk.0.attn_sub_norm.weight", dims: []uint64{hidden}, data: []float32{1, 1, 1, 1}},
+			tensorSpec{name: "blk.0.ffn_sub_norm.weight", dims: []uint64{ffn}, data: []float32{1, 1, 1, 1, 1, 1}},
+			tensorSpec{name: "blk.1.attn_sub_norm.weight", dims: []uint64{hidden}, data: []float32{1, 1, 1, 1}},
+			tensorSpec{name: "blk.1.ffn_sub_norm.weight", dims: []uint64{ffn}, data: []float32{1, 1, 1, 1, 1, 1}},
+		)
 	}
 
 	buf := bytes.NewBuffer(nil)
