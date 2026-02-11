@@ -191,6 +191,80 @@ func TestTokenizerPreTypeSplitAliases(t *testing.T) {
 	}
 }
 
+func TestTokenizerPreTypeNormalization(t *testing.T) {
+	input := "'S test"
+	wantGPT2 := splitByRules(input, false)
+	wantLlama3 := splitByRules(input, true)
+
+	gptNormalized := []string{"  FALCON  ", " QWEN2", "SmOlLm "}
+	for _, pre := range gptNormalized {
+		tok := &Tokenizer{preType: pre}
+		got := tok.splitBPEPieces(input)
+		if !equalStringSlices(got, wantGPT2) {
+			t.Fatalf("normalized pre=%q split mismatch: got=%v want(gpt2)=%v", pre, got, wantGPT2)
+		}
+	}
+
+	llamaNormalized := []string{" LLAMA3 ", "dBrX", " SmAug"}
+	for _, pre := range llamaNormalized {
+		tok := &Tokenizer{preType: pre}
+		got := tok.splitBPEPieces(input)
+		if !equalStringSlices(got, wantLlama3) {
+			t.Fatalf("normalized pre=%q split mismatch: got=%v want(llama3)=%v", pre, got, wantLlama3)
+		}
+	}
+}
+
+func TestTokenizerKnownPreTypesForFixtures(t *testing.T) {
+	root := filepath.Join("..", "..", "testdata")
+	wantGPT2 := splitByRules("'S test 1234", false)
+	wantLlama3 := splitByRules("'S test 1234", true)
+
+	fixtures := []struct {
+		name      string
+		modelFile string
+	}{
+		{name: "gpt2-vocab", modelFile: "ggml-vocab-gpt-2.gguf"},
+		{name: "falcon-vocab", modelFile: "ggml-vocab-falcon.gguf"},
+		{name: "qwen2-vocab", modelFile: "ggml-vocab-qwen2.gguf"},
+		{name: "stories15m", modelFile: "stories15M-q8_0.gguf"},
+		{name: "minimal", modelFile: "minimal.gguf"},
+		{name: "yarn", modelFile: readModelFixture(t, root, "model_fixture_yarn.txt")},
+		{name: "i2s", modelFile: readModelFixture(t, root, "model_fixture_i2s.txt")},
+		{name: "i2s_2b", modelFile: readModelFixture(t, root, "model_fixture_i2s_2b.txt")},
+	}
+
+	for _, tc := range fixtures {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.modelFile == "" {
+				t.Skip("fixture file not configured")
+			}
+			modelPath := filepath.Join(root, tc.modelFile)
+			if _, err := os.Stat(modelPath); err != nil {
+				t.Skipf("fixture missing: %s", modelPath)
+			}
+			info, err := gguf.ReadModelInfo(modelPath)
+			if err != nil {
+				t.Skipf("skipping fixture %s: unable to read model info (%v)", tc.modelFile, err)
+			}
+			pre := firstString(info.KeyValues["tokenizer.ggml.pre"])
+			if !isKnownBPEPreType(pre) {
+				t.Fatalf("unknown tokenizer.ggml.pre=%q in fixture %s; add explicit alias mapping and tests", pre, tc.modelFile)
+			}
+
+			got := (&Tokenizer{preType: pre}).splitBPEPieces("'S test 1234")
+			want := wantGPT2
+			if isLlama3PreType(pre) {
+				want = wantLlama3
+			}
+			if !equalStringSlices(got, want) {
+				t.Fatalf("fixture %s pre=%q split mismatch: got=%v want=%v", tc.modelFile, pre, got, want)
+			}
+		})
+	}
+}
+
 func TestTokenizerGPT2FixturePrompt(t *testing.T) {
 	assertFixturePromptTokens(
 		t,
@@ -335,4 +409,13 @@ func equalStringSlices(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+func readModelFixture(t *testing.T, root, fixtureFile string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(root, fixtureFile))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
 }

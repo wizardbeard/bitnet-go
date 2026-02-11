@@ -269,13 +269,31 @@ func (t *Tokenizer) tokenizeBPE(prompt string) []int32 {
 }
 
 func (t *Tokenizer) splitBPEPieces(text string) []string {
-	switch strings.ToLower(t.preType) {
-	case "llama3", "dbrx", "smaug":
+	if isLlama3PreType(t.preType) {
 		return splitLlama3(text)
-	case "gpt-2", "falcon", "qwen2", "smollm":
-		return splitGPT2(text)
+	}
+	return splitGPT2(text)
+}
+
+func normalizePreType(pre string) string {
+	return strings.ToLower(strings.TrimSpace(pre))
+}
+
+func isKnownBPEPreType(pre string) bool {
+	switch normalizePreType(pre) {
+	case "", "gpt-2", "falcon", "qwen2", "smollm", "llama3", "dbrx", "smaug":
+		return true
 	default:
-		return splitGPT2(text)
+		return false
+	}
+}
+
+func isLlama3PreType(pre string) bool {
+	switch normalizePreType(pre) {
+	case "llama3", "dbrx", "smaug":
+		return true
+	default:
+		return false
 	}
 }
 

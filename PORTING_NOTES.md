@@ -259,6 +259,10 @@
       - r=2560/c=2560: ~1,722,160 ns/op (from ~1,772,051 ns/op)
 - update: tuned fallback `MatVecTI2SI8S` block dot loop with explicit 8-way unrolling in both direct and parallel range paths.
 - update: added fixture-level seed determinism coverage in `pkg/bitnet` (`TestSeedDeterminismFixtures`) for i2_s and i2_s_2b models, and added CI step `seed-determinism-fixtures` to run it with fixed seed and bounded token count.
+- update: tightened tokenizer pre-type parity coverage:
+  - centralized pre-type normalization/classification (`normalizePreType`, `isKnownBPEPreType`, `isLlama3PreType`) to avoid case/whitespace drift.
+  - added `TestTokenizerPreTypeNormalization` for mixed-case/whitespace aliases.
+  - added fixture-backed `TestTokenizerKnownPreTypesForFixtures` to ensure maintained GGUF fixtures use explicit known `tokenizer.ggml.pre` aliases and expected splitter family (gpt2 vs llama3).
   - benchmark check (i7-11800H, `BITNET_I2S_I8S_DISABLE_FAST=1`, `BITNET_MATVEC_THREADS=6`, 120ms benches):
     - `MatVecTI2SI8S` dispatch:
       - r=512/c=512: ~134,791 ns/op (from ~147,593 ns/op)
