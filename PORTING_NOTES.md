@@ -351,8 +351,11 @@
   - Current status: SPM tokenizer path now mirrors llama.cpp's merge-queue segmentation shape and matches fixture prompt token IDs.
   - Current status: GPT2/BPE path includes byte-to-unicode mapping, merge-rank application, and pre-tokenizer dispatch by `tokenizer.ggml.pre` (GPT2 baseline + llama3-style splitter).
   - Current status: gpt2/falcon/qwen2/yarn fixture parity tests are wired to reference tokenizer vectors.
-  - update: tokenizer pre-dispatch now includes explicit aliases for known GPT2-rule variants (`gpt-2`, `falcon`, `qwen2`, `smollm`) to avoid accidental behavior drift as fixtures expand.
-  - update: `scripts/run_ref_tokenizer_variants.sh` now regenerates `expected.yarn.prompt_tokens.json` when `model_fixture_yarn.txt` is present.
+- update: tokenizer pre-dispatch now includes explicit aliases for known GPT2-rule variants (`gpt-2`, `falcon`, `qwen2`, `smollm`) to avoid accidental behavior drift as fixtures expand.
+- update: added unit coverage for `tokenizer.ggml.pre` alias dispatch to lock split behavior:
+  - GPT2-rule aliases: `gpt-2`, `falcon`, `qwen2`, `smollm` (plus default fallback).
+  - Llama3-rule aliases: `llama3`, `dbrx`, `smaug`.
+- update: `scripts/run_ref_tokenizer_variants.sh` now regenerates `expected.yarn.prompt_tokens.json` when `model_fixture_yarn.txt` is present.
   - Remaining: optimize tokenizer implementation and add more `tokenizer.ggml.pre` variants as new fixtures are introduced.
 - Add/confirm wrapper command (`BITNET_REF_RUN_CMD`) for upstream CLI output.
 - Confirm tokenizer behavior and seed handling against upstream reference.

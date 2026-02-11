@@ -167,6 +167,30 @@ func TestTokenizerBPELlama3NumberChunking(t *testing.T) {
 	}
 }
 
+func TestTokenizerPreTypeSplitAliases(t *testing.T) {
+	input := "'S test"
+	wantGPT2 := splitByRules(input, false)
+	wantLlama3 := splitByRules(input, true)
+
+	gptAliases := []string{"", "gpt-2", "falcon", "qwen2", "smollm"}
+	for _, pre := range gptAliases {
+		tok := &Tokenizer{preType: pre}
+		got := tok.splitBPEPieces(input)
+		if !equalStringSlices(got, wantGPT2) {
+			t.Fatalf("pre=%q split mismatch: got=%v want(gpt2)=%v", pre, got, wantGPT2)
+		}
+	}
+
+	llamaAliases := []string{"llama3", "dbrx", "smaug"}
+	for _, pre := range llamaAliases {
+		tok := &Tokenizer{preType: pre}
+		got := tok.splitBPEPieces(input)
+		if !equalStringSlices(got, wantLlama3) {
+			t.Fatalf("pre=%q split mismatch: got=%v want(llama3)=%v", pre, got, wantLlama3)
+		}
+	}
+}
+
 func TestTokenizerGPT2FixturePrompt(t *testing.T) {
 	assertFixturePromptTokens(
 		t,
@@ -299,4 +323,16 @@ func assertFixturePromptTokensFromModelFixtureIfPresent(t *testing.T, modelFixtu
 		t.Skipf("skipping fixture prompt parity; model missing: %s", modelPath)
 	}
 	assertFixturePromptTokens(t, modelFile, promptFile, expectedFile, hint)
+}
+
+func equalStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
