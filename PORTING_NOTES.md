@@ -374,6 +374,19 @@
 - update: cleaned up i2_s kernel arithmetic hot path in `MatVecI2SI8S` / `MatVecTI2SI8S` (and range helpers) by hoisting shared scale/correction terms out of inner loops.
   - microbench check (`BenchmarkGenerateTopPCompare`, i2_s fixture, benchtime=2x): `default_prefix ~2.378s/op`, `full_sort ~2.257s/op`, allocs unchanged range (`~770/761`).
   - quick end-to-end sample (`.bench/bitnet-go`, i2_s fixture, prompt=`Hello BitNet`, max-tokens=15, procs=6, temp=0): cold wall ~38.133s (`~0.393 tok/s`) in this run; host variance remains high, so microbench trend is the primary signal for this change.
+- update: added FFN-down shape benchmark (`BenchmarkMatVecTI2SI8SFFNDown`, rows=4096, cols=1024) and tuned transposed fast-range default threshold.
+  - sweep (`BITNET_MATVEC_THREADS=6`, benchtime=200ms):
+    - default/off (`FAST_PAR_COLS_MIN=0`): ~1.346 ms/op
+    - `FAST_PAR_COLS_MIN=512`: ~0.468 ms/op
+    - `FAST_PAR_COLS_MIN=1024`: ~0.378 ms/op (best in sweep)
+    - `FAST_PAR_COLS_MIN=2048`: ~1.300 ms/op (disabled for 1024 cols)
+  - large-shape sanity check (`BenchmarkMatVecTI2SI8SVariants/r=2560/c=2560/dispatch`, benchtime=150ms):
+    - off: ~2.824 ms/op
+    - `FAST_PAR_COLS_MIN=1024`: ~0.707 ms/op
+  - end-to-end A/B (`.bench/bitnet-go`, i2_s fixture, prompt=`Hello BitNet`, max-tokens=15, procs=6, temp=0):
+    - baseline: ~24.184s
+    - `FAST_PAR_COLS_MIN=1024`: ~20.623s
+  - result: default `BITNET_I2S_I8S_FAST_PAR_COLS_MIN` updated from `0` to `1024`.
 - update: extended step profiling to include FFN substage attribution (`ffn_norm`, `ffn_gate_up`, `ffn_act`, `ffn_subnorm`, `ffn_down`) for bottleneck targeting.
   - profile snapshot (i7-11800H, same fixture/settings): FFN substage totals over 15 steps were approximately `ffn_gate_up~4.13s`, `ffn_down~2.06s`, `ffn_act~13.0ms`, `ffn_norm~1.4ms`, `ffn_subnorm~4.8ms`.
 - update: added experimental opt-in parallel FFN gate/up projection (`BITNET_FFN_PAR_GATE_UP=1`) in the non-debug FFN path.

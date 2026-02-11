@@ -108,7 +108,7 @@ var i2sI8SParallelChunkCols = envIntArch("BITNET_I2S_I8S_PAR_CHUNK_COLS", 0)
 var i2sI8SFastMinElems = envIntArch("BITNET_I2S_I8S_FAST_MIN_ELEMS", 0)
 var i2sI8SBlockMinRows = envIntArch("BITNET_I2S_I8S_BLOCK_MIN_ROWS", 256)
 var i2sI8SFastParallelNTColsMin = envIntArch("BITNET_I2S_I8S_FAST_PAR_NT_COLS_MIN", 0)
-var i2sI8SFastParallelColsMin = envIntArch("BITNET_I2S_I8S_FAST_PAR_COLS_MIN", 0)
+var i2sI8SFastParallelColsMin = envIntArch("BITNET_I2S_I8S_FAST_PAR_COLS_MIN", 1024)
 var matVecI2SPartialPool = sync.Pool{
 	New: func() any {
 		return make([]float32, 0)
