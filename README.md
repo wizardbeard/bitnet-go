@@ -254,7 +254,7 @@ Legend:
 | YaRN (`model_fixture_yarn.txt`) | Yes (`expected.yarn.prompt_tokens.json`) | Yes (`BITNET_ENFORCE_YARN=1`, strict+tolerance-pinned in CI) | N/A | Yes | Cond |
 | i2_s (`model_fixture_i2s.txt`) | Cond (`expected.i2s.prompt_tokens.json`) | Yes (teacher-forced strict in CI) | Yes | Yes | Cond |
 | i2_s 2B (`model_fixture_i2s_2b.txt`) | Cond (`expected.i2s_2b.prompt_tokens.json`) | Yes (teacher-forced strict in CI) | Yes | Yes | Cond |
-| Tokenizer vocab-only (gpt2/falcon/qwen2) | Yes/Cond (qwen2 may skip in short mode) | N/A | N/A | N/A | N/A |
+| Tokenizer vocab-only (gpt2/falcon/qwen2) | Yes (CI enforces GPT2/Falcon/Qwen2 prompt vectors) | N/A | N/A | N/A | N/A |
 
 Notes:
 - `TestMaintainedFixtureTensorTypesSupported` enforces GGUF tensor-type decode support for all maintained fixtures that are present locally.

@@ -420,6 +420,11 @@ Progress against step 2 (fixture + CI coverage):
   - `BITNET_ENFORCE_I2S_SMOKE=1 BITNET_PARITY_FORCE=1 BITNET_PARITY_STRICT=1 go test ./pkg/bitnet -run TestParityAgainstI2SSmoke -count=1`
   - `BITNET_ENFORCE_I2S_2B_SMOKE=1 BITNET_PARITY_FORCE=1 BITNET_PARITY_STRICT=1 go test ./pkg/bitnet -run TestParityAgainstI2S2BSmoke -count=1`
 
+Progress against step 3 (tokenizer parity matrix completeness):
+- update: CI now runs explicit tokenizer vocab-prompt vector checks for GPT2/Falcon/Qwen2 fixtures:
+  - `go test ./internal/tokenizer -run 'TestTokenizerGPT2FixturePrompt|TestTokenizerFalconFixturePrompt|TestTokenizerQwen2FixturePrompt' -count=1`
+- effect: tokenizer coverage for maintained vocab-only fixtures is no longer only implicit via the broad `go test ./...` step.
+
 Progress against step 6 (freeze/document tolerance policy):
 - update: froze and documented the parity tolerance policy in `README.md` with explicit defaults:
   - base parity: `BITNET_PARITY_LOGIT_ATOL=1e-3`, `BITNET_PARITY_LOGIT_RTOL=1e-3`, `BITNET_PARITY_TOPK_STRICT=1`

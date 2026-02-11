@@ -71,6 +71,9 @@ jobs:
           test -n "$model"
           test -f "testdata/$model"
           go test ./internal/tokenizer -run TestTokenizerYarnFixturePrompt -count=1
+      - name: tokenizer-vocab-prompt-vectors
+        run: |
+          go test ./internal/tokenizer -run 'TestTokenizerGPT2FixturePrompt|TestTokenizerFalconFixturePrompt|TestTokenizerQwen2FixturePrompt' -count=1
       - name: parity-i2s-2b
         run: |
           if [ -f testdata/model_fixture_i2s_2b.txt ]; then
