@@ -320,6 +320,10 @@
   - after: `read_model_info~88.8ms`, `tokenizer~0.31s`, `tensor_block~12.31s`, total ~12.71s.
   - updated Go throughput snapshot (`.bench/bitnet-go`, `--max-tokens 15`, same settings): cold wall ~24.763s (`~0.606 tok/s` cold), load-only ~12.550s, estimated generation-only ~12.213s / 15 (`~1.228 tok/s`).
   - updated cold gap vs reference: ~0.45x cold throughput (`0.606/1.362`) on this host (generation-only gap remains the primary Phase 3 bottleneck).
+- update: refreshed throughput snapshot after FFN shared-quant scratch optimization (`i7-11800H`, prompt=`Hello BitNet`, max-tokens=15, procs=6, temp=0, top-p=1):
+  - reference (`.ref/bin/ref-infer`): cold wall ~9.697s (`~1.444 tok/s` from 14 eval runs), internal eval ~526.95 ms / 14 (`~26.57 tok/s` generation-only), load ~8.829s.
+  - Go (`.bench/bitnet-go`, shared quant default on): cold wall ~22.946s (`~0.654 tok/s`), load-only (`--max-tokens 0`) ~10.276s, estimated generation-only ~12.670s / 15 (`~1.184 tok/s`).
+  - current gap on this host: ~0.45x cold throughput (`0.654/1.444`) and ~0.045x generation-only throughput (`1.184/26.57`) relative to reference.
 - update: added large-shape column-parallel path in `MatVecT` (env knobs: `BITNET_MATVECT_PAR_MIN_ROWS`, `BITNET_MATVECT_PAR_MIN_COLS`, `BITNET_MATVECT_PAR_WORKERS`) to better utilize CPU cores for vocab projection.
   - microbench (`BenchmarkOutputProjectionF32`, i7-11800H, 1x): parallel default ~124ms; forcing single worker (`BITNET_MATVECT_PAR_WORKERS=1`) ~82ms (microbench favors single-thread due benchmark scheduling).
   - end-to-end check (`.bench/bitnet-go`, i2_s fixture, prompt.txt, max-tokens=15, procs=6): `BITNET_MATVECT_PAR_WORKERS=6` ~27.233s (`~0.551 tok/s`) vs `BITNET_MATVECT_PAR_WORKERS=1` ~32.981s (`~0.455 tok/s`), so parallel path remains enabled by default for large projections.
@@ -351,6 +355,14 @@
   - profile snapshot (i7-11800H, i2_s fixture, prompt.txt, max-tokens=15, procs=6): `total~9.122s` across 15 steps; FFN ~67.6%, attention ~21.5%, output ~10.9%, sampling/top-k ~0%.
 - update: tried FFN i2_s shared-quant path to reuse one `QuantizeRowI8S` result for `ffn_gate` + `ffn_up` in each layer (`BITNET_FFN_SHARE_I2S_QUANT=1`).
   - A/B check (`.bench/bitnet-go`, i2_s fixture, prompt.txt, max-tokens=15, procs=6): enabled ~25.247s vs disabled ~23.420s on this host, so default remains disabled (`BITNET_FFN_SHARE_I2S_QUANT=0`).
+- update: revisited FFN shared-quant with a reusable per-layer i8 buffer in `llamaLayerState` (eliminates duplicate `QuantizeRowI8S` and scratch-pool churn for `ffn_gate` + `ffn_up`).
+  - microbench A/B (`BenchmarkGenerateTopPCompare`, i2_s fixture, benchtime=2x):
+    - shared quant on (default): `default_prefix ~2.519s/op, 851 allocs/op`; `full_sort ~2.438s/op, 841 allocs/op`
+    - shared quant off (`BITNET_FFN_SHARE_I2S_QUANT=0`): `default_prefix ~2.502s/op, 1028 allocs/op`; `full_sort ~2.418s/op, 1018 allocs/op`
+  - end-to-end A/B (`.bench/bitnet-go`, i2_s fixture, prompt=`Hello BitNet`, max-tokens=15, procs=6, temp=0):
+    - shared quant on: cold wall ~22.946s (`~0.654 tok/s`)
+    - shared quant off: cold wall ~25.505s (`~0.588 tok/s`)
+  - result: shared-quant FFN is now enabled by default (`BITNET_FFN_SHARE_I2S_QUANT` behaves as enabled unless explicitly set to `0`).
 - update: extended step profiling to include FFN substage attribution (`ffn_norm`, `ffn_gate_up`, `ffn_act`, `ffn_subnorm`, `ffn_down`) for bottleneck targeting.
   - profile snapshot (i7-11800H, same fixture/settings): FFN substage totals over 15 steps were approximately `ffn_gate_up~4.13s`, `ffn_down~2.06s`, `ffn_act~13.0ms`, `ffn_norm~1.4ms`, `ffn_subnorm~4.8ms`.
 - update: added experimental opt-in parallel FFN gate/up projection (`BITNET_FFN_PAR_GATE_UP=1`) in the non-debug FFN path.

@@ -172,7 +172,7 @@ var decodeCacheCapDefault = parseEnvInt("BITNET_DECODE_CACHE_CAP", 256)
 var decodeCacheMaxTokensDefault = parseEnvInt("BITNET_DECODE_CACHE_MAX_TOKENS", 64)
 var profileLoad = os.Getenv("BITNET_PROFILE_LOAD") == "1"
 var profileStep = os.Getenv("BITNET_PROFILE_STEP") == "1"
-var ffnShareI2SQuant = os.Getenv("BITNET_FFN_SHARE_I2S_QUANT") == "1"
+var ffnShareI2SQuant = os.Getenv("BITNET_FFN_SHARE_I2S_QUANT") != "0"
 var ffnParGateUp = os.Getenv("BITNET_FFN_PAR_GATE_UP") == "1"
 var useF16TokenEmbd = os.Getenv("BITNET_USE_F16_TOKEN_EMBD") == "1"
 var fastGreedyArgmax = os.Getenv("BITNET_FAST_GREEDY_ARGMAX") == "1"
@@ -1394,6 +1394,7 @@ type llamaLayerState struct {
 	up      []float32
 	ffnAct  []float32
 	ffnDown []float32
+	ffnInI8 []int8
 	scores  []float32
 	keys    []float32
 	values  []float32
@@ -1469,6 +1470,13 @@ func resizeF32(buf []float32, n int) []float32 {
 	return buf[:n]
 }
 
+func resizeI8(buf []int8, n int) []int8 {
+	if cap(buf) < n {
+		return make([]int8, n)
+	}
+	return buf[:n]
+}
+
 func ensureLlamaLayerState(st *llamaLayerState, layer llamaLayer, hiddenDim, maxSeq, heads int) {
 	kdim := linearOutputLen(layer.attnK)
 	vdim := linearOutputLen(layer.attnV)
@@ -1486,6 +1494,7 @@ func ensureLlamaLayerState(st *llamaLayerState, layer llamaLayer, hiddenDim, max
 	st.up = resizeF32(st.up, linearOutputLen(layer.ffnUp))
 	st.ffnAct = resizeF32(st.ffnAct, ffnDim)
 	st.ffnDown = resizeF32(st.ffnDown, hiddenDim)
+	st.ffnInI8 = resizeI8(st.ffnInI8, hiddenDim)
 	st.scores = resizeF32(st.scores, maxSeq*heads)
 	st.keys = resizeF32(st.keys, maxSeq*kdim)
 	st.values = resizeF32(st.values, maxSeq*vdim)
@@ -1829,11 +1838,10 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 					layer.ffnGate.qtype == gguf.GGMLTypeI2_S && len(layer.ffnGate.i2sPacked) > 0 &&
 					layer.ffnUp.qtype == gguf.GGMLTypeI2_S && len(layer.ffnUp.i2sPacked) > 0 &&
 					!debugI2SFloat {
-					scratch := i8ScratchPool.Get().([]int8)
-					if cap(scratch) < len(n2) {
-						scratch = make([]int8, len(n2))
-					} else {
-						scratch = scratch[:len(n2)]
+					scratch := st.ffnInI8
+					if len(scratch) != len(n2) {
+						scratch = resizeI8(scratch, len(n2))
+						st.ffnInI8 = scratch
 					}
 					actScale, actSum := kernels.QuantizeRowI8S(scratch, n2)
 					if debugI2SDisableActSum {
@@ -1844,7 +1852,6 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 					}
 					linearApplyIntoWeightI2SQuantized(st.gate, layer.ffnGate, scratch, actScale, actSum)
 					linearApplyIntoWeightI2SQuantized(st.up, layer.ffnUp, scratch, actScale, actSum)
-					i8ScratchPool.Put(scratch[:0])
 				} else if ffnParGateUp {
 					var wg sync.WaitGroup
 					wg.Add(1)

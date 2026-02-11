@@ -246,6 +246,8 @@ If upstream CLI output differs, provide a wrapper command via `BITNET_REF_RUN_CM
   - `BITNET_I2S_MAP3_TO1=1` maps i2_s q=3 to 1 before actSum (debug/analysis).
   - `BITNET_I2S_ALT_LAYOUT=1` treats packed i2_s weights as row‑major for debug/layout comparison.
   - `BITNET_I2S_SCALAR=1` forces scalar i2_s dot (no block decode) for drift analysis.
+  - `BITNET_FFN_SHARE_I2S_QUANT` controls shared i2_s FFN input quantization for `ffn_gate` + `ffn_up`.
+    - Default is enabled (`1` behavior). Set `BITNET_FFN_SHARE_I2S_QUANT=0` to disable for A/B checks.
   - `BITNET_REF_I2S_DOT=1` (ref tracer) emits a ggml i2_s dot for `ffn_norm-0` against `BITNET_REF_I2S_DOT_TENSOR` and `BITNET_REF_I2S_DOT_ROW`.
 
 ## CPU Parity Status Matrix
