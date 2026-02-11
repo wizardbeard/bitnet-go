@@ -436,6 +436,15 @@ Progress against step 4 (tokenizer + seed determinism re-confirmation):
 - update: CI now runs explicit tokenizer fixture pre-type consistency coverage:
   - `go test ./internal/tokenizer -run TestTokenizerKnownPreTypesForFixtures -count=1`
 
+Progress against step 5 (model-format compatibility gaps):
+- update: extended `ReadTensorAsF32` GGML decode support for additional common tensor types:
+  - `q8_1`, `bf16`, `i8`, `i16`, `i32`, `i64`, `f64`
+- update: `IsTensorTypeSupportedAsF32` now reports these types as supported so fixture compatibility guards reflect runtime decode capability.
+- update: added decode unit coverage:
+  - `TestReadTensorQ81AsF32`
+  - `TestReadTensorBF16`
+  - `TestReadTensorScalarNumericAsF32` (`i8/i16/i32/i64/f64`)
+
 Progress against step 6 (freeze/document tolerance policy):
 - update: froze and documented the parity tolerance policy in `README.md` with explicit defaults:
   - base parity: `BITNET_PARITY_LOGIT_ATOL=1e-3`, `BITNET_PARITY_LOGIT_RTOL=1e-3`, `BITNET_PARITY_TOPK_STRICT=1`

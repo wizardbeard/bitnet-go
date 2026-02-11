@@ -187,7 +187,8 @@ If upstream CLI output differs, provide a wrapper command via `BITNET_REF_RUN_CM
   - computes aligned tensor data start offset
   - provides naive tensor loaders by tensor name:
     - `f32`
-    - `q8_0` (decoded to `float32`)
+    - quantized: `q8_0`, `q8_1`, `q4_0`, `q4_1`, `q5_0`, `q5_1`, `q2_k`, `q3_k`, `q4_k`, `q5_k`, `q6_k`, `q8_k`, `tq1_0`, `tq2_0`, `i2_s`, and IQ variants
+    - numeric: `f16`, `bf16`, `f64`, `i8`, `i16`, `i32`, `i64`
 - Runtime tensor-backed stepping-stone added:
   - if model includes `bitnet_go.state_proj` and `bitnet_go.logits_proj` (`f32`),
     runtime executes a naive single-block forward path using loaded tensor weights

@@ -71,11 +71,18 @@ func IsTensorTypeSupportedAsF32(t uint32) bool {
 	switch t {
 	case GGMLTypeF32,
 		GGMLTypeF16,
+		GGMLTypeQ8_1,
 		GGMLTypeQ4_0,
 		GGMLTypeQ4_1,
 		GGMLTypeQ5_0,
 		GGMLTypeQ5_1,
 		GGMLTypeQ8_0,
+		GGMLTypeI8,
+		GGMLTypeI16,
+		GGMLTypeI32,
+		GGMLTypeI64,
+		GGMLTypeF64,
+		GGMLTypeBF16,
 		GGMLTypeQ2_K,
 		GGMLTypeQ3_K,
 		GGMLTypeQ4_K,
@@ -248,6 +255,8 @@ func ReadTensorAsF32FromFile(f *os.File, info ModelInfo, name string) ([]float32
 		return out, nil
 	case GGMLTypeF16:
 		return readTensorF16AsF32(r, name, count)
+	case GGMLTypeQ8_1:
+		return readTensorQ81AsF32(r, name, count)
 	case GGMLTypeQ4_0:
 		return readTensorQ40AsF32(r, name, count)
 	case GGMLTypeQ4_1:
@@ -258,6 +267,18 @@ func ReadTensorAsF32FromFile(f *os.File, info ModelInfo, name string) ([]float32
 		return readTensorQ51AsF32(r, name, count)
 	case GGMLTypeQ8_0:
 		return readTensorQ80AsF32(r, name, count)
+	case GGMLTypeI8:
+		return readTensorI8AsF32(r, name, count)
+	case GGMLTypeI16:
+		return readTensorI16AsF32(r, name, count)
+	case GGMLTypeI32:
+		return readTensorI32AsF32(r, name, count)
+	case GGMLTypeI64:
+		return readTensorI64AsF32(r, name, count)
+	case GGMLTypeF64:
+		return readTensorF64AsF32(r, name, count)
+	case GGMLTypeBF16:
+		return readTensorBF16AsF32(r, name, count)
 	case GGMLTypeQ2_K:
 		return readTensorQ2KAsF32(r, name, count)
 	case GGMLTypeQ3_K:
@@ -1094,6 +1115,21 @@ func readTensorF16AsF32(r io.Reader, name string, count uint64) ([]float32, erro
 	return out, nil
 }
 
+func readTensorBF16AsF32(r io.Reader, name string, count uint64) ([]float32, error) {
+	if count > uint64(math.MaxInt) {
+		return nil, fmt.Errorf("tensor %q has too many bf16 elements", name)
+	}
+	out := make([]float32, count)
+	buf := make([]uint16, count)
+	if err := binary.Read(r, binary.LittleEndian, buf); err != nil {
+		return nil, fmt.Errorf("read tensor %q bf16: %w", name, err)
+	}
+	for i := range buf {
+		out[i] = bfloat16ToFloat32(buf[i])
+	}
+	return out, nil
+}
+
 func readTensorQ80AsF32(r io.Reader, name string, count uint64) ([]float32, error) {
 	const qk = 32
 	if count%qk != 0 {
@@ -1584,6 +1620,111 @@ func readTensorQ8KAsF32(r io.Reader, name string, count uint64) ([]float32, erro
 	return out, nil
 }
 
+func readTensorQ81AsF32(r io.Reader, name string, count uint64) ([]float32, error) {
+	const qk = 32
+	if count%qk != 0 {
+		return nil, fmt.Errorf("tensor %q q8_1 element count=%d not divisible by %d", name, count, qk)
+	}
+	blocks := count / qk
+	if blocks > uint64(math.MaxInt) {
+		return nil, fmt.Errorf("tensor %q has too many q8_1 blocks", name)
+	}
+	out := make([]float32, count)
+
+	type q81Block struct {
+		D  uint16
+		S  uint16
+		Qs [qk]int8
+	}
+	var blk q81Block
+	for b := uint64(0); b < blocks; b++ {
+		if err := binary.Read(r, binary.LittleEndian, &blk); err != nil {
+			return nil, fmt.Errorf("read tensor %q q8_1 block %d: %w", name, b, err)
+		}
+		scale := float16ToFloat32(blk.D)
+		base := int(b * qk)
+		for i := 0; i < qk; i++ {
+			out[base+i] = scale * float32(blk.Qs[i])
+		}
+	}
+	return out, nil
+}
+
+func readTensorI8AsF32(r io.Reader, name string, count uint64) ([]float32, error) {
+	if count > uint64(math.MaxInt) {
+		return nil, fmt.Errorf("tensor %q has too many i8 elements", name)
+	}
+	buf := make([]int8, count)
+	if err := binary.Read(r, binary.LittleEndian, buf); err != nil {
+		return nil, fmt.Errorf("read tensor %q i8: %w", name, err)
+	}
+	out := make([]float32, count)
+	for i := range buf {
+		out[i] = float32(buf[i])
+	}
+	return out, nil
+}
+
+func readTensorI16AsF32(r io.Reader, name string, count uint64) ([]float32, error) {
+	if count > uint64(math.MaxInt) {
+		return nil, fmt.Errorf("tensor %q has too many i16 elements", name)
+	}
+	buf := make([]int16, count)
+	if err := binary.Read(r, binary.LittleEndian, buf); err != nil {
+		return nil, fmt.Errorf("read tensor %q i16: %w", name, err)
+	}
+	out := make([]float32, count)
+	for i := range buf {
+		out[i] = float32(buf[i])
+	}
+	return out, nil
+}
+
+func readTensorI32AsF32(r io.Reader, name string, count uint64) ([]float32, error) {
+	if count > uint64(math.MaxInt) {
+		return nil, fmt.Errorf("tensor %q has too many i32 elements", name)
+	}
+	buf := make([]int32, count)
+	if err := binary.Read(r, binary.LittleEndian, buf); err != nil {
+		return nil, fmt.Errorf("read tensor %q i32: %w", name, err)
+	}
+	out := make([]float32, count)
+	for i := range buf {
+		out[i] = float32(buf[i])
+	}
+	return out, nil
+}
+
+func readTensorI64AsF32(r io.Reader, name string, count uint64) ([]float32, error) {
+	if count > uint64(math.MaxInt) {
+		return nil, fmt.Errorf("tensor %q has too many i64 elements", name)
+	}
+	buf := make([]int64, count)
+	if err := binary.Read(r, binary.LittleEndian, buf); err != nil {
+		return nil, fmt.Errorf("read tensor %q i64: %w", name, err)
+	}
+	out := make([]float32, count)
+	for i := range buf {
+		out[i] = float32(buf[i])
+	}
+	return out, nil
+}
+
+func readTensorF64AsF32(r io.Reader, name string, count uint64) ([]float32, error) {
+	if count > uint64(math.MaxInt) {
+		return nil, fmt.Errorf("tensor %q has too many f64 elements", name)
+	}
+	buf := make([]float64, count)
+	if err := binary.Read(r, binary.LittleEndian, buf); err != nil {
+		return nil, fmt.Errorf("read tensor %q f64: %w", name, err)
+	}
+	out := make([]float32, count)
+	for i := range buf {
+		out[i] = float32(buf[i])
+	}
+	return out, nil
+}
+
 func nibbleAt(qs []uint8, idx int) uint8 {
 	b := qs[idx/2]
 	if idx%2 == 0 {
@@ -1650,4 +1791,8 @@ func float16ToFloat32(h uint16) float32 {
 	exp = exp + (127 - 15)
 	bits := (sign << 31) | (uint32(exp) << 23) | (mant << 13)
 	return math.Float32frombits(bits)
+}
+
+func bfloat16ToFloat32(h uint16) float32 {
+	return math.Float32frombits(uint32(h) << 16)
 }

@@ -136,6 +136,203 @@ func TestReadTensorF16(t *testing.T) {
 	}
 }
 
+func TestReadTensorBF16(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	writeString(t, buf, "GGUF")
+	writeU32(t, buf, 3)
+	writeU64(t, buf, 1) // tensor count
+	writeU64(t, buf, 1) // kv count
+
+	writeGGUFString(t, buf, "general.alignment")
+	writeU32(t, buf, valueTypeUint32)
+	writeU32(t, buf, 32)
+
+	writeGGUFString(t, buf, "w")
+	writeU32(t, buf, 1)
+	writeU64(t, buf, 4)
+	writeU32(t, buf, GGMLTypeBF16)
+	writeU64(t, buf, 0)
+
+	padTo(t, buf, 32)
+	writeU16(t, buf, 0x3f80) // 1.0
+	writeU16(t, buf, 0xbf80) // -1.0
+	writeU16(t, buf, 0x3e80) // 0.25
+	writeU16(t, buf, 0x4000) // 2.0
+
+	path := filepath.Join(t.TempDir(), "tensor_bf16.gguf")
+	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	info, err := ReadModelInfo(path)
+	if err != nil {
+		t.Fatalf("ReadModelInfo() error = %v", err)
+	}
+	got, err := ReadTensorAsF32(path, info, "w")
+	if err != nil {
+		t.Fatalf("ReadTensorAsF32() error = %v", err)
+	}
+
+	want := []float32{1.0, -1.0, 0.25, 2.0}
+	if len(got) != len(want) {
+		t.Fatalf("len(got) = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got[%d] = %f, want %f", i, got[i], want[i])
+		}
+	}
+}
+
+func TestReadTensorQ81AsF32(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	writeString(t, buf, "GGUF")
+	writeU32(t, buf, 3)
+	writeU64(t, buf, 1) // tensor count
+	writeU64(t, buf, 1) // kv count
+
+	writeGGUFString(t, buf, "general.alignment")
+	writeU32(t, buf, valueTypeUint32)
+	writeU32(t, buf, 32)
+
+	writeGGUFString(t, buf, "wq")
+	writeU32(t, buf, 1)
+	writeU64(t, buf, 32)
+	writeU32(t, buf, GGMLTypeQ8_1)
+	writeU64(t, buf, 0)
+
+	padTo(t, buf, 32)
+	writeU16(t, buf, 0x3800) // d = 0.5
+	writeU16(t, buf, 0x0000) // s (unused in scalar dequant path)
+	for i := 0; i < 32; i++ {
+		writeI8(t, buf, int8(i%5-2))
+	}
+
+	path := filepath.Join(t.TempDir(), "tensor_q81.gguf")
+	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	info, err := ReadModelInfo(path)
+	if err != nil {
+		t.Fatalf("ReadModelInfo() error = %v", err)
+	}
+	got, err := ReadTensorAsF32(path, info, "wq")
+	if err != nil {
+		t.Fatalf("ReadTensorAsF32() error = %v", err)
+	}
+	if len(got) != 32 {
+		t.Fatalf("len(got) = %d, want 32", len(got))
+	}
+	for i := 0; i < 32; i++ {
+		want := 0.5 * float32(int8(i%5-2))
+		if got[i] != want {
+			t.Fatalf("got[%d] = %f, want %f", i, got[i], want)
+		}
+	}
+}
+
+func TestReadTensorScalarNumericAsF32(t *testing.T) {
+	tests := []struct {
+		name     string
+		typ      uint32
+		writeRaw func(*testing.T, *bytes.Buffer)
+		want     []float32
+	}{
+		{
+			name: "i8",
+			typ:  GGMLTypeI8,
+			writeRaw: func(t *testing.T, b *bytes.Buffer) {
+				writeI8(t, b, -3)
+				writeI8(t, b, 7)
+			},
+			want: []float32{-3, 7},
+		},
+		{
+			name: "i16",
+			typ:  GGMLTypeI16,
+			writeRaw: func(t *testing.T, b *bytes.Buffer) {
+				writeI16(t, b, -9)
+				writeI16(t, b, 11)
+			},
+			want: []float32{-9, 11},
+		},
+		{
+			name: "i32",
+			typ:  GGMLTypeI32,
+			writeRaw: func(t *testing.T, b *bytes.Buffer) {
+				writeI32(t, b, -13)
+				writeI32(t, b, 17)
+			},
+			want: []float32{-13, 17},
+		},
+		{
+			name: "i64",
+			typ:  GGMLTypeI64,
+			writeRaw: func(t *testing.T, b *bytes.Buffer) {
+				writeI64(t, b, -21)
+				writeI64(t, b, 29)
+			},
+			want: []float32{-21, 29},
+		},
+		{
+			name: "f64",
+			typ:  GGMLTypeF64,
+			writeRaw: func(t *testing.T, b *bytes.Buffer) {
+				writeF64(t, b, 1.5)
+				writeF64(t, b, -2.25)
+			},
+			want: []float32{1.5, -2.25},
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			buf := bytes.NewBuffer(nil)
+			writeString(t, buf, "GGUF")
+			writeU32(t, buf, 3)
+			writeU64(t, buf, 1) // tensor count
+			writeU64(t, buf, 1) // kv count
+
+			writeGGUFString(t, buf, "general.alignment")
+			writeU32(t, buf, valueTypeUint32)
+			writeU32(t, buf, 32)
+
+			writeGGUFString(t, buf, "w")
+			writeU32(t, buf, 1)
+			writeU64(t, buf, 2)
+			writeU32(t, buf, tc.typ)
+			writeU64(t, buf, 0)
+
+			padTo(t, buf, 32)
+			tc.writeRaw(t, buf)
+
+			path := filepath.Join(t.TempDir(), "tensor_scalar.gguf")
+			if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+				t.Fatalf("WriteFile() error = %v", err)
+			}
+
+			info, err := ReadModelInfo(path)
+			if err != nil {
+				t.Fatalf("ReadModelInfo() error = %v", err)
+			}
+			got, err := ReadTensorAsF32(path, info, "w")
+			if err != nil {
+				t.Fatalf("ReadTensorAsF32() error = %v", err)
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("len(got) = %d, want %d", len(got), len(tc.want))
+			}
+			for i := range tc.want {
+				if got[i] != tc.want[i] {
+					t.Fatalf("got[%d] = %f, want %f", i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
+}
+
 func TestReadTensorTQ10(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
 	writeString(t, buf, "GGUF")
@@ -1350,5 +1547,26 @@ func writeI16(t *testing.T, buf *bytes.Buffer, v int16) {
 	t.Helper()
 	if err := binary.Write(buf, binary.LittleEndian, v); err != nil {
 		t.Fatalf("binary.Write(i16) error = %v", err)
+	}
+}
+
+func writeI32(t *testing.T, buf *bytes.Buffer, v int32) {
+	t.Helper()
+	if err := binary.Write(buf, binary.LittleEndian, v); err != nil {
+		t.Fatalf("binary.Write(i32) error = %v", err)
+	}
+}
+
+func writeI64(t *testing.T, buf *bytes.Buffer, v int64) {
+	t.Helper()
+	if err := binary.Write(buf, binary.LittleEndian, v); err != nil {
+		t.Fatalf("binary.Write(i64) error = %v", err)
+	}
+}
+
+func writeF64(t *testing.T, buf *bytes.Buffer, v float64) {
+	t.Helper()
+	if err := binary.Write(buf, binary.LittleEndian, v); err != nil {
+		t.Fatalf("binary.Write(f64) error = %v", err)
 	}
 }
