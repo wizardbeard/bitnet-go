@@ -368,3 +368,17 @@ Next steps aligned to AGENTS.md:
 - Phase 2: tighten i2_s parity tolerances where possible (focus on logits/top‑K policy and remaining drift characterization).
 - Phase 2: extend parity vectors to cover 1.58B/2B i2_s fixtures with consistent teacher‑forced logits.
 - Phase 3: consume arm64 sweep artifacts to set arm64-specific i2_s threshold defaults (if they differ from amd64), then re-baseline CI benchmark snapshots.
+
+CPU parity finalization plan (amd64-focused):
+1. Tighten i2_s parity tolerances incrementally (especially teacher-forced logits/top-K) with measured drift checks on each ratchet.
+2. Extend frozen parity vectors and CI coverage for all maintained i2_s fixtures (including 2B) under consistent teacher-forced settings.
+3. Complete tokenizer parity matrix by adding missing `tokenizer.ggml.pre` variants as fixtures/models are introduced.
+4. Re-confirm tokenizer + seed determinism against upstream reference across supported model/tokenizer families.
+5. Close remaining model-format compatibility gaps (missing GGML tensor types/metadata paths needed by target models).
+6. Freeze and document final logits/token tolerance policy (default + i2_s/YaRN-specific overrides) with rationale.
+
+Progress against step 1 (tolerance tightening):
+- update: tightened teacher-forced i2_s default logit tolerances from `7e-1` to `6e-1` (`BITNET_I2S_FORCE_LOGIT_ATOL/RTOL` defaults).
+- validation: enforced parity passed for both suites with strict teacher-forced mode:
+  - `BITNET_ENFORCE_I2S=1 BITNET_PARITY_FORCE=1 BITNET_PARITY_STRICT=1 go test ./pkg/bitnet -run TestParityAgainstI2SVectors -count=1`
+  - `BITNET_ENFORCE_I2S_2B=1 BITNET_PARITY_FORCE=1 BITNET_PARITY_STRICT=1 go test ./pkg/bitnet -run TestParityAgainstI2S2BVectors -count=1`
