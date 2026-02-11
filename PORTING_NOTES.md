@@ -390,3 +390,5 @@ Progress against step 1 (tolerance tightening):
 - validation: same enforced parity commands still pass for both i2_s and i2_s 2B suites under strict teacher-forced mode.
 - update: tightened teacher-forced i2_s default logit tolerances again from `4e-1` to `3e-1`.
 - validation: same enforced parity commands still pass for both i2_s and i2_s 2B suites under strict teacher-forced mode.
+- update: tightened teacher-forced i2_s default logit tolerances again from `3e-1` to `2e-1`.
+- validation: same enforced parity commands still pass for both i2_s and i2_s 2B suites under strict teacher-forced mode.
