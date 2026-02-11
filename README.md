@@ -250,12 +250,12 @@ Legend:
 
 | Fixture family | Tokenizer prompt vectors | Token/logit parity vectors | Smoke parity | Seed determinism | GGUF type compatibility |
 | --- | --- | --- | --- | --- | --- |
-| Base (`model_fixture.txt`) | Yes (`expected.prompt_tokens.json`) | No (`BITNET_ENFORCE_PARITY` gated) | N/A | No | Cond |
-| YaRN (`model_fixture_yarn.txt`) | Cond (`expected.yarn.prompt_tokens.json`) | Cond (`BITNET_ENFORCE_YARN=1`) | N/A | No | Cond |
+| Base (`model_fixture.txt`) | Yes (`expected.prompt_tokens.json`) | No (`BITNET_ENFORCE_PARITY` gated) | N/A | Yes | Cond |
+| YaRN (`model_fixture_yarn.txt`) | Yes (`expected.yarn.prompt_tokens.json`) | Yes (`BITNET_ENFORCE_YARN=1`, strict+tolerance-pinned in CI) | N/A | Yes | Cond |
 | i2_s (`model_fixture_i2s.txt`) | Cond (`expected.i2s.prompt_tokens.json`) | Yes (teacher-forced strict in CI) | Yes | Yes | Cond |
 | i2_s 2B (`model_fixture_i2s_2b.txt`) | Cond (`expected.i2s_2b.prompt_tokens.json`) | Yes (teacher-forced strict in CI) | Yes | Yes | Cond |
 | Tokenizer vocab-only (gpt2/falcon/qwen2) | Yes/Cond (qwen2 may skip in short mode) | N/A | N/A | N/A | N/A |
 
 Notes:
 - `TestMaintainedFixtureTensorTypesSupported` enforces GGUF tensor-type decode support for all maintained fixtures that are present locally.
-- CI currently fetches i2_s 2B by default; YaRN parity remains conditional on a populated YaRN fixture in `testdata/`.
+- CI currently fetches YaRN and i2_s 2B fixtures by default and enforces their parity checks.

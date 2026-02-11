@@ -706,6 +706,16 @@ func TestSeedDeterminismFixtures(t *testing.T) {
 		promptFile string
 	}{
 		{
+			name:       "base",
+			modelFile:  "model_fixture.txt",
+			promptFile: "prompt.txt",
+		},
+		{
+			name:       "yarn",
+			modelFile:  "model_fixture_yarn.txt",
+			promptFile: "yarn.prompt.txt",
+		},
+		{
 			name:       "i2_s",
 			modelFile:  "model_fixture_i2s.txt",
 			promptFile: "prompt.txt",

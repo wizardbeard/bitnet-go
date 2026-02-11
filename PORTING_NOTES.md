@@ -437,16 +437,22 @@ Progress against step 6 (freeze/document tolerance policy):
   - result: `TestParityAgainstYarnVectors` now passes again under frozen YaRN tolerances.
 - update: added runtime unit coverage for FFN activation dispatch (`TestFFNActivateDispatchMatchesReference`) to lock SiLU-vs-ReLU2 behavior.
 - update: CI YaRN parity step now runs with `BITNET_PARITY_STRICT=1` in addition to frozen YaRN tolerance envs.
+- update: moved YaRN coverage from conditional to required in CI:
+  - `fetch-gguf` now fetches YaRN fixture by default (`BITNET_FETCH_YARN=1`).
+  - CI now runs an explicit YaRN tokenizer prompt-vector check.
+  - CI YaRN parity now requires the fetched fixture and runs unconditionally.
+  - `go` CI job timeout increased to 30 minutes to accommodate fixture downloads.
+- update: fixture seed-determinism coverage now includes base and YaRN fixture families (in addition to i2_s and i2_s_2b).
 
 CPU parity status matrix snapshot:
 - Base (`model_fixture.txt`)
   - tokenizer prompt vectors: yes
   - strict token/logit parity vectors: not CI-enforced by default (`BITNET_ENFORCE_PARITY` gated)
-  - seed determinism: not fixture-enforced
+  - seed determinism: CI-enforced
 - YaRN (`model_fixture_yarn.txt`)
-  - tokenizer prompt vectors: conditional (fixture present)
-  - token/logit parity vectors: conditional (fixture present; CI runs with strict + frozen YaRN tolerances)
-  - seed determinism: not fixture-enforced
+  - tokenizer prompt vectors: CI-enforced
+  - token/logit parity vectors: CI-enforced (strict + frozen YaRN tolerances)
+  - seed determinism: CI-enforced
 - i2_s (`model_fixture_i2s.txt`)
   - tokenizer prompt vectors: conditional (fixture present)
   - token/logit parity vectors: CI-enforced (teacher-forced strict + frozen i2_s tolerances)
