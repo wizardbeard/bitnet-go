@@ -263,6 +263,9 @@
   - centralized pre-type normalization/classification (`normalizePreType`, `isKnownBPEPreType`, `isLlama3PreType`) to avoid case/whitespace drift.
   - added `TestTokenizerPreTypeNormalization` for mixed-case/whitespace aliases.
   - added fixture-backed `TestTokenizerKnownPreTypesForFixtures` to ensure maintained GGUF fixtures use explicit known `tokenizer.ggml.pre` aliases and expected splitter family (gpt2 vs llama3).
+- update: added GGUF model-format compatibility guard for maintained CPU fixtures:
+  - new `TestMaintainedFixtureTensorTypesSupported` scans fixture GGUF tensor directories and fails if any tensor type is not supported by `ReadTensorAsF32`.
+  - added `IsTensorTypeSupportedAsF32` and `TensorTypeString` helpers; unsupported-type errors now include both numeric and symbolic type names.
   - benchmark check (i7-11800H, `BITNET_I2S_I8S_DISABLE_FAST=1`, `BITNET_MATVEC_THREADS=6`, 120ms benches):
     - `MatVecTI2SI8S` dispatch:
       - r=512/c=512: ~134,791 ns/op (from ~147,593 ns/op)

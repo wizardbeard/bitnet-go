@@ -67,6 +67,122 @@ const (
 	GGMLTypeTL2      = 39
 )
 
+func IsTensorTypeSupportedAsF32(t uint32) bool {
+	switch t {
+	case GGMLTypeF32,
+		GGMLTypeF16,
+		GGMLTypeQ4_0,
+		GGMLTypeQ4_1,
+		GGMLTypeQ5_0,
+		GGMLTypeQ5_1,
+		GGMLTypeQ8_0,
+		GGMLTypeQ2_K,
+		GGMLTypeQ3_K,
+		GGMLTypeQ4_K,
+		GGMLTypeQ5_K,
+		GGMLTypeQ6_K,
+		GGMLTypeQ8_K,
+		GGMLTypeTQ1_0,
+		GGMLTypeTQ2_0,
+		GGMLTypeI2_S,
+		GGMLTypeIQ2_XXS,
+		GGMLTypeIQ2_XS,
+		GGMLTypeIQ2_S,
+		GGMLTypeIQ3_XXS,
+		GGMLTypeIQ3_S,
+		GGMLTypeIQ1_S,
+		GGMLTypeIQ1_M,
+		GGMLTypeIQ4_NL,
+		GGMLTypeIQ4_XS:
+		return true
+	default:
+		return false
+	}
+}
+
+func TensorTypeString(t uint32) string {
+	switch t {
+	case GGMLTypeF32:
+		return "f32"
+	case GGMLTypeF16:
+		return "f16"
+	case GGMLTypeQ4_0:
+		return "q4_0"
+	case GGMLTypeQ4_1:
+		return "q4_1"
+	case GGMLTypeQ5_0:
+		return "q5_0"
+	case GGMLTypeQ5_1:
+		return "q5_1"
+	case GGMLTypeQ8_0:
+		return "q8_0"
+	case GGMLTypeQ8_1:
+		return "q8_1"
+	case GGMLTypeQ2_K:
+		return "q2_k"
+	case GGMLTypeQ3_K:
+		return "q3_k"
+	case GGMLTypeQ4_K:
+		return "q4_k"
+	case GGMLTypeQ5_K:
+		return "q5_k"
+	case GGMLTypeQ6_K:
+		return "q6_k"
+	case GGMLTypeQ8_K:
+		return "q8_k"
+	case GGMLTypeIQ2_XXS:
+		return "iq2_xxs"
+	case GGMLTypeIQ2_XS:
+		return "iq2_xs"
+	case GGMLTypeIQ3_XXS:
+		return "iq3_xxs"
+	case GGMLTypeIQ1_S:
+		return "iq1_s"
+	case GGMLTypeIQ4_NL:
+		return "iq4_nl"
+	case GGMLTypeIQ3_S:
+		return "iq3_s"
+	case GGMLTypeIQ2_S:
+		return "iq2_s"
+	case GGMLTypeIQ4_XS:
+		return "iq4_xs"
+	case GGMLTypeI8:
+		return "i8"
+	case GGMLTypeI16:
+		return "i16"
+	case GGMLTypeI32:
+		return "i32"
+	case GGMLTypeI64:
+		return "i64"
+	case GGMLTypeF64:
+		return "f64"
+	case GGMLTypeIQ1_M:
+		return "iq1_m"
+	case GGMLTypeBF16:
+		return "bf16"
+	case GGMLTypeQ4_0_4_4:
+		return "q4_0_4_4"
+	case GGMLTypeQ4_0_4_8:
+		return "q4_0_4_8"
+	case GGMLTypeQ4_0_8_8:
+		return "q4_0_8_8"
+	case GGMLTypeTQ1_0:
+		return "tq1_0"
+	case GGMLTypeTQ2_0:
+		return "tq2_0"
+	case GGMLTypeI2_S:
+		return "i2_s"
+	case GGMLTypeI8_S:
+		return "i8_s"
+	case GGMLTypeTL1:
+		return "tl1"
+	case GGMLTypeTL2:
+		return "tl2"
+	default:
+		return "unknown"
+	}
+}
+
 func (m ModelInfo) TensorByName(name string) (TensorInfo, bool) {
 	for i := range m.Tensors {
 		if m.Tensors[i].Name == name {
@@ -179,7 +295,7 @@ func ReadTensorAsF32FromFile(f *os.File, info ModelInfo, name string) ([]float32
 	case GGMLTypeIQ4_XS:
 		return readTensorIQ4XSAsF32(r, name, count)
 	default:
-		return nil, fmt.Errorf("tensor %q type=%d not supported", name, t.Type)
+		return nil, fmt.Errorf("tensor %q type=%d (%s) not supported", name, t.Type, TensorTypeString(t.Type))
 	}
 }
 
