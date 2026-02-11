@@ -48,6 +48,9 @@ jobs:
           else
             echo "Skipping i2_s parity (fixture missing)"
           fi
+      - name: tokenizer-i2s-prompt-vectors
+        run: |
+          go test ./internal/tokenizer -run 'TestTokenizerI2SFixturePrompt|TestTokenizerI2S2BFixturePrompt' -count=1
       - name: parity-i2s-2b
         run: |
           if [ -f testdata/model_fixture_i2s_2b.txt ]; then

@@ -213,6 +213,26 @@ func TestTokenizerYarnFixturePrompt(t *testing.T) {
 	)
 }
 
+func TestTokenizerI2SFixturePrompt(t *testing.T) {
+	assertFixturePromptTokensFromModelFixtureIfPresent(
+		t,
+		"model_fixture_i2s.txt",
+		"prompt.txt",
+		"expected.i2s.prompt_tokens.json",
+		"run scripts/run_ref_i2s.sh",
+	)
+}
+
+func TestTokenizerI2S2BFixturePrompt(t *testing.T) {
+	assertFixturePromptTokensFromModelFixtureIfPresent(
+		t,
+		"model_fixture_i2s_2b.txt",
+		"prompt.txt",
+		"expected.i2s_2b.prompt_tokens.json",
+		"run scripts/run_ref_i2s_2b.sh",
+	)
+}
+
 func assertFixturePromptTokens(t *testing.T, modelFile, promptFile, expectedFile, hint string) {
 	t.Helper()
 	root := filepath.Join("..", "..", "testdata")
@@ -259,6 +279,24 @@ func assertFixturePromptTokensFromModelFixture(t *testing.T, modelFixtureFile, p
 	modelFile := strings.TrimSpace(string(modelFixture))
 	if modelFile == "" {
 		t.Fatalf("%s is empty; %s", modelFixtureFile, hint)
+	}
+	assertFixturePromptTokens(t, modelFile, promptFile, expectedFile, hint)
+}
+
+func assertFixturePromptTokensFromModelFixtureIfPresent(t *testing.T, modelFixtureFile, promptFile, expectedFile, hint string) {
+	t.Helper()
+	root := filepath.Join("..", "..", "testdata")
+	modelFixture, err := os.ReadFile(filepath.Join(root, modelFixtureFile))
+	if err != nil {
+		t.Fatalf("ReadFile(%s) error = %v; %s", modelFixtureFile, err, hint)
+	}
+	modelFile := strings.TrimSpace(string(modelFixture))
+	if modelFile == "" {
+		t.Fatalf("%s is empty; %s", modelFixtureFile, hint)
+	}
+	modelPath := filepath.Join(root, modelFile)
+	if _, err := os.Stat(modelPath); err != nil {
+		t.Skipf("skipping fixture prompt parity; model missing: %s", modelPath)
 	}
 	assertFixturePromptTokens(t, modelFile, promptFile, expectedFile, hint)
 }
