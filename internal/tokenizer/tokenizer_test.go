@@ -200,6 +200,19 @@ func TestTokenizerQwen2FixturePrompt(t *testing.T) {
 	)
 }
 
+func TestTokenizerYarnFixturePrompt(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping yarn fixture in short mode")
+	}
+	assertFixturePromptTokensFromModelFixture(
+		t,
+		"model_fixture_yarn.txt",
+		"yarn.prompt.txt",
+		"expected.yarn.prompt_tokens.json",
+		"run scripts/run_ref_tokenizer_variants.sh",
+	)
+}
+
 func assertFixturePromptTokens(t *testing.T, modelFile, promptFile, expectedFile, hint string) {
 	t.Helper()
 	root := filepath.Join("..", "..", "testdata")
@@ -234,4 +247,18 @@ func assertFixturePromptTokens(t *testing.T, modelFile, promptFile, expectedFile
 			t.Fatalf("token[%d] = %d, want %d", i, got[i], want[i])
 		}
 	}
+}
+
+func assertFixturePromptTokensFromModelFixture(t *testing.T, modelFixtureFile, promptFile, expectedFile, hint string) {
+	t.Helper()
+	root := filepath.Join("..", "..", "testdata")
+	modelFixture, err := os.ReadFile(filepath.Join(root, modelFixtureFile))
+	if err != nil {
+		t.Fatalf("ReadFile(%s) error = %v; %s", modelFixtureFile, err, hint)
+	}
+	modelFile := strings.TrimSpace(string(modelFixture))
+	if modelFile == "" {
+		t.Fatalf("%s is empty; %s", modelFixtureFile, hint)
+	}
+	assertFixturePromptTokens(t, modelFile, promptFile, expectedFile, hint)
 }

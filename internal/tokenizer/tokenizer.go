@@ -272,6 +272,8 @@ func (t *Tokenizer) splitBPEPieces(text string) []string {
 	switch strings.ToLower(t.preType) {
 	case "llama3", "dbrx", "smaug":
 		return splitLlama3(text)
+	case "gpt-2", "falcon", "qwen2", "smollm":
+		return splitGPT2(text)
 	default:
 		return splitGPT2(text)
 	}

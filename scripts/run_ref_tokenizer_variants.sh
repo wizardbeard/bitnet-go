@@ -57,3 +57,12 @@ END {
 run_case "$TESTDATA_DIR/ggml-vocab-gpt-2.gguf" "$TESTDATA_DIR/gpt2.prompt.txt" "$TESTDATA_DIR/expected.gpt2_prompt_tokens.json" "$REF_DIR/tokenizer.gpt2.trace"
 run_case "$TESTDATA_DIR/ggml-vocab-falcon.gguf" "$TESTDATA_DIR/falcon.prompt.txt" "$TESTDATA_DIR/expected.falcon_prompt_tokens.json" "$REF_DIR/tokenizer.falcon.trace"
 run_case "$TESTDATA_DIR/ggml-vocab-qwen2.gguf" "$TESTDATA_DIR/qwen2.prompt.txt" "$TESTDATA_DIR/expected.qwen2_prompt_tokens.json" "$REF_DIR/tokenizer.qwen2.trace"
+
+if [ -f "$TESTDATA_DIR/model_fixture_yarn.txt" ]; then
+    yarn_model=$(tr -d '\r\n' < "$TESTDATA_DIR/model_fixture_yarn.txt")
+    if [ -n "$yarn_model" ] && [ -f "$TESTDATA_DIR/$yarn_model" ]; then
+        run_case "$TESTDATA_DIR/$yarn_model" "$TESTDATA_DIR/yarn.prompt.txt" "$TESTDATA_DIR/expected.yarn.prompt_tokens.json" "$REF_DIR/tokenizer.yarn.trace"
+    else
+        echo "Skipping yarn tokenizer vectors (model missing: $TESTDATA_DIR/$yarn_model)" >&2
+    fi
+fi
