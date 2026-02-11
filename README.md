@@ -210,14 +210,16 @@ If upstream CLI output differs, provide a wrapper command via `BITNET_REF_RUN_CM
 - Phase 0 scripts are functional and configurable.
 - Parity testing:
   - `BITNET_ENFORCE_PARITY=1` enables strict token parity against frozen vectors.
-  - Optional logits parity uses:
+  - Runtime defaults (used when env overrides are not set) for base logits parity:
     - `BITNET_PARITY_LOGIT_ATOL` (default `1e-3`)
     - `BITNET_PARITY_LOGIT_RTOL` (default `1e-3`)
     - `BITNET_PARITY_TOPK_STRICT` (default `1`; compare top-1 exactly unless overridden)
-  - YaRN parity override:
-    - `BITNET_PARITY_LOGIT_RTOL` default is `3e-2` in `TestParityAgainstYarnVectors`
-    - `BITNET_PARITY_TOPK_STRICT` default remains `1`
-  - i2_s parity uses relaxed tolerances due to FFN activation amplification:
+  - CI-pinned parity policy (authoritative for merge gating):
+    - base: `BITNET_PARITY_LOGIT_ATOL=1e-1`, `BITNET_PARITY_LOGIT_RTOL=1e-1`, `BITNET_PARITY_TOPK_STRICT=1`
+      - rationale: current base fixture logits show stable token/top-1 parity with larger absolute/relative drift than `1e-3`; CI pins the observed stable threshold.
+    - YaRN: `BITNET_PARITY_LOGIT_ATOL=1e-3`, `BITNET_PARITY_LOGIT_RTOL=3e-2`, `BITNET_PARITY_TOPK_STRICT=1`
+    - i2_s / i2_s 2B (teacher-forced CI): `BITNET_I2S_FORCE_LOGIT_ATOL=8e-2`, `BITNET_I2S_FORCE_LOGIT_RTOL=8e-2`, `BITNET_I2S_TOPK_STRICT=3`, `BITNET_PARITY_FORCE_RELAX_TOPK=1`
+  - i2_s parity runtime defaults (non teacher-forced) remain relaxed due to FFN activation amplification:
     - `BITNET_I2S_LOGIT_ATOL` (default `2e-1`)
     - `BITNET_I2S_LOGIT_RTOL` (default `1e-1`)
     - `BITNET_I2S_TOPK_STRICT` (default `3`)
