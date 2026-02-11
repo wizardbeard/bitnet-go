@@ -384,3 +384,5 @@ Progress against step 1 (tolerance tightening):
 - validation: enforced parity passed for both suites with strict teacher-forced mode:
   - `BITNET_ENFORCE_I2S=1 BITNET_PARITY_FORCE=1 BITNET_PARITY_STRICT=1 go test ./pkg/bitnet -run TestParityAgainstI2SVectors -count=1`
   - `BITNET_ENFORCE_I2S_2B=1 BITNET_PARITY_FORCE=1 BITNET_PARITY_STRICT=1 go test ./pkg/bitnet -run TestParityAgainstI2S2BVectors -count=1`
+- update: tightened teacher-forced i2_s default logit tolerances again from `6e-1` to `5e-1`.
+- validation: same enforced parity commands still pass for both i2_s and i2_s 2B suites under strict teacher-forced mode.
