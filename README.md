@@ -224,6 +224,10 @@ If upstream CLI output differs, provide a wrapper command via `BITNET_REF_RUN_CM
     - `BITNET_I2S_FORCE_LOGIT_ATOL` / `BITNET_I2S_FORCE_LOGIT_RTOL` (default `8e-2` when `BITNET_PARITY_FORCE=1`)
     - `BITNET_PARITY_FORCE_RELAX_TOPK` (default `1` when `BITNET_PARITY_FORCE=1`)
   - CI will run i2_s parity only when the referenced model fixtures exist in `testdata/`.
+  - Seed determinism fixture checks can be run in stochastic sampling mode via:
+    - `BITNET_SEED_DETERMINISM_TEMP` (CI pins `0.8`)
+    - `BITNET_SEED_DETERMINISM_TOP_P` (CI pins `0.9`)
+    - `BITNET_SEED_DETERMINISM_TOP_K` (CI pins `40`)
   - Set `BITNET_DISABLE_TOPK=1` to skip top‑K capture (perf optimization outside parity runs).
   - `BITNET_FAST_COL_MATVEC_AUTO=1` (default) enables a faster column‑accumulation matvec for large f32 projections when not in parity‑strict mode.
     - Set `BITNET_FAST_COL_MATVEC=1` to force it on; set `BITNET_FAST_COL_MATVEC_AUTO=0` to disable auto behavior.

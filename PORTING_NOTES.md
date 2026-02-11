@@ -425,6 +425,17 @@ Progress against step 3 (tokenizer parity matrix completeness):
   - `go test ./internal/tokenizer -run 'TestTokenizerGPT2FixturePrompt|TestTokenizerFalconFixturePrompt|TestTokenizerQwen2FixturePrompt' -count=1`
 - effect: tokenizer coverage for maintained vocab-only fixtures is no longer only implicit via the broad `go test ./...` step.
 
+Progress against step 4 (tokenizer + seed determinism re-confirmation):
+- update: `TestSeedDeterminismFixtures` now runs determinism assertions under seeded stochastic sampling controls (`temp/top-p/top-k`) instead of relying on greedy-only defaults.
+  - new env knobs: `BITNET_SEED_DETERMINISM_TEMP`, `BITNET_SEED_DETERMINISM_TOP_P`, `BITNET_SEED_DETERMINISM_TOP_K`
+  - test now also asserts deterministic decoded text equality in addition to token IDs and top-k logits.
+- update: CI `seed-determinism-fixtures` now pins stochastic settings:
+  - `BITNET_SEED_DETERMINISM_TEMP=0.8`
+  - `BITNET_SEED_DETERMINISM_TOP_P=0.9`
+  - `BITNET_SEED_DETERMINISM_TOP_K=40`
+- update: CI now runs explicit tokenizer fixture pre-type consistency coverage:
+  - `go test ./internal/tokenizer -run TestTokenizerKnownPreTypesForFixtures -count=1`
+
 Progress against step 6 (freeze/document tolerance policy):
 - update: froze and documented the parity tolerance policy in `README.md` with explicit defaults:
   - base parity: `BITNET_PARITY_LOGIT_ATOL=1e-3`, `BITNET_PARITY_LOGIT_RTOL=1e-3`, `BITNET_PARITY_TOPK_STRICT=1`

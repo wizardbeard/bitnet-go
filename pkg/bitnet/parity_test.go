@@ -699,6 +699,9 @@ func TestSeedDeterminismFixtures(t *testing.T) {
 		maxTokens = 1
 	}
 	seed := int64(envInt("BITNET_SEED_DETERMINISM_SEED", 7))
+	temp := envFloat32("BITNET_SEED_DETERMINISM_TEMP", 0.8)
+	topP := envFloat32("BITNET_SEED_DETERMINISM_TOP_P", 0.9)
+	topK := envInt("BITNET_SEED_DETERMINISM_TOP_K", 40)
 
 	cases := []struct {
 		name       string
@@ -754,6 +757,9 @@ func TestSeedDeterminismFixtures(t *testing.T) {
 				Prompt:    prompt,
 				Seed:      seed,
 				MaxTokens: maxTokens,
+				Temp:      temp,
+				TopP:      topP,
+				TopK:      topK,
 			}
 			a, err := session.Generate(context.Background(), req)
 			if err != nil {
@@ -766,6 +772,9 @@ func TestSeedDeterminismFixtures(t *testing.T) {
 
 			if !slices.Equal(a.TokenIDs, b.TokenIDs) {
 				t.Fatalf("token determinism mismatch for %s: run1=%v run2=%v", tc.name, a.TokenIDs, b.TokenIDs)
+			}
+			if a.Text != b.Text {
+				t.Fatalf("text determinism mismatch for %s: run1=%q run2=%q", tc.name, a.Text, b.Text)
 			}
 			if len(a.TopK) != len(b.TopK) {
 				t.Fatalf("topk step count mismatch for %s: run1=%d run2=%d", tc.name, len(a.TopK), len(b.TopK))

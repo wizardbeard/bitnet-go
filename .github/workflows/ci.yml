@@ -74,6 +74,9 @@ jobs:
       - name: tokenizer-vocab-prompt-vectors
         run: |
           go test ./internal/tokenizer -run 'TestTokenizerGPT2FixturePrompt|TestTokenizerFalconFixturePrompt|TestTokenizerQwen2FixturePrompt' -count=1
+      - name: tokenizer-fixture-pretype-consistency
+        run: |
+          go test ./internal/tokenizer -run TestTokenizerKnownPreTypesForFixtures -count=1
       - name: parity-i2s-2b
         run: |
           if [ -f testdata/model_fixture_i2s_2b.txt ]; then
@@ -109,6 +112,9 @@ jobs:
           BITNET_ENFORCE_SEED_DETERMINISM=1 \
           BITNET_SEED_DETERMINISM_SEED=7 \
           BITNET_SEED_DETERMINISM_MAX_TOKENS=8 \
+          BITNET_SEED_DETERMINISM_TEMP=0.8 \
+          BITNET_SEED_DETERMINISM_TOP_P=0.9 \
+          BITNET_SEED_DETERMINISM_TOP_K=40 \
           go test ./pkg/bitnet -run TestSeedDeterminismFixtures -count=1
       - name: parity-i2s-smoke
         run: |
