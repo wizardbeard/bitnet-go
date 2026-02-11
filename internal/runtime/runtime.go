@@ -173,6 +173,7 @@ var decodeCacheMaxTokensDefault = parseEnvInt("BITNET_DECODE_CACHE_MAX_TOKENS", 
 var profileLoad = os.Getenv("BITNET_PROFILE_LOAD") == "1"
 var profileStep = os.Getenv("BITNET_PROFILE_STEP") == "1"
 var ffnShareI2SQuant = os.Getenv("BITNET_FFN_SHARE_I2S_QUANT") != "0"
+var ffnShareI2SDown = os.Getenv("BITNET_FFN_SHARE_I2S_DOWN") != "0"
 var ffnParGateUp = os.Getenv("BITNET_FFN_PAR_GATE_UP") == "1"
 var useF16TokenEmbd = os.Getenv("BITNET_USE_F16_TOKEN_EMBD") == "1"
 var fastGreedyArgmax = os.Getenv("BITNET_FAST_GREEDY_ARGMAX") == "1"
@@ -1385,19 +1386,20 @@ func runForwardLlamaStack(block *tensorBlock, seed int64, promptTokens []int32, 
 }
 
 type llamaLayerState struct {
-	q       []float32
-	k       []float32
-	v       []float32
-	attnAcc []float32
-	attnOut []float32
-	gate    []float32
-	up      []float32
-	ffnAct  []float32
-	ffnDown []float32
-	ffnInI8 []int8
-	scores  []float32
-	keys    []float32
-	values  []float32
+	q           []float32
+	k           []float32
+	v           []float32
+	attnAcc     []float32
+	attnOut     []float32
+	gate        []float32
+	up          []float32
+	ffnAct      []float32
+	ffnDown     []float32
+	ffnInI8     []int8
+	ffnDownInI8 []int8
+	scores      []float32
+	keys        []float32
+	values      []float32
 }
 
 type llamaRunScratch struct {
@@ -1495,6 +1497,7 @@ func ensureLlamaLayerState(st *llamaLayerState, layer llamaLayer, hiddenDim, max
 	st.ffnAct = resizeF32(st.ffnAct, ffnDim)
 	st.ffnDown = resizeF32(st.ffnDown, hiddenDim)
 	st.ffnInI8 = resizeI8(st.ffnInI8, hiddenDim)
+	st.ffnDownInI8 = resizeI8(st.ffnDownInI8, linearOutputLen(layer.ffnUp))
 	st.scores = resizeF32(st.scores, maxSeq*heads)
 	st.keys = resizeF32(st.keys, maxSeq*kdim)
 	st.values = resizeF32(st.values, maxSeq*vdim)
@@ -1956,6 +1959,22 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 			}
 			if debugFFNTranspose {
 				linearApplyIntoWeightTransposed(st.ffnDown, layer.ffnDown, st.up, !layer.ffnDown.transposed)
+			} else if ffnShareI2SDown &&
+				layer.ffnDown.qtype == gguf.GGMLTypeI2_S && len(layer.ffnDown.i2sPacked) > 0 &&
+				!debugI2SFloat {
+				scratch := st.ffnDownInI8
+				if len(scratch) != len(st.up) {
+					scratch = resizeI8(scratch, len(st.up))
+					st.ffnDownInI8 = scratch
+				}
+				actScale, actSum := kernels.QuantizeRowI8S(scratch, st.up)
+				if debugI2SDisableActSum {
+					actSum = 0
+				}
+				if debugI2SInvertActScale && actScale != 0 {
+					actScale = 1 / actScale
+				}
+				linearApplyIntoWeightI2SQuantized(st.ffnDown, layer.ffnDown, scratch, actScale, actSum)
 			} else {
 				linearApplyIntoWeight(st.ffnDown, layer.ffnDown, st.up)
 			}
