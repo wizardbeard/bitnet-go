@@ -443,11 +443,13 @@ Progress against step 6 (freeze/document tolerance policy):
   - CI YaRN parity now requires the fetched fixture and runs unconditionally.
   - `go` CI job timeout increased to 30 minutes to accommodate fixture downloads.
 - update: fixture seed-determinism coverage now includes base and YaRN fixture families (in addition to i2_s and i2_s_2b).
+- update: base strict parity vectors are now CI-enforced via explicit `parity-base` step:
+  - `BITNET_ENFORCE_PARITY=1 BITNET_PARITY_LOGIT_ATOL=1e-1 BITNET_PARITY_LOGIT_RTOL=1e-1 BITNET_PARITY_TOPK_STRICT=1 go test ./pkg/bitnet -run TestParityAgainstFrozenVectors -count=1`
 
 CPU parity status matrix snapshot:
 - Base (`model_fixture.txt`)
   - tokenizer prompt vectors: yes
-  - strict token/logit parity vectors: not CI-enforced by default (`BITNET_ENFORCE_PARITY` gated)
+  - strict token/logit parity vectors: CI-enforced (strict + tolerance-pinned)
   - seed determinism: CI-enforced
 - YaRN (`model_fixture_yarn.txt`)
   - tokenizer prompt vectors: CI-enforced

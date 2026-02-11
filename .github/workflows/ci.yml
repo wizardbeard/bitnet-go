@@ -36,6 +36,13 @@ jobs:
       - name: parity
         run: |
           go test ./... -run TestParity -count=1
+      - name: parity-base
+        run: |
+          BITNET_ENFORCE_PARITY=1 \
+          BITNET_PARITY_LOGIT_ATOL=1e-1 \
+          BITNET_PARITY_LOGIT_RTOL=1e-1 \
+          BITNET_PARITY_TOPK_STRICT=1 \
+          go test ./pkg/bitnet -run TestParityAgainstFrozenVectors -count=1
       - name: parity-i2s
         run: |
           if [ -f testdata/model_fixture_i2s.txt ]; then

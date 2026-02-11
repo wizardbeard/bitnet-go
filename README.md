@@ -250,7 +250,7 @@ Legend:
 
 | Fixture family | Tokenizer prompt vectors | Token/logit parity vectors | Smoke parity | Seed determinism | GGUF type compatibility |
 | --- | --- | --- | --- | --- | --- |
-| Base (`model_fixture.txt`) | Yes (`expected.prompt_tokens.json`) | No (`BITNET_ENFORCE_PARITY` gated) | N/A | Yes | Cond |
+| Base (`model_fixture.txt`) | Yes (`expected.prompt_tokens.json`) | Yes (`BITNET_ENFORCE_PARITY=1`, `atol/rtol=1e-1`, top-1 strict in CI) | N/A | Yes | Cond |
 | YaRN (`model_fixture_yarn.txt`) | Yes (`expected.yarn.prompt_tokens.json`) | Yes (`BITNET_ENFORCE_YARN=1`, strict+tolerance-pinned in CI) | N/A | Yes | Cond |
 | i2_s (`model_fixture_i2s.txt`) | Cond (`expected.i2s.prompt_tokens.json`) | Yes (teacher-forced strict in CI) | Yes | Yes | Cond |
 | i2_s 2B (`model_fixture_i2s_2b.txt`) | Cond (`expected.i2s_2b.prompt_tokens.json`) | Yes (teacher-forced strict in CI) | Yes | Yes | Cond |
@@ -258,4 +258,4 @@ Legend:
 
 Notes:
 - `TestMaintainedFixtureTensorTypesSupported` enforces GGUF tensor-type decode support for all maintained fixtures that are present locally.
-- CI currently fetches YaRN and i2_s 2B fixtures by default and enforces their parity checks.
+- CI currently fetches YaRN and i2_s 2B fixtures by default and enforces base + YaRN + i2_s + i2_s 2B parity checks.
