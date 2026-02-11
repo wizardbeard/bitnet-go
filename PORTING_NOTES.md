@@ -387,6 +387,16 @@
     - baseline: ~24.184s
     - `FAST_PAR_COLS_MIN=1024`: ~20.623s
   - result: default `BITNET_I2S_I8S_FAST_PAR_COLS_MIN` updated from `0` to `1024`.
+- update: added FFN gate/up shape benchmark (`BenchmarkMatVecI2SI8SFFNGateUp`, rows=4096, cols=1024) and swept non-transposed fast-range threshold.
+  - kernel sweep (`BITNET_MATVEC_THREADS=6`, benchtime=200ms):
+    - off (`FAST_PAR_NT_COLS_MIN=0`): ~1.545 ms/op
+    - `FAST_PAR_NT_COLS_MIN=512`: ~0.490 ms/op
+    - `FAST_PAR_NT_COLS_MIN=1024`: ~0.547 ms/op
+    - `FAST_PAR_NT_COLS_MIN=2048`: ~1.619 ms/op
+  - runtime bench (`BenchmarkGenerateTopPCompare`, i2_s fixture, benchtime=2x):
+    - with `FAST_PAR_NT_COLS_MIN=512`: slight improvement vs baseline in this run.
+  - quick end-to-end A/B on this host (`.bench/bitnet-go`, i2_s fixture, prompt=`Hello BitNet`, max-tokens=15, procs=6, temp=0) was inconclusive/neutral across repeats.
+  - result: keep default `BITNET_I2S_I8S_FAST_PAR_NT_COLS_MIN=0` for now; retain knob for host-specific tuning.
 - update: extended step profiling to include FFN substage attribution (`ffn_norm`, `ffn_gate_up`, `ffn_act`, `ffn_subnorm`, `ffn_down`) for bottleneck targeting.
   - profile snapshot (i7-11800H, same fixture/settings): FFN substage totals over 15 steps were approximately `ffn_gate_up~4.13s`, `ffn_down~2.06s`, `ffn_act~13.0ms`, `ffn_norm~1.4ms`, `ffn_subnorm~4.8ms`.
 - update: added experimental opt-in parallel FFN gate/up projection (`BITNET_FFN_PAR_GATE_UP=1`) in the non-debug FFN path.

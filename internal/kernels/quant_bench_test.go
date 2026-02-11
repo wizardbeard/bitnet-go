@@ -88,6 +88,25 @@ func BenchmarkMatVecTI2SI8SFFNDown(b *testing.B) {
 	}
 }
 
+func BenchmarkMatVecI2SI8SFFNGateUp(b *testing.B) {
+	// Typical llama/bitnet FFN gate/up shape for hidden=1024, ffn=4096:
+	// gate/up weights are [rows=4096, cols=1024] with non-transposed matvec.
+	const rows, cols = 4096, 1024
+	vec := make([]int8, cols)
+	for i := range vec {
+		vec[i] = int8(i%255 - 127)
+	}
+	packed := makeI2SPacked(rows, cols)
+	dst := make([]float32, rows)
+
+	b.ReportAllocs()
+	b.SetBytes(int64(rows*cols + rows + cols))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		MatVecI2SI8S(dst, packed, rows, cols, vec, 1.0, 1.0, 0)
+	}
+}
+
 func BenchmarkMatVecI2SI8SVariants(b *testing.B) {
 	for _, s := range i2sBenchShapes {
 		b.Run(i2sShapeName(s), func(b *testing.B) {
