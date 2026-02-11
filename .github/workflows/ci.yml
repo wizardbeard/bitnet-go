@@ -66,6 +66,12 @@ jobs:
           else
             echo "Skipping i2_s 2B parity (fixture missing)"
           fi
+      - name: seed-determinism-fixtures
+        run: |
+          BITNET_ENFORCE_SEED_DETERMINISM=1 \
+          BITNET_SEED_DETERMINISM_SEED=7 \
+          BITNET_SEED_DETERMINISM_MAX_TOKENS=8 \
+          go test ./pkg/bitnet -run TestSeedDeterminismFixtures -count=1
       - name: parity-i2s-smoke
         run: |
           if [ -f testdata/model_fixture_i2s.txt ]; then

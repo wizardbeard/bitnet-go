@@ -3,9 +3,12 @@ package bitnet
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"maps"
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -683,6 +686,106 @@ func TestParityAgainstI2S2BSmoke(t *testing.T) {
 	if got.TokenIDs[0] != want[0] {
 		t.Fatalf("token mismatch at step 0: got=%d want=%d", got.TokenIDs[0], want[0])
 	}
+}
+
+func TestSeedDeterminismFixtures(t *testing.T) {
+	if os.Getenv("BITNET_ENFORCE_SEED_DETERMINISM") != "1" {
+		t.Skip("set BITNET_ENFORCE_SEED_DETERMINISM=1 to enforce fixture seed determinism")
+	}
+
+	root := filepath.Join("..", "..", "testdata")
+	maxTokens := envInt("BITNET_SEED_DETERMINISM_MAX_TOKENS", 16)
+	if maxTokens < 1 {
+		maxTokens = 1
+	}
+	seed := int64(envInt("BITNET_SEED_DETERMINISM_SEED", 7))
+
+	cases := []struct {
+		name       string
+		modelFile  string
+		promptFile string
+	}{
+		{
+			name:       "i2_s",
+			modelFile:  "model_fixture_i2s.txt",
+			promptFile: "prompt.txt",
+		},
+		{
+			name:       "i2_s_2b",
+			modelFile:  "model_fixture_i2s_2b.txt",
+			promptFile: "prompt.txt",
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			modelFixture, err := os.ReadFile(filepath.Join(root, tc.modelFile))
+			if err != nil {
+				t.Fatalf("read %s: %v", tc.modelFile, err)
+			}
+			modelPath := filepath.Join(root, string(bytesTrimSpace(modelFixture)))
+			if _, err := os.Stat(modelPath); err != nil {
+				t.Skipf("%s model not present: %s", tc.name, modelPath)
+			}
+
+			promptBytes, err := os.ReadFile(filepath.Join(root, tc.promptFile))
+			if err != nil {
+				t.Fatalf("read %s: %v", tc.promptFile, err)
+			}
+			prompt := string(bytesTrimSpace(promptBytes))
+
+			session, err := LoadModel(context.Background(), modelPath)
+			if err != nil {
+				t.Fatalf("LoadModel() error = %v", err)
+			}
+
+			req := GenerateRequest{
+				Prompt:    prompt,
+				Seed:      seed,
+				MaxTokens: maxTokens,
+			}
+			a, err := session.Generate(context.Background(), req)
+			if err != nil {
+				t.Fatalf("first Generate() error = %v", err)
+			}
+			b, err := session.Generate(context.Background(), req)
+			if err != nil {
+				t.Fatalf("second Generate() error = %v", err)
+			}
+
+			if !slices.Equal(a.TokenIDs, b.TokenIDs) {
+				t.Fatalf("token determinism mismatch for %s: run1=%v run2=%v", tc.name, a.TokenIDs, b.TokenIDs)
+			}
+			if len(a.TopK) != len(b.TopK) {
+				t.Fatalf("topk step count mismatch for %s: run1=%d run2=%d", tc.name, len(a.TopK), len(b.TopK))
+			}
+			for i := range a.TopK {
+				if !maps.Equal(topKEntriesAsMap(a.TopK[i].Entries), topKEntriesAsMap(b.TopK[i].Entries)) {
+					t.Fatalf("topk determinism mismatch for %s step=%d: run1=%s run2=%s", tc.name, i, formatTopK(a.TopK[i].Entries), formatTopK(b.TopK[i].Entries))
+				}
+			}
+		})
+	}
+}
+
+func topKEntriesAsMap(entries []TopKEntry) map[int32]float32 {
+	out := make(map[int32]float32, len(entries))
+	for _, e := range entries {
+		out[e.TokenID] = e.Logit
+	}
+	return out
+}
+
+func formatTopK(entries []TopKEntry) string {
+	var b strings.Builder
+	for i, e := range entries {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(fmt.Sprintf("%d:%.6f", e.TokenID, e.Logit))
+	}
+	return b.String()
 }
 
 func maybeForceTokens(t *testing.T, want []int32) {
