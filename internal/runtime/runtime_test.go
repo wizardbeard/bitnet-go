@@ -898,6 +898,37 @@ func TestDotF32FastNMatches(t *testing.T) {
 	}
 }
 
+func TestFFNActivateDispatchMatchesReference(t *testing.T) {
+	gate := []float32{-2.0, -0.5, 0.0, 0.5, 2.0}
+	up := []float32{1.0, 2.0, 3.0, 4.0, 5.0}
+	gotRelu2 := make([]float32, len(gate))
+	gotSilu := make([]float32, len(gate))
+	wantRelu2 := make([]float32, len(gate))
+	wantSilu := make([]float32, len(gate))
+
+	ffnActivateInto(gotRelu2, gate, up, false)
+	ffnActivateInto(gotSilu, gate, up, true)
+	ffnActivateReference(wantRelu2, gate, up, false)
+	ffnActivateReference(wantSilu, gate, up, true)
+
+	for i := range gate {
+		diffRelu2 := math.Abs(float64(gotRelu2[i] - wantRelu2[i]))
+		if diffRelu2 > 1e-6 {
+			t.Fatalf("relu2 mismatch at %d: got=%f want=%f", i, gotRelu2[i], wantRelu2[i])
+		}
+		diffSilu := math.Abs(float64(gotSilu[i] - wantSilu[i]))
+		if diffSilu > 1e-6 {
+			t.Fatalf("silu mismatch at %d: got=%f want=%f", i, gotSilu[i], wantSilu[i])
+		}
+	}
+	if gotRelu2[0] != 0 {
+		t.Fatalf("relu2 negative gate should clamp to 0, got=%f", gotRelu2[0])
+	}
+	if gotSilu[0] >= 0 {
+		t.Fatalf("silu negative gate should remain negative, got=%f", gotSilu[0])
+	}
+}
+
 func TestMatVec3F32ColMatches(t *testing.T) {
 	rows := 32
 	cols := 48

@@ -80,6 +80,7 @@ jobs:
             model=$(sed -n '1p' testdata/model_fixture_yarn.txt)
             if [ -n "$model" ] && [ -f "testdata/$model" ]; then
               BITNET_ENFORCE_YARN=1 \
+              BITNET_PARITY_STRICT=1 \
               BITNET_PARITY_LOGIT_ATOL=1e-3 \
               BITNET_PARITY_LOGIT_RTOL=3e-2 \
               BITNET_PARITY_TOPK_STRICT=1 \

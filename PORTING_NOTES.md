@@ -435,3 +435,5 @@ Progress against step 6 (freeze/document tolerance policy):
     - llama -> SiLU gate (`silu(gate) * up`)
     - bitnet paths remain on existing `ReLU^2 * up`
   - result: `TestParityAgainstYarnVectors` now passes again under frozen YaRN tolerances.
+- update: added runtime unit coverage for FFN activation dispatch (`TestFFNActivateDispatchMatchesReference`) to lock SiLU-vs-ReLU2 behavior.
+- update: CI YaRN parity step now runs with `BITNET_PARITY_STRICT=1` in addition to frozen YaRN tolerance envs.
