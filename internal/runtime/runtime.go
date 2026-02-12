@@ -2115,6 +2115,10 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 		linearApplyIntoWeight(logits, w, n1)
 		if traceDrift {
 			bestTok, bestLogit := argmaxLogit(logits)
+			fmt.Fprintf(os.Stderr, "drift_trace output_norm_l2=%g\n", vecL2Norm(n1))
+			if driftTraceToken >= 0 {
+				traceOutputTokenLogit(w, n1, driftTraceToken)
+			}
 			if driftTraceToken >= 0 && driftTraceToken < len(logits) {
 				fmt.Fprintf(
 					os.Stderr,
@@ -2873,6 +2877,71 @@ func debugLogitsForTokens(label string, w linearWeight, x []float32) {
 	}
 }
 
+func traceOutputTokenLogit(w linearWeight, x []float32, token int) {
+	if token < 0 {
+		return
+	}
+	switch w.qtype {
+	case gguf.GGMLTypeI2_S:
+		if len(w.i2sPacked) == 0 {
+			fmt.Fprintf(os.Stderr, "drift_trace output token=%d qtype=i2_s missing_packed=1\n", token)
+			return
+		}
+		vec := make([]int8, len(x))
+		actScale, actSum := kernels.QuantizeRowI8S(vec, x)
+		if actScale == 0 {
+			fmt.Fprintf(os.Stderr, "drift_trace output token=%d qtype=i2_s act_scale=0\n", token)
+			return
+		}
+		dotUsed := i2sDotForToken(w.i2sPacked, w.rows, w.cols, token, vec, w.transposed)
+		dotAlt := i2sDotForToken(w.i2sPacked, w.rows, w.cols, token, vec, !w.transposed)
+		logitUsed := float32(dotUsed-actSum) * (w.i2sScale / actScale)
+		logitAlt := float32(dotAlt-actSum) * (w.i2sScale / actScale)
+		fmt.Fprintf(
+			os.Stderr,
+			"drift_trace output token=%d qtype=i2_s transposed=%v act_scale=%g act_sum=%d weight_scale=%g dot_used=%d dot_alt=%d logit_used=%g logit_alt=%g\n",
+			token,
+			w.transposed,
+			actScale,
+			actSum,
+			w.i2sScale,
+			dotUsed,
+			dotAlt,
+			logitUsed,
+			logitAlt,
+		)
+	case gguf.GGMLTypeF16:
+		v := f16LogitForToken(w.dataF16, w.rows, w.cols, token, x, w.transposed)
+		alt := f16LogitForToken(w.dataF16, w.rows, w.cols, token, x, !w.transposed)
+		fmt.Fprintf(
+			os.Stderr,
+			"drift_trace output token=%d qtype=f16 transposed=%v logit_used=%g logit_alt=%g\n",
+			token,
+			w.transposed,
+			v,
+			alt,
+		)
+	case gguf.GGMLTypeF32:
+		v := f32LogitForToken(w.data, w.rows, w.cols, token, x, w.transposed)
+		alt := f32LogitForToken(w.data, w.rows, w.cols, token, x, !w.transposed)
+		fmt.Fprintf(
+			os.Stderr,
+			"drift_trace output token=%d qtype=f32 transposed=%v logit_used=%g logit_alt=%g\n",
+			token,
+			w.transposed,
+			v,
+			alt,
+		)
+	default:
+		fmt.Fprintf(
+			os.Stderr,
+			"drift_trace output token=%d qtype=%d unsupported_for_trace=1\n",
+			token,
+			int(w.qtype),
+		)
+	}
+}
+
 func debugStage(label string, vec []float32, block *tensorBlock, normBuf []float32, alreadyNorm bool) {
 	debugVecStats(label, vec)
 	w := linearWeight{
@@ -2957,6 +3026,11 @@ func i2sLogitForToken(packed []byte, rows, cols, token int, vec []int8, weightSc
 	if actScale == 0 {
 		return 0
 	}
+	sum := i2sDotForToken(packed, rows, cols, token, vec, transposed)
+	return float32(sum-actSum) * (weightScale / actScale)
+}
+
+func i2sDotForToken(packed []byte, rows, cols, token int, vec []int8, transposed bool) int32 {
 	if transposed {
 		if token < 0 || token >= cols || len(vec) < rows {
 			return 0
@@ -2967,7 +3041,7 @@ func i2sLogitForToken(packed []byte, rows, cols, token int, vec []int8, weightSc
 			q := i2sPackedAtLocal(packed, idx)
 			sum += int32(q) * int32(vec[r])
 		}
-		return float32(sum-actSum) * (weightScale / actScale)
+		return sum
 	}
 	if token < 0 || token >= rows || len(vec) < cols {
 		return 0
@@ -2978,7 +3052,7 @@ func i2sLogitForToken(packed []byte, rows, cols, token int, vec []int8, weightSc
 		q := i2sPackedAtLocal(packed, idx)
 		sum += int32(q) * int32(vec[c])
 	}
-	return float32(sum-actSum) * (weightScale / actScale)
+	return sum
 }
 
 func i2sPackedAtLocal(packed []byte, idx int) byte {

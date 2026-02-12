@@ -594,6 +594,10 @@ CPU parity status matrix snapshot:
     - token logit remains high on Go vs reference (`8.34671` vs `7.74704838`), so further tightening likely needs deeper activation/output-path drift isolation rather than simple kernel-path toggles.
 - update: added `BITNET_STRICT_FFN_ACT_F64=1` debug path to compute FFN activation in float64 for parity isolation.
   - result: no meaningful improvement at the `6e-2` failing point; both i2_s and i2_s_2b still fail at step `14`, token `55358` with near-identical Go logit (`~8.346723`), so activation precision alone is not the limiting factor.
+- update: added output-projection drift trace decomposition:
+  - Go drift trace now emits `output_norm_l2` and token-specific output logit decomposition (`qtype`, transpose mode, used-vs-alt token logit).
+  - at failing step `14` / token `55358`, output projection is `f32` (`transposed=true`) and Go token logit (`8.34671`) comes from that f32 output matvec.
+  - ref-vs-go comparison now also prints output norm magnitude; current sample shows Go `output_norm_l2=3.4567418` vs ref `3.40284561` (~1.6% high), indicating residual drift is already present in the normalized hidden state before final projection.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).

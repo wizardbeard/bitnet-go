@@ -115,6 +115,24 @@ echo "[drift-compare] out:     $OUT"
 go_step=$(awk '/^drift_trace logits step=/{for(i=1;i<=NF;i++){if($i~/^step=/){split($i,a,"=");print a[2]; exit}}}' "$GO_LOG")
 go_token=$(awk '/^drift_trace logits step=/{for(i=1;i<=NF;i++){if($i~/^token=/){split($i,a,"=");print a[2]; exit}}}' "$GO_LOG")
 go_logit=$(awk '/^drift_trace logits step=/{for(i=1;i<=NF;i++){if($i~/^logit=/){split($i,a,"=");print a[2]; exit}}}' "$GO_LOG")
+go_outnorm_l2=$(awk -F'=' '/^drift_trace output_norm_l2=/{print $2; exit}' "$GO_LOG")
+ref_result_norm_l2=$(awk '
+  /^DEBUG name=result_norm / {
+    n = -1
+    rms = -1
+    for (i = 1; i <= NF; i++) {
+      if ($i ~ /^n=/) { split($i, a, "="); n = a[2] + 0 }
+      if ($i ~ /^rms=/) { split($i, a, "="); rms = a[2] + 0 }
+    }
+    if (n > 0 && rms >= 0) {
+      printf "%.9g\n", rms * sqrt(n)
+      exit
+    }
+  }
+' "$REF_LOG")
+if [ -n "${go_outnorm_l2:-}" ] || [ -n "${ref_result_norm_l2:-}" ]; then
+  echo "[drift-compare] output-norm-l2 go=$go_outnorm_l2 ref=$ref_result_norm_l2"
+fi
 if [ -n "${go_step:-}" ] && [ -n "${go_token:-}" ]; then
   ref_logit=$(awk -v s="$go_step" -v tok="$go_token" '
     $1=="TOPK" && $2=="step="s {
