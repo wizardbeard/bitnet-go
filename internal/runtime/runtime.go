@@ -176,6 +176,7 @@ var profileLoad = os.Getenv("BITNET_PROFILE_LOAD") == "1"
 var profileStep = os.Getenv("BITNET_PROFILE_STEP") == "1"
 var driftTraceStep = parseEnvInt("BITNET_DRIFT_TRACE_STEP", -1)
 var driftTraceToken = parseEnvInt("BITNET_DRIFT_TRACE_TOKEN", -1)
+var driftTraceValuesN = parseEnvInt("BITNET_DRIFT_TRACE_VALUES_N", 16)
 var ffnShareI2SQuant = os.Getenv("BITNET_FFN_SHARE_I2S_QUANT") != "0"
 var ffnShareI2SDown = os.Getenv("BITNET_FFN_SHARE_I2S_DOWN") != "0"
 var ffnParGateUp = os.Getenv("BITNET_FFN_PAR_GATE_UP") == "1"
@@ -2116,6 +2117,9 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 		if traceDrift {
 			bestTok, bestLogit := argmaxLogit(logits)
 			fmt.Fprintf(os.Stderr, "drift_trace output_norm_l2=%g\n", vecL2Norm(n1))
+			if driftTraceValuesN > 0 {
+				fmt.Fprintf(os.Stderr, "drift_trace output_norm_values=%s\n", vecValuesCSV(n1, driftTraceValuesN))
+			}
 			if driftTraceToken >= 0 {
 				traceOutputTokenLogit(w, n1, driftTraceToken)
 			}
@@ -2744,6 +2748,23 @@ func vecL2Norm(v []float32) float32 {
 		sum += float64(x) * float64(x)
 	}
 	return float32(math.Sqrt(sum))
+}
+
+func vecValuesCSV(v []float32, n int) string {
+	if n <= 0 || len(v) == 0 {
+		return ""
+	}
+	if n > len(v) {
+		n = len(v)
+	}
+	var b strings.Builder
+	for i := 0; i < n; i++ {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(strconv.FormatFloat(float64(v[i]), 'g', 9, 32))
+	}
+	return b.String()
 }
 
 func argmaxLogit(logits []float32) (int, float32) {

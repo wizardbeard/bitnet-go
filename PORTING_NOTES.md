@@ -597,7 +597,7 @@ CPU parity status matrix snapshot:
 - update: added output-projection drift trace decomposition:
   - Go drift trace now emits `output_norm_l2` and token-specific output logit decomposition (`qtype`, transpose mode, used-vs-alt token logit).
   - at failing step `14` / token `55358`, output projection is `f32` (`transposed=true`) and Go token logit (`8.34671`) comes from that f32 output matvec.
-  - ref-vs-go comparison now also prints output norm magnitude; current sample shows Go `output_norm_l2=3.4567418` vs ref `3.40284561` (~1.6% high), indicating residual drift is already present in the normalized hidden state before final projection.
+  - ref-vs-go comparison now also prints output norm magnitude and value-slice deltas; current sample shows Go `output_norm_l2=3.4567418` vs ref `3.40284561` (~1.6% high), and first-16 `result_norm` values differ by mean abs `~0.00214` (max abs `~0.00703`), indicating residual drift is already present in the normalized hidden state before final projection.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).

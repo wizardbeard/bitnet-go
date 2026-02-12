@@ -5,6 +5,7 @@ FAMILY=${1:-i2s}
 STEP=${BITNET_DRIFT_TRACE_STEP:-14}
 TOKEN=${BITNET_DRIFT_TRACE_TOKEN:-55358}
 MAX_TOKENS=${BITNET_REF_DRIFT_MAX_TOKENS:-$((STEP + 1))}
+VALUES_N=${BITNET_REF_DRIFT_VALUES_N:-16}
 OUT=${BITNET_REF_DRIFT_TRACE_OUT:-.bench/ref-i2s-drift-trace-${FAMILY}.log}
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 TESTDATA_DIR="$ROOT_DIR/testdata"
@@ -92,9 +93,11 @@ env \
   BITNET_REF_MAX_TOKENS="$MAX_TOKENS" \
   BITNET_REF_TOPK=5 \
   BITNET_REF_DEBUG=1 \
+  BITNET_REF_DEBUG_VALUES=1 \
+  BITNET_REF_DEBUG_VALUES_N="$VALUES_N" \
   BITNET_REF_DEBUG_POS="$POS" \
   "$ROOT_DIR/.ref/bin/ref-trace" >"$OUT" 2>&1
 
-echo "[ref-drift-trace] family=$FAMILY step=$STEP pos=$POS token=$TOKEN prompt_tokens=$PROMPT_TOKENS_COUNT"
+echo "[ref-drift-trace] family=$FAMILY step=$STEP pos=$POS token=$TOKEN prompt_tokens=$PROMPT_TOKENS_COUNT values_n=$VALUES_N"
 echo "[ref-drift-trace] log: $OUT"
-grep -E '^TOPK step='"$STEP"'|^TOKEN step='"$STEP"'|^DEBUG name=(attn_o_out|ffn_gate|ffn_up|ffn_act|ffn_down)-' "$OUT" || true
+grep -E '^TOPK step='"$STEP"'|^TOKEN step='"$STEP"'|^DEBUG name=result_norm|^DEBUG_VALUES name=result_norm|^DEBUG name=(attn_o_out|ffn_gate|ffn_up|ffn_out|ffn_down)-' "$OUT" || true

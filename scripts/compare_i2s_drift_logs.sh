@@ -116,6 +116,7 @@ go_step=$(awk '/^drift_trace logits step=/{for(i=1;i<=NF;i++){if($i~/^step=/){sp
 go_token=$(awk '/^drift_trace logits step=/{for(i=1;i<=NF;i++){if($i~/^token=/){split($i,a,"=");print a[2]; exit}}}' "$GO_LOG")
 go_logit=$(awk '/^drift_trace logits step=/{for(i=1;i<=NF;i++){if($i~/^logit=/){split($i,a,"=");print a[2]; exit}}}' "$GO_LOG")
 go_outnorm_l2=$(awk -F'=' '/^drift_trace output_norm_l2=/{print $2; exit}' "$GO_LOG")
+go_outnorm_values=$(awk -F'=' '/^drift_trace output_norm_values=/{print $2; exit}' "$GO_LOG")
 ref_result_norm_l2=$(awk '
   /^DEBUG name=result_norm / {
     n = -1
@@ -130,8 +131,44 @@ ref_result_norm_l2=$(awk '
     }
   }
 ' "$REF_LOG")
+ref_result_norm_values=$(awk '
+  /^DEBUG_VALUES name=result_norm values=/ {
+    sub(/^DEBUG_VALUES name=result_norm values=/, "", $0)
+    print
+    exit
+  }
+' "$REF_LOG")
 if [ -n "${go_outnorm_l2:-}" ] || [ -n "${ref_result_norm_l2:-}" ]; then
   echo "[drift-compare] output-norm-l2 go=$go_outnorm_l2 ref=$ref_result_norm_l2"
+fi
+if [ -n "${go_outnorm_values:-}" ] && [ -n "${ref_result_norm_values:-}" ]; then
+  norm_values_delta=$(awk -v g="$go_outnorm_values" -v r="$ref_result_norm_values" '
+    BEGIN {
+      ng = split(g, ga, ",")
+      nr = split(r, ra, ",")
+      n = ng
+      if (nr < n) n = nr
+      if (n <= 0) {
+        print "n=0"
+        exit
+      }
+      sum = 0
+      max = -1
+      maxi = -1
+      for (i = 1; i <= n; i++) {
+        d = ga[i] - ra[i]
+        if (d < 0) d = -d
+        sum += d
+        if (d > max) {
+          max = d
+          maxi = i - 1
+        }
+      }
+      mean = sum / n
+      printf "n=%d mean_abs=%g max_abs=%g max_idx=%d go=%g ref=%g", n, mean, max, maxi, ga[maxi+1], ra[maxi+1]
+    }
+  ')
+  echo "[drift-compare] output-norm-values $norm_values_delta"
 fi
 if [ -n "${go_step:-}" ] && [ -n "${go_token:-}" ]; then
   ref_logit=$(awk -v s="$go_step" -v tok="$go_token" '
