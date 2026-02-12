@@ -41,6 +41,8 @@ All results below were recorded on 2026-02-08 (i7-11800H, Linux, amd64).
 
 Quick inference benchmark (wall time and tok/s):
 `sh ./scripts/bench_infer.sh`
+Repeated perf harness (runtime + e2e medians/p95):
+`sh ./scripts/bench_perf_repeat.sh`
 Overrides:
 - `BITNET_BENCH_MODEL`
 - `BITNET_BENCH_PROMPT` or `BITNET_BENCH_PROMPT_FILE`
@@ -50,6 +52,7 @@ Overrides:
 - `BITNET_BENCH_PROCS`
 - `BITNET_BENCH_BATCH`
 - `BITNET_BENCH_SWEEP=1` (run batch sweep 1/2/4)
+- `BITNET_REPEAT_RUNS` (for `bench_perf_repeat.sh`, default `5`)
 - `BITNET_FORCE_AVX2=1` (force AVX2 i2_s i8_s matvec fast path on amd64+cgo; auto-detects when available)
 - `BITNET_MATVEC_THREADS` (enable parallel i2_s i8_s matvec when AVX2 is unavailable; try `NumCPU-2`)
 - `BITNET_I2S_I8S_DISABLE_FAST=1` (disable AVX2 i2_s+i8_s fast paths to tune fallback dispatch behavior)

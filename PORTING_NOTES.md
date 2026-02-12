@@ -397,6 +397,14 @@
     - with `FAST_PAR_NT_COLS_MIN=512`: slight improvement vs baseline in this run.
   - quick end-to-end A/B on this host (`.bench/bitnet-go`, i2_s fixture, prompt=`Hello BitNet`, max-tokens=15, procs=6, temp=0) was inconclusive/neutral across repeats.
   - result: keep default `BITNET_I2S_I8S_FAST_PAR_NT_COLS_MIN=0` for now; retain knob for host-specific tuning.
+- update: added repeatable perf harness `scripts/bench_perf_repeat.sh` for low-noise decision making:
+  - runs runtime bench (`BenchmarkGenerateTopPCompare`) and prebuilt CLI end-to-end timing across `N` runs
+  - emits raw per-run TSV (`.bench/perf-repeat.tsv`) and prints median/p95/mean/min/max summaries
+  - sample run (`BITNET_REPEAT_RUNS=2`) on this host:
+    - runtime default_prefix median ~2.307e9 ns/op
+    - runtime full_sort median ~2.211e9 ns/op
+    - e2e elapsed median ~22.735s
+    - e2e throughput median ~0.666 tok/s
 - update: extended step profiling to include FFN substage attribution (`ffn_norm`, `ffn_gate_up`, `ffn_act`, `ffn_subnorm`, `ffn_down`) for bottleneck targeting.
   - profile snapshot (i7-11800H, same fixture/settings): FFN substage totals over 15 steps were approximately `ffn_gate_up~4.13s`, `ffn_down~2.06s`, `ffn_act~13.0ms`, `ffn_norm~1.4ms`, `ffn_subnorm~4.8ms`.
 - update: added experimental opt-in parallel FFN gate/up projection (`BITNET_FFN_PAR_GATE_UP=1`) in the non-debug FFN path.
