@@ -178,6 +178,7 @@ var driftTraceStep = parseEnvInt("BITNET_DRIFT_TRACE_STEP", -1)
 var driftTraceToken = parseEnvInt("BITNET_DRIFT_TRACE_TOKEN", -1)
 var driftTraceValuesN = parseEnvInt("BITNET_DRIFT_TRACE_VALUES_N", 16)
 var driftTraceLayer = parseEnvInt("BITNET_DRIFT_TRACE_LAYER", -1)
+var driftAttnOutRefF32 = os.Getenv("BITNET_DRIFT_ATTN_OUT_REF_F32") == "1"
 var ffnShareI2SQuant = os.Getenv("BITNET_FFN_SHARE_I2S_QUANT") != "0"
 var ffnShareI2SDown = os.Getenv("BITNET_FFN_SHARE_I2S_DOWN") != "0"
 var ffnParGateUp = os.Getenv("BITNET_FFN_PAR_GATE_UP") == "1"
@@ -635,6 +636,7 @@ type llamaLayer struct {
 	ffnGate         linearWeight
 	ffnUp           linearWeight
 	ffnDown         linearWeight
+	debugAttnOutF32 []float32
 	debugFFNGateF32 []float32
 	debugFFNUpF32   []float32
 	debugFFNDownF32 []float32
@@ -1122,6 +1124,11 @@ func loadLlamaLayer(info gguf.ModelInfo, loader *modelTensorLoader, layerIdx int
 	}
 	if linearOutputLen(l.ffnDown) != hidden {
 		return llamaLayer{}, fmt.Errorf("%sffn_down.weight output dim=%d want=%d", prefix, linearOutputLen(l.ffnDown), hidden)
+	}
+	if driftAttnOutRefF32 {
+		if l.debugAttnOutF32, err = loader.readTensorAsF32(prefix + "attn_output.weight"); err != nil {
+			return llamaLayer{}, err
+		}
 	}
 	if debugFFNLoad && layerIdx == 0 {
 		if l.debugFFNGateF32, err = loader.readTensorAsF32(prefix + "ffn_gate.weight"); err != nil {
@@ -1720,6 +1727,27 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 				debugVecValues("attn_sub_norm", n2, debugValuesN)
 			}
 			linearApplyIntoWeight(st.attnOut, layer.attnOut, n2)
+			if traceDrift && driftAttnOutRefF32 && (driftTraceLayer < 0 || driftTraceLayer == i) && len(layer.debugAttnOutF32) > 0 {
+				refAttnOut := make([]float32, len(st.attnOut))
+				wRef := linearWeight{
+					data:       layer.debugAttnOutF32,
+					rows:       layer.attnOut.rows,
+					cols:       layer.attnOut.cols,
+					transposed: layer.attnOut.transposed,
+					qtype:      gguf.GGMLTypeF32,
+				}
+				linearApplyIntoWeight(refAttnOut, wRef, n2)
+				meanAbs, maxAbs := vecAbsDiffStats(st.attnOut, refAttnOut)
+				fmt.Fprintf(
+					os.Stderr,
+					"drift_trace attn_out_ref layer=%d cur_l2=%g ref_l2=%g mean_abs=%g max_abs=%g\n",
+					i,
+					vecL2Norm(st.attnOut),
+					vecL2Norm(refAttnOut),
+					meanAbs,
+					maxAbs,
+				)
+			}
 			kernels.AddScaled(x, st.attnOut, 1.0)
 			if debugStages && shouldDebug(pos) && i == 0 {
 				debugStage("stage.post_attn", x, block, stageNormBuf, false)
@@ -2764,6 +2792,28 @@ func vecL2Norm(v []float32) float32 {
 		sum += float64(x) * float64(x)
 	}
 	return float32(math.Sqrt(sum))
+}
+
+func vecAbsDiffStats(a, b []float32) (meanAbs, maxAbs float32) {
+	if len(a) == 0 || len(b) == 0 {
+		return 0, 0
+	}
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
+	}
+	var sum float32
+	for i := 0; i < n; i++ {
+		d := a[i] - b[i]
+		if d < 0 {
+			d = -d
+		}
+		sum += d
+		if d > maxAbs {
+			maxAbs = d
+		}
+	}
+	return sum / float32(n), maxAbs
 }
 
 func vecValuesCSV(v []float32, n int) string {

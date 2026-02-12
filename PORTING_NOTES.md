@@ -621,6 +621,13 @@ CPU parity status matrix snapshot:
   - with step 14 / layer 14 (first 16 values):
     - `attn_sub_norm` vs ref `attn_sub_norm`: mean abs `~0.014648`, max abs `~0.050368`.
   - this is much smaller than `attn_o_out` (`~2.98`) and `x_post_attn` (`~42.12`) at the same layer, which narrows likely amplification to the attention output projection + residual accumulation path rather than the pre-projection attention accumulation/sub-norm stage.
+- update: added targeted attention-output f32 reference projection check:
+  - new env: `BITNET_DRIFT_ATTN_OUT_REF_F32=1`.
+  - when enabled with drift tracing, Go computes a per-layer f32 `attn_output` reference projection from the same `attn_sub_norm` input and prints:
+    - `drift_trace attn_out_ref layer=... cur_l2=... ref_l2=... mean_abs=... max_abs=...`
+  - measured at failing point setup (`step=14`, `layer=14`):
+    - `cur_l2=2705.048`, `ref_l2=2705.0486`, `mean_abs=2.5732403e-05`, `max_abs=0.00064086914`.
+  - conclusion: Go’s current `attn_out` projection path is effectively identical to direct f32 reference at this layer, so the remaining parity drift is unlikely to be caused by the attention output projection kernel itself.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).
