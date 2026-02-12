@@ -562,6 +562,13 @@ CPU parity status matrix snapshot:
   - seed determinism: CI-enforced (shared fixture determinism test)
 - Maintained fixture GGUF compatibility:
   - `TestMaintainedFixtureTensorTypesSupported` enforces tensor-type decode support for all maintained fixtures that are present locally.
+- update: added `scripts/audit_cpu_parity.sh` to run a single-command CPU parity audit over:
+  - tokenizer prompt-vector + pre-type checks (GPT2/Falcon/Qwen2/i2_s/i2_s_2b/YaRN),
+  - maintained fixture GGUF tensor-type compatibility,
+  - base/YaRN/i2_s/i2_s_2b parity vectors with CI-pinned tolerances,
+  - i2_s + i2_s_2b smoke parity,
+  - fixture seed determinism with stochastic sampling controls.
+  - optional fetch bootstrap: `BITNET_AUDIT_FETCH=1`.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).
