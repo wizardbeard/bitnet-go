@@ -583,6 +583,13 @@ CPU parity status matrix snapshot:
     - `BITNET_DRIFT_TRACE_STEP` (emit per-layer attn/FFN L2 summaries for one decode step)
     - `BITNET_DRIFT_TRACE_TOKEN` (include selected token logit in trace output)
   - new helper script: `scripts/trace_i2s_drift_step.sh` to run parity with drift trace and capture log artifacts under `.bench/`.
+- update: added reference-side drift tracing and layer-by-layer comparison tooling:
+  - `scripts/ref_trace.cpp` debug tensor matching now includes all layer-indexed attn/FFN tensors (`*-N`) instead of layer 0 only.
+  - new script: `scripts/trace_ref_i2s_drift_step.sh` captures reference debug trace aligned to a target decode step/token.
+  - new script: `scripts/compare_i2s_drift_logs.sh` compares Go vs reference L2 norms by layer/metric and reports token-logit delta for the traced step/token.
+  - current observation on the `6e-2` failing point (`step=14`, `token=55358`):
+    - Go/ref `attn_o_out`, `ffn_gate`, `ffn_up`, and `ffn_down` norms are generally close layer-wise.
+    - token logit remains high on Go vs reference (`8.34671` vs `7.74704838`), so further tightening likely needs deeper activation/output-path drift isolation rather than simple kernel-path toggles.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).

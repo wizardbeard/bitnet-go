@@ -17,6 +17,8 @@ Training support (diverges from upstream) will live in this same repo so we can 
 - `sh ./scripts/audit_cpu_parity.sh` (full parity matrix audit; set `BITNET_AUDIT_FETCH=1` to fetch fixtures first)
   - emits stage-by-stage PASS/FAIL and writes a markdown table to `GITHUB_STEP_SUMMARY` in CI
 - `sh ./scripts/trace_i2s_drift_step.sh i2s` (capture per-layer drift trace for a target parity step/token; defaults step `14`, token `55358`)
+- `sh ./scripts/trace_ref_i2s_drift_step.sh i2s` (capture matching reference trace at the aligned decode position)
+- `sh ./scripts/compare_i2s_drift_logs.sh .bench/i2s-drift-trace-i2s.log .bench/ref-i2s-drift-trace-i2s.log` (layer-by-layer Go vs reference norm diff + token logit diff)
 - Chat prompt template (Llama):
 `go run ./cmd/bitnet --chat-template --system "You are helpful." --user "Hello"`
 - Chat history (repeatable):

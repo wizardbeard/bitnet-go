@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -104,6 +105,44 @@ struct DebugState {
 bool g_print_values = false;
 int g_values_n = 8;
 
+bool starts_with(const char * s, const char * prefix) {
+    if (s == nullptr || prefix == nullptr) {
+        return false;
+    }
+    while (*prefix) {
+        if (*s == '\0' || *s != *prefix) {
+            return false;
+        }
+        ++s;
+        ++prefix;
+    }
+    return true;
+}
+
+bool has_numeric_suffix(const char * s) {
+    if (s == nullptr || *s == '\0') {
+        return false;
+    }
+    while (*s) {
+        if (!std::isdigit(static_cast<unsigned char>(*s))) {
+            return false;
+        }
+        ++s;
+    }
+    return true;
+}
+
+bool matches_layered_tensor(const char * name, const char * base) {
+    if (!starts_with(name, base)) {
+        return false;
+    }
+    const size_t n = std::strlen(base);
+    if (name[n] != '-') {
+        return false;
+    }
+    return has_numeric_suffix(name + n + 1);
+}
+
 bool name_matches(const char * name) {
     if (name == nullptr || name[0] == '\0') {
         return false;
@@ -141,6 +180,25 @@ bool name_matches(const char * name) {
             return true;
         }
     }
+    const char * layered[] = {
+        "attn_norm",
+        "attn_sub_norm",
+        "attn_o_out",
+        "ffn_inp",
+        "ffn_norm",
+        "ffn_gate",
+        "ffn_up",
+        "ffn_act",
+        "ffn_down",
+        "ffn_sub_norm",
+        "ffn_out",
+        "l_out",
+    };
+    for (const char * base : layered) {
+        if (matches_layered_tensor(name, base)) {
+            return true;
+        }
+    }
     return false;
 }
 
@@ -170,6 +228,23 @@ bool name_values_matches(const char * name) {
     };
     for (const char * target : targets) {
         if (std::strcmp(name, target) == 0) {
+            return true;
+        }
+    }
+    const char * layered[] = {
+        "attn_sub_norm",
+        "attn_o_out",
+        "ffn_inp",
+        "ffn_norm",
+        "ffn_gate",
+        "ffn_up",
+        "ffn_act",
+        "ffn_down",
+        "ffn_sub_norm",
+        "ffn_out",
+    };
+    for (const char * base : layered) {
+        if (matches_layered_tensor(name, base)) {
             return true;
         }
     }

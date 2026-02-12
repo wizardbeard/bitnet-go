@@ -1775,6 +1775,12 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 				if prof != nil {
 					prof.ffnGateUp += time.Since(gateUpStart)
 				}
+				driftGateL2 := float32(0)
+				driftUpL2 := float32(0)
+				if traceDrift {
+					driftGateL2 = vecL2Norm(st.gate)
+					driftUpL2 = vecL2Norm(st.up)
+				}
 				actStart := time.Time{}
 				if prof != nil {
 					actStart = time.Now()
@@ -1815,8 +1821,8 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 						"drift_trace layer=%d ffn_ref x_pre_l2=%g gate_l2=%g up_l2=%g act_l2=%g down_l2=%g x_post_l2=%g\n",
 						i,
 						layerXBeforeFFN,
-						vecL2Norm(st.gate),
-						vecL2Norm(st.up),
+						driftGateL2,
+						driftUpL2,
 						vecL2Norm(st.ffnAct),
 						vecL2Norm(st.ffnDown),
 						vecL2Norm(x),
@@ -1945,6 +1951,12 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 				debugVecValues("ffn_gate", st.gate, debugValuesN)
 				debugVecValues("ffn_up", st.up, debugValuesN)
 			}
+			driftGateL2 := float32(0)
+			driftUpL2 := float32(0)
+			if traceDrift {
+				driftGateL2 = vecL2Norm(st.gate)
+				driftUpL2 = vecL2Norm(st.up)
+			}
 			if shouldDebug(pos) && i == 0 {
 				debugVecStats("ffn_norm", n2)
 				debugVecStats("ffn_gate", st.gate)
@@ -2052,8 +2064,8 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 					"drift_trace layer=%d ffn x_pre_l2=%g gate_l2=%g up_l2=%g act_l2=%g down_l2=%g x_post_l2=%g\n",
 					i,
 					layerXBeforeFFN,
-					vecL2Norm(st.gate),
-					vecL2Norm(st.up),
+					driftGateL2,
+					driftUpL2,
 					vecL2Norm(st.ffnAct),
 					vecL2Norm(st.ffnDown),
 					vecL2Norm(x),
