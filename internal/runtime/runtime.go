@@ -143,6 +143,7 @@ var debugFastQKVCol = os.Getenv("BITNET_FAST_QKV_COL") == "1" && !debugParityStr
 var debugQKVFusedMax = parseEnvInt("BITNET_QKV_FUSED_MAX", 512*512)
 var debugStrictAttnRef = os.Getenv("BITNET_STRICT_ATTENTION_REF") == "1"
 var debugStrictFFNRef = os.Getenv("BITNET_STRICT_FFN_REF") == "1"
+var debugStrictFFNActF64 = os.Getenv("BITNET_STRICT_FFN_ACT_F64") == "1"
 var debugMatchGGML = os.Getenv("BITNET_MATCH_GGML") == "1" || debugParityStrict
 var debugAttnRef = os.Getenv("BITNET_DEBUG_ATTN_REF") == "1"
 var debugFFNRef = os.Getenv("BITNET_DEBUG_FFN_REF") == "1"
@@ -2452,7 +2453,55 @@ func mulSiluReference(dst, gate, up []float32) {
 	}
 }
 
+func mulRelu2F64(dst, gate, up []float32) {
+	n := len(dst)
+	if len(gate) < n {
+		n = len(gate)
+	}
+	if len(up) < n {
+		n = len(up)
+	}
+	for i := 0; i < n; i++ {
+		g := float64(gate[i])
+		if g < 0 {
+			g = 0
+		}
+		u := float64(up[i])
+		dst[i] = float32(g * g * u)
+	}
+	for i := n; i < len(dst); i++ {
+		dst[i] = 0
+	}
+}
+
+func mulSiluF64(dst, gate, up []float32) {
+	n := len(dst)
+	if len(gate) < n {
+		n = len(gate)
+	}
+	if len(up) < n {
+		n = len(up)
+	}
+	for i := 0; i < n; i++ {
+		g := float64(gate[i])
+		u := float64(up[i])
+		s := g / (1.0 + math.Exp(-g))
+		dst[i] = float32(s * u)
+	}
+	for i := n; i < len(dst); i++ {
+		dst[i] = 0
+	}
+}
+
 func ffnActivateInto(dst, gate, up []float32, useSilu bool) {
+	if debugStrictFFNActF64 {
+		if useSilu {
+			mulSiluF64(dst, gate, up)
+			return
+		}
+		mulRelu2F64(dst, gate, up)
+		return
+	}
 	if useSilu {
 		kernels.MulSiluInto(dst, gate, up)
 		return

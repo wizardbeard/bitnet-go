@@ -592,6 +592,8 @@ CPU parity status matrix snapshot:
     - after mapping reference `ffn_out-*` to Go `ffn_act` in the comparator, activation-stage drift is measurable and consistently larger than gate/up drift (for step 14 layer 14: `ffn_act` ~`3.20%` vs `ffn_up` ~`0.45%`, `ffn_gate` ~`0.23%`, `ffn_down` ~`1.40%`).
     - added `ffn_sub_norm` comparison; at step 14 layer 14 it remains below activation drift (`~1.62%` vs `ffn_act ~3.20%`), reinforcing that the largest local divergence appears at/after activation rather than in gate/up projection.
     - token logit remains high on Go vs reference (`8.34671` vs `7.74704838`), so further tightening likely needs deeper activation/output-path drift isolation rather than simple kernel-path toggles.
+- update: added `BITNET_STRICT_FFN_ACT_F64=1` debug path to compute FFN activation in float64 for parity isolation.
+  - result: no meaningful improvement at the `6e-2` failing point; both i2_s and i2_s_2b still fail at step `14`, token `55358` with near-identical Go logit (`~8.346723`), so activation precision alone is not the limiting factor.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).

@@ -268,6 +268,7 @@ If upstream CLI output differs, provide a wrapper command via `BITNET_REF_RUN_CM
   - `BITNET_QKV_FUSED_MAX` caps fused Q/K/V projection by `rows*cols` (default `65536`); larger sizes fall back to separate matvecs.
   - `BITNET_STRICT_ATTENTION_REF=1` routes attention through the ggml-order reference accumulation (debug/analysis).
   - `BITNET_STRICT_FFN_REF=1` routes FFN through the reference activation path (debug/analysis).
+  - `BITNET_STRICT_FFN_ACT_F64=1` computes FFN activation math in float64 (debug/analysis).
   - `BITNET_I2S_REF_DOT=1` uses the map‑to‑{-1,0,1} reference dot for i2_s (ignores actSum; debug/analysis).
   - `BITNET_I2S_REF_ONCE=1` runs a one‑off i2_s ref‑dot comparison and prints max abs/rel deltas.
   - `BITNET_I2S_MAP3_TO1=1` maps i2_s q=3 to 1 before actSum (debug/analysis).
