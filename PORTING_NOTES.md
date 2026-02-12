@@ -405,6 +405,16 @@
     - runtime full_sort median ~2.211e9 ns/op
     - e2e elapsed median ~22.735s
     - e2e throughput median ~0.666 tok/s
+- update: output-projection (`MatVecT`) worker tuning rechecked with repeat harness:
+  - focused microbench (`BenchmarkOutputProjectionF32`, benchtime=2x) favored `BITNET_MATVECT_PAR_WORKERS=4` over `1/6/8` in this sample.
+  - repeat harness A/B (`BITNET_REPEAT_RUNS=4`, `BITNET_MATVEC_THREADS=6`) comparing default auto workers vs `BITNET_MATVECT_PAR_WORKERS=4`:
+    - runtime medians regressed with workers=4:
+      - default_prefix: ~1.252e9 ns/op -> ~1.392e9 ns/op
+      - full_sort: ~1.275e9 ns/op -> ~1.361e9 ns/op
+    - e2e medians improved slightly with workers=4:
+      - elapsed: ~17.117s -> ~16.946s
+      - tok/s: ~0.876 -> ~0.885
+  - result: keep default `BITNET_MATVECT_PAR_WORKERS=0` (auto) for now; signal is mixed and not robust enough to retune globally.
 - update: extended step profiling to include FFN substage attribution (`ffn_norm`, `ffn_gate_up`, `ffn_act`, `ffn_subnorm`, `ffn_down`) for bottleneck targeting.
   - profile snapshot (i7-11800H, same fixture/settings): FFN substage totals over 15 steps were approximately `ffn_gate_up~4.13s`, `ffn_down~2.06s`, `ffn_act~13.0ms`, `ffn_norm~1.4ms`, `ffn_subnorm~4.8ms`.
 - update: added experimental opt-in parallel FFN gate/up projection (`BITNET_FFN_PAR_GATE_UP=1`) in the non-debug FFN path.
