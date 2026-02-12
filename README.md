@@ -15,6 +15,7 @@ Training support (diverges from upstream) will live in this same repo so we can 
 - `sh ./scripts/bench_i2s_kernels_sweep.sh`
 - `sh ./scripts/select_i2s_defaults.sh .bench/i2s-kernels-sweep-summary.tsv`
 - `sh ./scripts/audit_cpu_parity.sh` (full parity matrix audit; set `BITNET_AUDIT_FETCH=1` to fetch fixtures first)
+  - emits stage-by-stage PASS/FAIL and writes a markdown table to `GITHUB_STEP_SUMMARY` in CI
 - Chat prompt template (Llama):
 `go run ./cmd/bitnet --chat-template --system "You are helpful." --user "Hello"`
 - Chat history (repeatable):
