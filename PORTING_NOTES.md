@@ -589,6 +589,7 @@ CPU parity status matrix snapshot:
   - new script: `scripts/compare_i2s_drift_logs.sh` compares Go vs reference L2 norms by layer/metric and reports token-logit delta for the traced step/token.
   - current observation on the `6e-2` failing point (`step=14`, `token=55358`):
     - Go/ref `attn_o_out`, `ffn_gate`, `ffn_up`, and `ffn_down` norms are generally close layer-wise.
+    - after mapping reference `ffn_out-*` to Go `ffn_act` in the comparator, activation-stage drift is measurable and consistently larger than gate/up drift (for step 14 layer 14: `ffn_act` ~`3.20%` vs `ffn_up` ~`0.45%`, `ffn_gate` ~`0.23%`, `ffn_down` ~`1.40%`).
     - token logit remains high on Go vs reference (`8.34671` vs `7.74704838`), so further tightening likely needs deeper activation/output-path drift isolation rather than simple kernel-path toggles.
 
 Progress against Phase 3 performance tuning:

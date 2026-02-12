@@ -57,6 +57,9 @@ awk '
     metric = p[1]
     layer = p[2] + 0
     l2 = rms * sqrt(n)
+    if (metric == "ffn_out") {
+      metric = "ffn_act"
+    }
     if (metric == "attn_o_out" || metric == "ffn_gate" || metric == "ffn_up" || metric == "ffn_act" || metric == "ffn_down") {
       printf "%d\t%s\t%.9g\n", layer, metric, l2
     }
