@@ -576,3 +576,9 @@ Progress against Phase 3 performance tuning:
     - e2e.elapsed: `19.991675 s`
     - e2e.tokps: `0.753229 tok/s`
   - result: default `BITNET_I2S_I8S_FAST_PAR_COLS_MIN` updated from `1024` to `512`.
+- update: captured a short CI-style baseline after the default change (`scripts/bench_perf_repeat.sh`, 3 runs, i7-11800H, `BITNET_MATVEC_THREADS=6`, `BITNET_I2S_I8S_FAST_PAR_COLS_MIN=512`).
+  - runtime.default_prefix median: `894045362 ns/op`
+  - runtime.full_sort median: `900026361 ns/op`
+  - e2e.elapsed median: `13.210763 s`
+  - e2e.tokps median: `1.135438 tok/s`
+  - raw artifact: `.bench/perf-repeat-fastpar512-baseline.tsv`
