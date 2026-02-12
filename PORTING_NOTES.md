@@ -471,6 +471,8 @@ Progress against step 1 (tolerance tightening):
 - validation: same enforced parity commands still pass for both i2_s and i2_s 2B suites under strict teacher-forced mode.
 - update: tightened teacher-forced i2_s default logit tolerances again from `1e-1` to `8e-2`.
 - validation: same enforced parity commands still pass for both i2_s and i2_s 2B suites under strict teacher-forced mode.
+- update: tightened teacher-forced i2_s default logit tolerances again from `8e-2` to `7e-2`.
+- validation: same enforced parity commands still pass for both i2_s and i2_s 2B suites under strict teacher-forced mode.
 
 Progress against step 2 (fixture + CI coverage):
 - update: added base i2_s smoke parity test (`TestParityAgainstI2SSmoke`) to mirror existing 2B smoke coverage.
@@ -514,12 +516,12 @@ Progress against step 6 (freeze/document tolerance policy):
   - runtime defaults (for local debugging) remain:
     - base defaults: `BITNET_PARITY_LOGIT_ATOL=1e-3`, `BITNET_PARITY_LOGIT_RTOL=1e-3`, `BITNET_PARITY_TOPK_STRICT=1`
     - i2_s/i2_s_2b defaults: `BITNET_I2S_LOGIT_ATOL=2e-1`, `BITNET_I2S_LOGIT_RTOL=1e-1`, `BITNET_I2S_TOPK_STRICT=3`, `BITNET_I2S_RELAX_TOPK=1`
-    - i2_s/i2_s_2b teacher-forced defaults: `BITNET_I2S_FORCE_LOGIT_ATOL=8e-2`, `BITNET_I2S_FORCE_LOGIT_RTOL=8e-2`, `BITNET_PARITY_FORCE_RELAX_TOPK=1`
+    - i2_s/i2_s_2b teacher-forced defaults: `BITNET_I2S_FORCE_LOGIT_ATOL=7e-2`, `BITNET_I2S_FORCE_LOGIT_RTOL=7e-2`, `BITNET_PARITY_FORCE_RELAX_TOPK=1`
     - YaRN test default override: `BITNET_PARITY_LOGIT_RTOL=3e-2`, `BITNET_PARITY_TOPK_STRICT=1`
   - CI-pinned merge gates are explicit and authoritative:
     - base: `BITNET_PARITY_LOGIT_ATOL=1e-1`, `BITNET_PARITY_LOGIT_RTOL=1e-1`, `BITNET_PARITY_TOPK_STRICT=1`
     - YaRN: `BITNET_PARITY_LOGIT_ATOL=1e-3`, `BITNET_PARITY_LOGIT_RTOL=3e-2`, `BITNET_PARITY_TOPK_STRICT=1`
-    - i2_s/i2_s_2b teacher-forced: `BITNET_I2S_FORCE_LOGIT_ATOL=8e-2`, `BITNET_I2S_FORCE_LOGIT_RTOL=8e-2`, `BITNET_I2S_TOPK_STRICT=3`, `BITNET_PARITY_FORCE_RELAX_TOPK=1`
+    - i2_s/i2_s_2b teacher-forced: `BITNET_I2S_FORCE_LOGIT_ATOL=7e-2`, `BITNET_I2S_FORCE_LOGIT_RTOL=7e-2`, `BITNET_I2S_TOPK_STRICT=3`, `BITNET_PARITY_FORCE_RELAX_TOPK=1`
   - rationale: preserves stricter defaults for local drift analysis while pinning CI to empirically stable thresholds per fixture family.
 - update: CI parity jobs set explicit env values for base, YaRN, i2_s, and i2_s_2b parity checks so tolerances are policy-pinned (not implicit code defaults).
 - update: runtime llama-layer loader now treats `blk.N.attn_sub_norm.weight` and `blk.N.ffn_sub_norm.weight` as optional; when missing, forward uses identity (no extra sub-norm), which aligns with fixtures that omit these tensors.
