@@ -1797,6 +1797,10 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 				if prof != nil {
 					prof.ffnSubNorm += time.Since(subNormStart)
 				}
+				driftSubNormL2 := float32(0)
+				if traceDrift {
+					driftSubNormL2 = vecL2Norm(st.up)
+				}
 				downStart := time.Time{}
 				if prof != nil {
 					downStart = time.Now()
@@ -1818,12 +1822,13 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 				if traceDrift {
 					fmt.Fprintf(
 						os.Stderr,
-						"drift_trace layer=%d ffn_ref x_pre_l2=%g gate_l2=%g up_l2=%g act_l2=%g down_l2=%g x_post_l2=%g\n",
+						"drift_trace layer=%d ffn_ref x_pre_l2=%g gate_l2=%g up_l2=%g act_l2=%g subnorm_l2=%g down_l2=%g x_post_l2=%g\n",
 						i,
 						layerXBeforeFFN,
 						driftGateL2,
 						driftUpL2,
 						vecL2Norm(st.ffnAct),
+						driftSubNormL2,
 						vecL2Norm(st.ffnDown),
 						vecL2Norm(x),
 					)
@@ -1992,6 +1997,10 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 			if prof != nil {
 				prof.ffnSubNorm += time.Since(subNormStart)
 			}
+			driftSubNormL2 := float32(0)
+			if traceDrift {
+				driftSubNormL2 = vecL2Norm(st.up)
+			}
 			if haveFfnRef {
 				upNormRef := make([]float32, len(st.up))
 				applySubNormOrIdentity(upNormRef, actRef, layer.ffnSubNorm, block.rmsEps)
@@ -2061,12 +2070,13 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 			if traceDrift {
 				fmt.Fprintf(
 					os.Stderr,
-					"drift_trace layer=%d ffn x_pre_l2=%g gate_l2=%g up_l2=%g act_l2=%g down_l2=%g x_post_l2=%g\n",
+					"drift_trace layer=%d ffn x_pre_l2=%g gate_l2=%g up_l2=%g act_l2=%g subnorm_l2=%g down_l2=%g x_post_l2=%g\n",
 					i,
 					layerXBeforeFFN,
 					driftGateL2,
 					driftUpL2,
 					vecL2Norm(st.ffnAct),
+					driftSubNormL2,
 					vecL2Norm(st.ffnDown),
 					vecL2Norm(x),
 				)

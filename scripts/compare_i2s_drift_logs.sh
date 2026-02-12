@@ -35,6 +35,7 @@ awk '
       if ($i ~ /^gate_l2=/) { split($i, a, "="); print layer "\tffn_gate\t" a[2] }
       if ($i ~ /^up_l2=/) { split($i, a, "="); print layer "\tffn_up\t" a[2] }
       if ($i ~ /^act_l2=/) { split($i, a, "="); print layer "\tffn_act\t" a[2] }
+      if ($i ~ /^subnorm_l2=/) { split($i, a, "="); print layer "\tffn_sub_norm\t" a[2] }
       if ($i ~ /^down_l2=/) { split($i, a, "="); print layer "\tffn_down\t" a[2] }
     }
   }
@@ -60,7 +61,7 @@ awk '
     if (metric == "ffn_out") {
       metric = "ffn_act"
     }
-    if (metric == "attn_o_out" || metric == "ffn_gate" || metric == "ffn_up" || metric == "ffn_act" || metric == "ffn_down") {
+    if (metric == "attn_o_out" || metric == "ffn_gate" || metric == "ffn_up" || metric == "ffn_act" || metric == "ffn_sub_norm" || metric == "ffn_down") {
       printf "%d\t%s\t%.9g\n", layer, metric, l2
     }
   }

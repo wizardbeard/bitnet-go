@@ -590,6 +590,7 @@ CPU parity status matrix snapshot:
   - current observation on the `6e-2` failing point (`step=14`, `token=55358`):
     - Go/ref `attn_o_out`, `ffn_gate`, `ffn_up`, and `ffn_down` norms are generally close layer-wise.
     - after mapping reference `ffn_out-*` to Go `ffn_act` in the comparator, activation-stage drift is measurable and consistently larger than gate/up drift (for step 14 layer 14: `ffn_act` ~`3.20%` vs `ffn_up` ~`0.45%`, `ffn_gate` ~`0.23%`, `ffn_down` ~`1.40%`).
+    - added `ffn_sub_norm` comparison; at step 14 layer 14 it remains below activation drift (`~1.62%` vs `ffn_act ~3.20%`), reinforcing that the largest local divergence appears at/after activation rather than in gate/up projection.
     - token logit remains high on Go vs reference (`8.34671` vs `7.74704838`), so further tightening likely needs deeper activation/output-path drift isolation rather than simple kernel-path toggles.
 
 Progress against Phase 3 performance tuning:
