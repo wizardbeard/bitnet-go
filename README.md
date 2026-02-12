@@ -43,6 +43,8 @@ Quick inference benchmark (wall time and tok/s):
 `sh ./scripts/bench_infer.sh`
 Repeated perf harness (runtime + e2e medians/p95):
 `sh ./scripts/bench_perf_repeat.sh`
+Thread-sweep wrapper for repeated perf harness:
+`sh ./scripts/bench_perf_repeat_matrix.sh`
 Overrides:
 - `BITNET_BENCH_MODEL`
 - `BITNET_BENCH_PROMPT` or `BITNET_BENCH_PROMPT_FILE`
@@ -53,6 +55,7 @@ Overrides:
 - `BITNET_BENCH_BATCH`
 - `BITNET_BENCH_SWEEP=1` (run batch sweep 1/2/4)
 - `BITNET_REPEAT_RUNS` (for `bench_perf_repeat.sh`, default `5`)
+- `BITNET_REPEAT_THREADS` (for `bench_perf_repeat_matrix.sh`, default `"1 4 6 8"`)
 - `BITNET_FORCE_AVX2=1` (force AVX2 i2_s i8_s matvec fast path on amd64+cgo; auto-detects when available)
 - `BITNET_MATVEC_THREADS` (enable parallel i2_s i8_s matvec when AVX2 is unavailable; tune per host, `4-8` is a good starting range on 8-core CPUs)
 - `BITNET_I2S_I8S_DISABLE_FAST=1` (disable AVX2 i2_s+i8_s fast paths to tune fallback dispatch behavior)
@@ -111,6 +114,10 @@ CI note:
   test can run when enabled.
 - CI also runs non-gating benchmark jobs (`bench-smoke`, `bench-kernels`, `bench-runtime`) to track perf regressions.
 - CI also runs a non-gating targeted i2_s+i8_s kernel benchmark (`bench-i2s-kernels`) and uploads the result artifact (`.bench/i2s-kernels.txt`).
+- CI also runs a non-gating repeat-harness thread sweep (`bench-perf-repeat`) and uploads:
+  - `.bench/perf-repeat-summary.tsv` (medians by thread)
+  - `.bench/perf-repeat-best.env` (selected best thread on that runner)
+  - `.bench/perf-repeat-threads*.tsv` (raw per-run results)
 - CI also runs a non-gating arm64 i2_s benchmark+sweep job and uploads arm64 artifacts (`bench-i2s-kernels-arm64`, `bench-i2s-sweep-arm64`).
   - arm64 job also uploads machine-readable sweep summary (`bench-i2s-sweep-summary-arm64`) and suggested env defaults (`i2s-defaults-arm64`).
 

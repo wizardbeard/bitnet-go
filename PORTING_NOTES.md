@@ -604,3 +604,7 @@ Progress against Phase 3 performance tuning:
     - e2e.elapsed: `12.640325 s`
     - e2e.tokps: `1.186678 tok/s`
   - result: on this i7-11800H host, keep `BITNET_MATVEC_THREADS=8` as the recommended local benchmark baseline (`6` remains close and acceptable where CPU contention is higher).
+- update: added CI-oriented repeat-harness thread sweep automation.
+  - new script: `scripts/bench_perf_repeat_matrix.sh` runs `bench_perf_repeat.sh` over a thread list (`BITNET_REPEAT_THREADS`, default `1 4 6 8`) and emits `.bench/perf-repeat-summary.tsv` with median metrics per thread.
+  - new script: `scripts/select_perf_repeat_threads.sh` selects the best thread (highest median tok/s, tie-break by lower elapsed) and writes `.bench/perf-repeat-best.env`.
+  - CI (`.github/workflows/ci.yml`) now runs this sweep non-gating and uploads summary + raw TSV artifacts.

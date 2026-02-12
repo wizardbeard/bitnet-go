@@ -161,6 +161,32 @@ jobs:
         run: |
           go test ./... -bench . -benchmem
         continue-on-error: true
+      - name: bench-perf-repeat-threads
+        run: |
+          BITNET_REPEAT_RUNS=2 \
+          BITNET_REPEAT_THREADS="1 4 6 8" \
+          BITNET_I2S_I8S_FAST_PAR_COLS_MIN=512 \
+          ./scripts/bench_perf_repeat_matrix.sh
+        continue-on-error: true
+      - name: select-perf-repeat-threads
+        if: always()
+        run: |
+          if [ -f .bench/perf-repeat-summary.tsv ]; then
+            ./scripts/select_perf_repeat_threads.sh .bench/perf-repeat-summary.tsv
+          else
+            echo "Skipping select step (summary missing)"
+          fi
+        continue-on-error: true
+      - name: upload-bench-perf-repeat
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-perf-repeat
+          path: |
+            .bench/perf-repeat-summary.tsv
+            .bench/perf-repeat-best.env
+            .bench/perf-repeat-threads*.tsv
+          if-no-files-found: warn
       - name: bench-kernels
         run: |
           go test ./internal/kernels -bench . -benchmem
