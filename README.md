@@ -60,7 +60,7 @@ Overrides:
 - `BITNET_I2S_I8S_PAR_CHUNK_ROWS` / `BITNET_I2S_I8S_PAR_CHUNK_COLS` (parallel fallback chunk overrides; default auto)
 - `BITNET_I2S_I8S_BLOCK_MIN_ROWS` (minimum rows for block-decode path in fallback kernels, default `256`)
 - `BITNET_I2S_I8S_FAST_MIN_ELEMS` (minimum `rows*cols` to use AVX2 fast path when available, default `0`)
-- `BITNET_I2S_I8S_FAST_PAR_COLS_MIN` (minimum output cols for transposed fast-range parallel split; default `1024`)
+- `BITNET_I2S_I8S_FAST_PAR_COLS_MIN` (minimum output cols for transposed fast-range parallel split; default `512`)
 - `BITNET_I2S_I8S_FAST_PAR_NT_COLS_MIN` (minimum input cols for non-transposed fast-range parallel split; default `0` / disabled)
   - sweep note (i7-11800H, fallback path): current defaults outperformed tested alternatives (`min_1024`, fixed chunk sizes, `block_min_rows=128`)
 - Arm64-specific overrides use the same suffix with `BITNET_ARM64_` prefix (example: `BITNET_ARM64_I2S_I8S_BLOCK_MIN_ROWS=256`).

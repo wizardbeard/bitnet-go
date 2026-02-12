@@ -562,3 +562,17 @@ CPU parity status matrix snapshot:
   - seed determinism: CI-enforced (shared fixture determinism test)
 - Maintained fixture GGUF compatibility:
   - `TestMaintainedFixtureTensorTypesSupported` enforces tensor-type decode support for all maintained fixtures that are present locally.
+
+Progress against Phase 3 performance tuning:
+- update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).
+  - `BITNET_I2S_I8S_FAST_PAR_COLS_MIN=1024` medians:
+    - runtime.default_prefix: `1305176586 ns/op`
+    - runtime.full_sort: `1261591568 ns/op`
+    - e2e.elapsed: `20.128357 s`
+    - e2e.tokps: `0.747389 tok/s`
+  - `BITNET_I2S_I8S_FAST_PAR_COLS_MIN=512` medians:
+    - runtime.default_prefix: `1245010329 ns/op`
+    - runtime.full_sort: `1209461384 ns/op`
+    - e2e.elapsed: `19.991675 s`
+    - e2e.tokps: `0.753229 tok/s`
+  - result: default `BITNET_I2S_I8S_FAST_PAR_COLS_MIN` updated from `1024` to `512`.
