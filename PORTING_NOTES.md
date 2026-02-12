@@ -652,6 +652,16 @@ CPU parity status matrix snapshot:
     - `Kcur`: mean abs `~0.04523`, max abs `~0.12179`
     - `Vcur`: mean abs `~0.14084`, max abs `~0.34227`
   - conclusion: local Q/K/V projection kernels match f32 references closely; cross-impl divergence is already present in Q/K/V tensors (especially `Vcur`) before attention accumulation/output kernels.
+- update: added V-cache store/readback roundtrip tracing for layout/indexing verification:
+  - drift trace now emits:
+    - `drift_trace v_cache layer=... layout=... mean_abs=... max_abs=...`
+    - `drift_trace values ... name=v_pre_store`
+    - `drift_trace values ... name=v_post_store`
+  - measured at step 14 / layer 14:
+    - strict/reference path (`layout=ref`): `mean_abs=0`, `max_abs=0`
+    - optimized path (`layout=opt`, `BITNET_DRIFT_TRACE_PARITY_STRICT=0`, `BITNET_KV_ROWMAJOR=0`): `mean_abs=0`, `max_abs=0`
+    - row-major path (`layout=rowmajor`, `BITNET_DRIFT_TRACE_PARITY_STRICT=0`, `BITNET_KV_ROWMAJOR=1`): `mean_abs=0`, `max_abs=0`
+  - conclusion: V cache write/read indexing is correct across supported layouts on this host; current i2_s parity gap is not caused by cache storage permutation/stride errors.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).

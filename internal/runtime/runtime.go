@@ -1782,6 +1782,23 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 				storeCacheVectorV(st.values, pos, st.v, block.kvHeads)
 				causalAttentionMultiHeadInto(st.attnAcc, st.scores, st.q, st.keys, st.values, pos+1, block.attnHeads, block.kvHeads, len(st.k), len(st.v), pos)
 			}
+			if traceDrift && (driftTraceLayer < 0 || driftTraceLayer == i) {
+				rowMajor := attnPath == "rowmajor"
+				cacheV := loadCacheVectorV(st.values, pos, len(st.v), block.kvHeads, rowMajor)
+				vMean, vMax := vecAbsDiffStats(st.v, cacheV)
+				fmt.Fprintf(
+					os.Stderr,
+					"drift_trace v_cache layer=%d layout=%s mean_abs=%g max_abs=%g\n",
+					i,
+					attnPath,
+					vMean,
+					vMax,
+				)
+				if driftTraceValuesN > 0 {
+					fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=v_pre_store values=%s\n", i, vecValuesCSV(st.v, driftTraceValuesN))
+					fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=v_post_store values=%s\n", i, vecValuesCSV(cacheV, driftTraceValuesN))
+				}
+			}
 			if traceDrift && driftAttnAccRef && (driftTraceLayer < 0 || driftTraceLayer == i) {
 				if attnPath == "rowmajor" {
 					fmt.Fprintf(os.Stderr, "drift_trace attn_acc_ref layer=%d path=%s skipped=1\n", i, attnPath)
@@ -2702,6 +2719,39 @@ func storeCacheVector(cache []float32, pos int, vec []float32) {
 
 func storeCacheVectorV(cache []float32, pos int, vec []float32, kvHeads int) {
 	storeCacheVectorVImpl(cache, pos, vec, kvHeads)
+}
+
+func loadCacheVectorV(cache []float32, pos int, vecLen int, kvHeads int, rowMajor bool) []float32 {
+	out := make([]float32, vecLen)
+	if kvHeads <= 0 || vecLen == 0 {
+		return out
+	}
+	if vecLen%kvHeads != 0 {
+		kvHeads = 1
+	}
+	headDim := vecLen / kvHeads
+	if headDim == 0 {
+		return out
+	}
+	maxSeq := 0
+	if vecLen > 0 {
+		maxSeq = len(cache) / vecLen
+	}
+	if maxSeq <= 0 || pos < 0 || pos >= maxSeq {
+		return out
+	}
+	for h := 0; h < kvHeads; h++ {
+		baseHead := h * headDim
+		if rowMajor {
+			rowBase := h*maxSeq*headDim + pos*headDim
+			copy(out[baseHead:baseHead+headDim], cache[rowBase:rowBase+headDim])
+			continue
+		}
+		for d := 0; d < headDim; d++ {
+			out[baseHead+d] = cache[h*headDim*maxSeq+d*maxSeq+pos]
+		}
+	}
+	return out
 }
 
 func seedToken(seed int64, vocab int) int32 {
