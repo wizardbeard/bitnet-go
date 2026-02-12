@@ -1852,6 +1852,11 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 					)
 				}
 			}
+			if traceDrift && driftTraceValuesN > 0 && (driftTraceLayer < 0 || driftTraceLayer == i) {
+				if w := attnHead0WeightsNormalized(st.scores, pos+1); len(w) > 0 {
+					fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=attn_softmax_h0 values=%s\n", i, vecValuesCSV(w, driftTraceValuesN))
+				}
+			}
 
 			applySubNormOrIdentity(n2, st.attnAcc, layer.attnSubNorm, block.rmsEps)
 			if debugStages && shouldDebug(pos) && i == 0 {
@@ -3047,6 +3052,26 @@ func vecAbsDiffStats(a, b []float32) (meanAbs, maxAbs float32) {
 		}
 	}
 	return sum / float32(n), maxAbs
+}
+
+func attnHead0WeightsNormalized(scores []float32, steps int) []float32 {
+	if steps <= 0 || len(scores) < steps {
+		return nil
+	}
+	out := make([]float32, steps)
+	copy(out, scores[:steps])
+	var sum float32
+	for i := range out {
+		sum += out[i]
+	}
+	if sum <= 0 {
+		return out
+	}
+	inv := 1 / sum
+	for i := range out {
+		out[i] *= inv
+	}
+	return out
 }
 
 func vecValuesCSV(v []float32, n int) string {

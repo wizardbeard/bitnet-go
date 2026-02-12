@@ -683,6 +683,14 @@ CPU parity status matrix snapshot:
   - at step 14 / layer 14:
     - probe winner remains `identity` (`mean_abs~0.140841`, `max_abs~0.342274`, `kv_heads=5`, `head_dim=128`).
   - conclusion: the observed Vcur drift is not explained by a simple head permutation or head/dim layout reinterpretation mismatch.
+- update: added attention softmax-weight drift comparison hooks:
+  - Go drift trace now emits normalized head-0 attention weights:
+    - `drift_trace values layer=... name=attn_softmax_h0 ...`
+  - reference tracer now emits layered `kq_soft_max_ext-*` values (not only layer 0).
+  - comparator maps `attn_softmax_h0 -> kq_soft_max_ext` and can now report softmax-slice deltas directly.
+  - at step 14 / layer 14 (first 16 values):
+    - `attn_softmax_h0` vs `kq_soft_max_ext`: mean abs `~0.0622402`, max abs `~0.933904` (index 0; Go `0`, ref `0.933904`).
+  - interpretation: attention-weight path shows a much larger discrepancy than local RoPE/QKV-kernel/cache checks; next refinement should verify exact tensor-row alignment semantics between Go extraction and ref `kq_soft_max_ext-*` export before attributing all of this to compute drift.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).

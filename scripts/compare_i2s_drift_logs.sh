@@ -9,6 +9,9 @@ TRACE_NAME=${BITNET_DRIFT_COMPARE_NAME:-ffn_sub_norm}
 TRACE_REF_NAME=${BITNET_DRIFT_COMPARE_REF_NAME:-$TRACE_NAME}
 
 case "$TRACE_NAME" in
+  attn_softmax_h0)
+    TRACE_REF_NAME=${BITNET_DRIFT_COMPARE_REF_NAME:-kq_soft_max_ext}
+    ;;
   x_post_attn)
     TRACE_REF_NAME=${BITNET_DRIFT_COMPARE_REF_NAME:-ffn_inp}
     ;;
