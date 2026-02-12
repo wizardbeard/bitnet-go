@@ -616,6 +616,11 @@ CPU parity status matrix snapshot:
     - `attn_o_out` vs ref `attn_o_out`: mean abs `~2.97701`, max abs `~6.76165`.
     - `x_post_attn` vs ref `ffn_inp`: mean abs `~42.1157`, max abs `~76.8915`.
   - compared to post-FFN (`x_post_ffn` mean abs `~44.6648`), the residual-state drift is already large by `x_post_attn`, indicating most divergence is introduced pre-FFN and then carried through FFN rather than created solely within FFN.
+- update: added attention sub-norm layer-value drift tracing:
+  - Go drift trace now emits `attn_sub_norm` value slices per layer when drift value tracing is enabled.
+  - with step 14 / layer 14 (first 16 values):
+    - `attn_sub_norm` vs ref `attn_sub_norm`: mean abs `~0.014648`, max abs `~0.050368`.
+  - this is much smaller than `attn_o_out` (`~2.98`) and `x_post_attn` (`~42.12`) at the same layer, which narrows likely amplification to the attention output projection + residual accumulation path rather than the pre-projection attention accumulation/sub-norm stage.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).
