@@ -574,6 +574,15 @@ CPU parity status matrix snapshot:
 - update: CI now includes a dedicated `cpu-parity-audit` job that executes `./scripts/audit_cpu_parity.sh` with fixture fetch enabled (`BITNET_AUDIT_FETCH=1`) so the full parity matrix is continuously re-verified via the same single command used locally.
 - update: reduced CI duplication by removing parity/tokenizer/seed/smoke-specific steps from the main `go` job; those checks are now centralized in `cpu-parity-audit` while the `go` job remains focused on fmt/vet/unit tests and benchmark artifact generation.
 - update: `audit_cpu_parity.sh` now reports named stage PASS/FAIL and emits a markdown summary table (including failure point) to `GITHUB_STEP_SUMMARY` when running in CI.
+- update: continued i2_s teacher-forced tolerance ratchet investigation:
+  - `7e-2` remains green for both `TestParityAgainstI2SVectors` and `TestParityAgainstI2S2BVectors`.
+  - `6e-2` fails consistently for both suites at step `14`, token `55358` (`got=8.346710`, `want=7.747048`).
+  - strict debug toggles (`BITNET_I2S_SCALAR=1`, `BITNET_STRICT_FFN_REF=1`, `BITNET_STRICT_ATTENTION_REF=1`) did not change this failing point.
+- update: added targeted drift instrumentation for parity debugging:
+  - new runtime env knobs:
+    - `BITNET_DRIFT_TRACE_STEP` (emit per-layer attn/FFN L2 summaries for one decode step)
+    - `BITNET_DRIFT_TRACE_TOKEN` (include selected token logit in trace output)
+  - new helper script: `scripts/trace_i2s_drift_step.sh` to run parity with drift trace and capture log artifacts under `.bench/`.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).

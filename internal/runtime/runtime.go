@@ -173,6 +173,8 @@ var decodeCacheCapDefault = parseEnvInt("BITNET_DECODE_CACHE_CAP", 256)
 var decodeCacheMaxTokensDefault = parseEnvInt("BITNET_DECODE_CACHE_MAX_TOKENS", 64)
 var profileLoad = os.Getenv("BITNET_PROFILE_LOAD") == "1"
 var profileStep = os.Getenv("BITNET_PROFILE_STEP") == "1"
+var driftTraceStep = parseEnvInt("BITNET_DRIFT_TRACE_STEP", -1)
+var driftTraceToken = parseEnvInt("BITNET_DRIFT_TRACE_TOKEN", -1)
 var ffnShareI2SQuant = os.Getenv("BITNET_FFN_SHARE_I2S_QUANT") != "0"
 var ffnShareI2SDown = os.Getenv("BITNET_FFN_SHARE_I2S_DOWN") != "0"
 var ffnParGateUp = os.Getenv("BITNET_FFN_PAR_GATE_UP") == "1"
@@ -1349,9 +1351,9 @@ func runForwardLlamaStack(block *tensorBlock, seed int64, promptTokens []int32, 
 		fastGreedy := fastGreedyArgmax && cfg.temp <= 0 && topk == nil && i >= len(forceTokens) && !debugStep0
 		var next int
 		if fastGreedy {
-			next = runLlamaStackStepProfile(block, layerStates, currentToken, stepPos, x, n1, n2, logits, false, stepProfile)
+			next = runLlamaStackStepProfile(block, layerStates, currentToken, stepPos, i, x, n1, n2, logits, false, stepProfile)
 		} else {
-			runLlamaStackStepProfile(block, layerStates, currentToken, stepPos, x, n1, n2, logits, true, stepProfile)
+			runLlamaStackStepProfile(block, layerStates, currentToken, stepPos, i, x, n1, n2, logits, true, stepProfile)
 			if topk != nil {
 				if stepProfile != nil {
 					t := time.Now()
@@ -1538,10 +1540,14 @@ func makeLlamaLayerState(layer llamaLayer, hiddenDim, maxSeq, heads int) llamaLa
 }
 
 func runLlamaStackStep(block *tensorBlock, layerStates []llamaLayerState, token int32, pos int, x, n1, n2, logits []float32, computeLogits bool) int {
-	return runLlamaStackStepProfile(block, layerStates, token, pos, x, n1, n2, logits, computeLogits, nil)
+	return runLlamaStackStepProfile(block, layerStates, token, pos, -1, x, n1, n2, logits, computeLogits, nil)
 }
 
-func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState, token int32, pos int, x, n1, n2, logits []float32, computeLogits bool, prof *llamaStepProfile) int {
+func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState, token int32, pos int, decodeStep int, x, n1, n2, logits []float32, computeLogits bool, prof *llamaStepProfile) int {
+	traceDrift := driftTraceStep >= 0 && decodeStep == driftTraceStep
+	if traceDrift {
+		fmt.Fprintf(os.Stderr, "drift_trace step=%d pos=%d token=%d layers=%d\n", decodeStep, pos, token, len(block.layers))
+	}
 	embedStart := time.Time{}
 	if prof != nil {
 		embedStart = time.Now()
@@ -1630,6 +1636,10 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 	for i := range block.layers {
 		layer := block.layers[i]
 		st := &layerStates[i]
+		layerXBeforeAttn := float32(0)
+		if traceDrift {
+			layerXBeforeAttn = vecL2Norm(x)
+		}
 
 		attnStart := time.Time{}
 		if prof != nil {
@@ -1721,6 +1731,16 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 				debugVecStats("attn_o_out-0", st.attnOut)
 				debugVecStats("x.post_attn", x)
 			}
+			if traceDrift {
+				fmt.Fprintf(
+					os.Stderr,
+					"drift_trace layer=%d attn x_pre_l2=%g attn_out_l2=%g x_post_l2=%g\n",
+					i,
+					layerXBeforeAttn,
+					vecL2Norm(st.attnOut),
+					vecL2Norm(x),
+				)
+			}
 		} else if shouldDebug(pos) && i == 0 {
 			fmt.Fprintln(os.Stderr, "debug attn: disabled")
 		}
@@ -1731,6 +1751,10 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 		ffnStart := time.Time{}
 		if prof != nil {
 			ffnStart = time.Now()
+		}
+		layerXBeforeFFN := float32(0)
+		if traceDrift {
+			layerXBeforeFFN = vecL2Norm(x)
 		}
 		if !disableFFN {
 			if debugStrictFFNRef {
@@ -1784,6 +1808,19 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 					debugVecStats("ffn_act", st.ffnAct)
 					debugVecStats("ffn_down", st.ffnDown)
 					debugVecStats("x.post_ffn", x)
+				}
+				if traceDrift {
+					fmt.Fprintf(
+						os.Stderr,
+						"drift_trace layer=%d ffn_ref x_pre_l2=%g gate_l2=%g up_l2=%g act_l2=%g down_l2=%g x_post_l2=%g\n",
+						i,
+						layerXBeforeFFN,
+						vecL2Norm(st.gate),
+						vecL2Norm(st.up),
+						vecL2Norm(st.ffnAct),
+						vecL2Norm(st.ffnDown),
+						vecL2Norm(x),
+					)
 				}
 				if prof != nil {
 					prof.ffn += time.Since(ffnStart)
@@ -2009,6 +2046,19 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 				debugVecStats("ffn_down", st.ffnDown)
 				debugVecStats("x.post_ffn", x)
 			}
+			if traceDrift {
+				fmt.Fprintf(
+					os.Stderr,
+					"drift_trace layer=%d ffn x_pre_l2=%g gate_l2=%g up_l2=%g act_l2=%g down_l2=%g x_post_l2=%g\n",
+					i,
+					layerXBeforeFFN,
+					vecL2Norm(st.gate),
+					vecL2Norm(st.up),
+					vecL2Norm(st.ffnAct),
+					vecL2Norm(st.ffnDown),
+					vecL2Norm(x),
+				)
+			}
 		} else if shouldDebug(pos) && i == 0 {
 			fmt.Fprintln(os.Stderr, "debug ffn: disabled")
 		}
@@ -2040,6 +2090,28 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 	}
 	if computeLogits {
 		linearApplyIntoWeight(logits, w, n1)
+		if traceDrift {
+			bestTok, bestLogit := argmaxLogit(logits)
+			if driftTraceToken >= 0 && driftTraceToken < len(logits) {
+				fmt.Fprintf(
+					os.Stderr,
+					"drift_trace logits step=%d token=%d logit=%g argmax_token=%d argmax_logit=%g\n",
+					decodeStep,
+					driftTraceToken,
+					logits[driftTraceToken],
+					bestTok,
+					bestLogit,
+				)
+			} else {
+				fmt.Fprintf(
+					os.Stderr,
+					"drift_trace logits step=%d argmax_token=%d argmax_logit=%g\n",
+					decodeStep,
+					bestTok,
+					bestLogit,
+				)
+			}
+		}
 		if prof != nil {
 			prof.output += time.Since(outputStart)
 		}
@@ -2586,6 +2658,32 @@ func applySubNormOrIdentity(dst, x, weight []float32, eps float32) {
 		return
 	}
 	copy(dst, x)
+}
+
+func vecL2Norm(v []float32) float32 {
+	if len(v) == 0 {
+		return 0
+	}
+	var sum float64
+	for _, x := range v {
+		sum += float64(x) * float64(x)
+	}
+	return float32(math.Sqrt(sum))
+}
+
+func argmaxLogit(logits []float32) (int, float32) {
+	if len(logits) == 0 {
+		return -1, 0
+	}
+	bestIdx := 0
+	bestVal := logits[0]
+	for i := 1; i < len(logits); i++ {
+		if logits[i] > bestVal {
+			bestVal = logits[i]
+			bestIdx = i
+		}
+	}
+	return bestIdx, bestVal
 }
 
 func debugVecStats(label string, v []float32) {

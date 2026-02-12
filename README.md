@@ -16,6 +16,7 @@ Training support (diverges from upstream) will live in this same repo so we can 
 - `sh ./scripts/select_i2s_defaults.sh .bench/i2s-kernels-sweep-summary.tsv`
 - `sh ./scripts/audit_cpu_parity.sh` (full parity matrix audit; set `BITNET_AUDIT_FETCH=1` to fetch fixtures first)
   - emits stage-by-stage PASS/FAIL and writes a markdown table to `GITHUB_STEP_SUMMARY` in CI
+- `sh ./scripts/trace_i2s_drift_step.sh i2s` (capture per-layer drift trace for a target parity step/token; defaults step `14`, token `55358`)
 - Chat prompt template (Llama):
 `go run ./cmd/bitnet --chat-template --system "You are helpful." --user "Hello"`
 - Chat history (repeatable):
@@ -270,6 +271,8 @@ If upstream CLI output differs, provide a wrapper command via `BITNET_REF_RUN_CM
   - `BITNET_I2S_MAP3_TO1=1` maps i2_s q=3 to 1 before actSum (debug/analysis).
   - `BITNET_I2S_ALT_LAYOUT=1` treats packed i2_s weights as row‑major for debug/layout comparison.
   - `BITNET_I2S_SCALAR=1` forces scalar i2_s dot (no block decode) for drift analysis.
+  - `BITNET_DRIFT_TRACE_STEP=<n>` enables per-layer attn/FFN norm tracing for decode step `n`.
+  - `BITNET_DRIFT_TRACE_TOKEN=<id>` prints the selected token logit during drift tracing.
   - `BITNET_FFN_SHARE_I2S_QUANT` controls shared i2_s FFN input quantization for `ffn_gate` + `ffn_up`.
     - Default is enabled (`1` behavior). Set `BITNET_FFN_SHARE_I2S_QUANT=0` to disable for A/B checks.
   - `BITNET_FFN_SHARE_I2S_DOWN` controls shared i2_s FFN down-projection quantization scratch reuse.
