@@ -172,6 +172,7 @@ jobs:
         if: always()
         run: |
           if [ -f .bench/perf-repeat-summary.tsv ]; then
+            ./scripts/validate_perf_repeat_summary.sh .bench/perf-repeat-summary.tsv
             ./scripts/select_perf_repeat_threads.sh .bench/perf-repeat-summary.tsv
           else
             echo "Skipping select step (summary missing)"

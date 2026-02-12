@@ -118,6 +118,7 @@ CI note:
   - `.bench/perf-repeat-summary.tsv` (medians by thread)
   - `.bench/perf-repeat-best.env` (selected best thread on that runner)
   - `.bench/perf-repeat-threads*.tsv` (raw per-run results)
+  - summary schema is validated in CI via `scripts/validate_perf_repeat_summary.sh` before selecting best thread
 - CI also runs a non-gating arm64 i2_s benchmark+sweep job and uploads arm64 artifacts (`bench-i2s-kernels-arm64`, `bench-i2s-sweep-arm64`).
   - arm64 job also uploads machine-readable sweep summary (`bench-i2s-sweep-summary-arm64`) and suggested env defaults (`i2s-defaults-arm64`).
 
