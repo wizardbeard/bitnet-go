@@ -1753,6 +1753,16 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 				)
 			}
 			if traceDrift && driftTraceValuesN > 0 && (driftTraceLayer < 0 || driftTraceLayer == i) {
+				fmt.Fprintf(
+					os.Stderr,
+					"drift_trace qkv_dims layer=%d q_heads=%d kv_heads=%d q_len=%d k_len=%d v_len=%d\n",
+					i,
+					block.attnHeads,
+					block.kvHeads,
+					len(st.q),
+					len(st.k),
+					len(st.v),
+				)
 				fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=Qcur values=%s\n", i, vecValuesCSV(st.q, driftTraceValuesN))
 				fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=Kcur values=%s\n", i, vecValuesCSV(st.k, driftTraceValuesN))
 				fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=Vcur values=%s\n", i, vecValuesCSV(st.v, driftTraceValuesN))

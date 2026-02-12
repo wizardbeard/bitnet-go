@@ -253,6 +253,102 @@ if [ -n "${go_layer_values:-}" ] && [ -n "${ref_layer_values:-}" ]; then
     }
   ')
   echo "[drift-compare] layer-values $layer_values_delta"
+
+  if [ "$TRACE_NAME" = "Vcur" ]; then
+    qkv_dims=$(awk -v layer="$TRACE_LAYER" '
+      $1=="drift_trace" && $2=="qkv_dims" {
+        gotLayer = ""
+        kv = ""
+        vlen = ""
+        for (i = 1; i <= NF; i++) {
+          if ($i ~ /^layer=/) { split($i, a, "="); gotLayer = a[2] }
+          if ($i ~ /^kv_heads=/) { split($i, a, "="); kv = a[2] }
+          if ($i ~ /^v_len=/) { split($i, a, "="); vlen = a[2] }
+        }
+        if (gotLayer == layer && kv != "" && vlen != "") {
+          print kv "," vlen
+          exit
+        }
+      }
+    ' "$GO_LOG")
+    if [ -n "${qkv_dims:-}" ]; then
+      kv_heads=${qkv_dims%%,*}
+      v_len=${qkv_dims##*,}
+      if [ -n "${kv_heads:-}" ] && [ "$kv_heads" -gt 0 ] && [ -n "${v_len:-}" ] && [ "$v_len" -gt 0 ]; then
+        layout_probe=$(awk -v g="$go_layer_values" -v r="$ref_layer_values" -v kv_heads="$kv_heads" -v v_len="$v_len" '
+          function absf(x) { return x < 0 ? -x : x }
+          function eval_identity(   i,d,sum,maxd,maxi,mean) {
+            sum=0; maxd=-1; maxi=-1
+            for (i=1; i<=n; i++) {
+              d = absf(ga[i] - ra[i])
+              sum += d
+              if (d > maxd) { maxd = d; maxi = i-1 }
+            }
+            mean = sum / n
+            if (best_mean < 0 || mean < best_mean) {
+              best_mean = mean; best_max = maxd; best_name = "identity"; best_idx = maxi
+            }
+          }
+          function eval_head_shift(shift,   i,h,dim,ri,d,sum,maxd,maxi,mean) {
+            sum=0; maxd=-1; maxi=-1
+            for (i=0; i<n; i++) {
+              h = int(i / head_dim)
+              dim = i % head_dim
+              ri = ((h + shift) % kv_heads) * head_dim + dim
+              d = absf(ga[i+1] - ra[ri+1])
+              sum += d
+              if (d > maxd) { maxd = d; maxi = i }
+            }
+            mean = sum / n
+            if (best_mean < 0 || mean < best_mean) {
+              best_mean = mean; best_max = maxd; best_name = sprintf("head_shift_%d", shift); best_idx = maxi
+            }
+          }
+          function eval_head_dim_transpose(   i,h,dim,ri,d,sum,maxd,maxi,mean) {
+            sum=0; maxd=-1; maxi=-1
+            for (i=0; i<n; i++) {
+              h = int(i / head_dim)
+              dim = i % head_dim
+              ri = dim * kv_heads + h
+              d = absf(ga[i+1] - ra[ri+1])
+              sum += d
+              if (d > maxd) { maxd = d; maxi = i }
+            }
+            mean = sum / n
+            if (best_mean < 0 || mean < best_mean) {
+              best_mean = mean; best_max = maxd; best_name = "head_dim_transpose"; best_idx = maxi
+            }
+          }
+          BEGIN {
+            ng = split(g, ga, ",")
+            nr = split(r, ra, ",")
+            n = ng
+            if (nr < n) n = nr
+            if (n <= 0 || kv_heads <= 0 || v_len <= 0 || (v_len % kv_heads) != 0) {
+              print "probe=unavailable"
+              exit
+            }
+            head_dim = int(v_len / kv_heads)
+            if (head_dim <= 0 || n > v_len) {
+              print "probe=unavailable"
+              exit
+            }
+            best_mean = -1
+            best_max = -1
+            best_name = ""
+            best_idx = -1
+            eval_identity()
+            for (s = 1; s < kv_heads; s++) {
+              eval_head_shift(s)
+            }
+            eval_head_dim_transpose()
+            printf "probe_best=%s n=%d mean_abs=%g max_abs=%g max_idx=%d kv_heads=%d head_dim=%d", best_name, n, best_mean, best_max, best_idx, kv_heads, head_dim
+          }
+        ')
+        echo "[drift-compare] vcur-layout $layout_probe"
+      fi
+    fi
+  fi
 fi
 
 if [ -n "${go_step:-}" ] && [ -n "${go_token:-}" ]; then

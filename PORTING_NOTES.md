@@ -671,6 +671,18 @@ CPU parity status matrix snapshot:
     - `q_mean_abs~1.66e-08`, `q_max_abs~2.38e-07`
     - `k_mean_abs~3.76e-08`, `k_max_abs~4.77e-07`
   - conclusion: RoPE numerical implementation is effectively identical at the traced failing point; remaining drift is not explained by local RoPE precision/rotation math.
+- update: added Vcur layout/permutation probe in drift comparator:
+  - Go drift trace now emits per-layer QKV shape metadata:
+    - `drift_trace qkv_dims layer=... q_heads=... kv_heads=... q_len=... k_len=... v_len=...`
+  - comparator now emits an additional line for `TRACE_NAME=Vcur`:
+    - `drift-compare vcur-layout probe_best=...`
+  - probe candidates include:
+    - identity mapping,
+    - KV-head block cyclic shifts,
+    - head/dim transpose mapping.
+  - at step 14 / layer 14:
+    - probe winner remains `identity` (`mean_abs~0.140841`, `max_abs~0.342274`, `kv_heads=5`, `head_dim=128`).
+  - conclusion: the observed Vcur drift is not explained by a simple head permutation or head/dim layout reinterpretation mismatch.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).
