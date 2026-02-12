@@ -276,6 +276,8 @@ If upstream CLI output differs, provide a wrapper command via `BITNET_REF_RUN_CM
   - `BITNET_I2S_SCALAR=1` forces scalar i2_s dot (no block decode) for drift analysis.
   - `BITNET_DRIFT_TRACE_STEP=<n>` enables per-layer attn/FFN norm tracing for decode step `n`.
   - `BITNET_DRIFT_TRACE_TOKEN=<id>` prints the selected token logit during drift tracing.
+  - `BITNET_DRIFT_TRACE_VALUES_N=<n>` controls how many values are emitted for traced vectors (default `16`).
+  - `BITNET_DRIFT_TRACE_LAYER=<idx>` limits vector-value dumps to one layer (`-1` = all traced layers).
   - `BITNET_FFN_SHARE_I2S_QUANT` controls shared i2_s FFN input quantization for `ffn_gate` + `ffn_up`.
     - Default is enabled (`1` behavior). Set `BITNET_FFN_SHARE_I2S_QUANT=0` to disable for A/B checks.
   - `BITNET_FFN_SHARE_I2S_DOWN` controls shared i2_s FFN down-projection quantization scratch reuse.

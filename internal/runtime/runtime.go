@@ -177,6 +177,7 @@ var profileStep = os.Getenv("BITNET_PROFILE_STEP") == "1"
 var driftTraceStep = parseEnvInt("BITNET_DRIFT_TRACE_STEP", -1)
 var driftTraceToken = parseEnvInt("BITNET_DRIFT_TRACE_TOKEN", -1)
 var driftTraceValuesN = parseEnvInt("BITNET_DRIFT_TRACE_VALUES_N", 16)
+var driftTraceLayer = parseEnvInt("BITNET_DRIFT_TRACE_LAYER", -1)
 var ffnShareI2SQuant = os.Getenv("BITNET_FFN_SHARE_I2S_QUANT") != "0"
 var ffnShareI2SDown = os.Getenv("BITNET_FFN_SHARE_I2S_DOWN") != "0"
 var ffnParGateUp = os.Getenv("BITNET_FFN_PAR_GATE_UP") == "1"
@@ -1834,6 +1835,11 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 						vecL2Norm(st.ffnDown),
 						vecL2Norm(x),
 					)
+					if driftTraceValuesN > 0 && (driftTraceLayer < 0 || driftTraceLayer == i) {
+						fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=ffn_act values=%s\n", i, vecValuesCSV(st.ffnAct, driftTraceValuesN))
+						fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=ffn_sub_norm values=%s\n", i, vecValuesCSV(st.up, driftTraceValuesN))
+						fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=x_post_ffn values=%s\n", i, vecValuesCSV(x, driftTraceValuesN))
+					}
 				}
 				if prof != nil {
 					prof.ffn += time.Since(ffnStart)
@@ -2082,6 +2088,11 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 					vecL2Norm(st.ffnDown),
 					vecL2Norm(x),
 				)
+				if driftTraceValuesN > 0 && (driftTraceLayer < 0 || driftTraceLayer == i) {
+					fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=ffn_act values=%s\n", i, vecValuesCSV(st.ffnAct, driftTraceValuesN))
+					fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=ffn_sub_norm values=%s\n", i, vecValuesCSV(st.up, driftTraceValuesN))
+					fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=x_post_ffn values=%s\n", i, vecValuesCSV(x, driftTraceValuesN))
+				}
 			}
 		} else if shouldDebug(pos) && i == 0 {
 			fmt.Fprintln(os.Stderr, "debug ffn: disabled")
