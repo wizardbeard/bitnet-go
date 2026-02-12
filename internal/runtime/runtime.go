@@ -178,6 +178,7 @@ var driftTraceStep = parseEnvInt("BITNET_DRIFT_TRACE_STEP", -1)
 var driftTraceToken = parseEnvInt("BITNET_DRIFT_TRACE_TOKEN", -1)
 var driftTraceValuesN = parseEnvInt("BITNET_DRIFT_TRACE_VALUES_N", 16)
 var driftTraceLayer = parseEnvInt("BITNET_DRIFT_TRACE_LAYER", -1)
+var driftAttnAccRef = os.Getenv("BITNET_DRIFT_ATTN_ACC_REF") == "1"
 var driftAttnOutRefF32 = os.Getenv("BITNET_DRIFT_ATTN_OUT_REF_F32") == "1"
 var ffnShareI2SQuant = os.Getenv("BITNET_FFN_SHARE_I2S_QUANT") != "0"
 var ffnShareI2SDown = os.Getenv("BITNET_FFN_SHARE_I2S_DOWN") != "0"
@@ -1703,16 +1704,39 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 			}
 
 			storeCacheVector(st.keys, pos, st.k)
+			attnPath := ""
 			if debugParityStrict || debugStrictAttnRef {
+				attnPath = "ref"
 				// Match ggml accumulation order in parity-strict mode.
 				storeCacheVectorV(st.values, pos, st.v, block.kvHeads)
 				causalAttentionMultiHeadIntoReference(st.attnAcc, st.q, st.keys, st.values, pos+1, block.attnHeads, block.kvHeads, len(st.k), len(st.v))
 			} else if debugKVRowMajor {
+				attnPath = "rowmajor"
 				storeCacheVectorVRowMajor(st.values, pos, st.v, block.kvHeads)
 				causalAttentionMultiHeadIntoRowMajor(st.attnAcc, st.scores, st.q, st.keys, st.values, pos+1, block.attnHeads, block.kvHeads, len(st.k), len(st.v), pos)
 			} else {
+				attnPath = "opt"
 				storeCacheVectorV(st.values, pos, st.v, block.kvHeads)
 				causalAttentionMultiHeadInto(st.attnAcc, st.scores, st.q, st.keys, st.values, pos+1, block.attnHeads, block.kvHeads, len(st.k), len(st.v), pos)
+			}
+			if traceDrift && driftAttnAccRef && (driftTraceLayer < 0 || driftTraceLayer == i) {
+				if attnPath == "rowmajor" {
+					fmt.Fprintf(os.Stderr, "drift_trace attn_acc_ref layer=%d path=%s skipped=1\n", i, attnPath)
+				} else {
+					refAttnAcc := make([]float32, len(st.attnAcc))
+					causalAttentionMultiHeadIntoReference(refAttnAcc, st.q, st.keys, st.values, pos+1, block.attnHeads, block.kvHeads, len(st.k), len(st.v))
+					meanAbs, maxAbs := vecAbsDiffStats(st.attnAcc, refAttnAcc)
+					fmt.Fprintf(
+						os.Stderr,
+						"drift_trace attn_acc_ref layer=%d path=%s cur_l2=%g ref_l2=%g mean_abs=%g max_abs=%g\n",
+						i,
+						attnPath,
+						vecL2Norm(st.attnAcc),
+						vecL2Norm(refAttnAcc),
+						meanAbs,
+						maxAbs,
+					)
+				}
 			}
 
 			applySubNormOrIdentity(n2, st.attnAcc, layer.attnSubNorm, block.rmsEps)

@@ -628,6 +628,16 @@ CPU parity status matrix snapshot:
   - measured at failing point setup (`step=14`, `layer=14`):
     - `cur_l2=2705.048`, `ref_l2=2705.0486`, `mean_abs=2.5732403e-05`, `max_abs=0.00064086914`.
   - conclusion: Go’s current `attn_out` projection path is effectively identical to direct f32 reference at this layer, so the remaining parity drift is unlikely to be caused by the attention output projection kernel itself.
+- update: added targeted attention-accumulator reference check:
+  - new env: `BITNET_DRIFT_ATTN_ACC_REF=1`.
+  - when enabled with drift tracing, Go recomputes reference attention accumulation from current `q/k/v` + caches and prints:
+    - `drift_trace attn_acc_ref layer=... path=... cur_l2=... ref_l2=... mean_abs=... max_abs=...`
+  - strict parity run (`BITNET_DRIFT_TRACE_PARITY_STRICT=1`, layer 14):
+    - `path=ref`, `mean_abs=0`, `max_abs=0` (expected).
+  - optimized attention run (`BITNET_DRIFT_TRACE_PARITY_STRICT=0`, `BITNET_KV_ROWMAJOR=0`, layer 14):
+    - `path=opt`, `cur_l2=155.0907`, `ref_l2=155.0907`, `mean_abs=1.2359615e-07`, `max_abs=1.5258789e-05`.
+  - conclusion: attention accumulation/softmax kernel path also matches reference very closely; remaining cross-impl drift is more likely upstream (Q/K/V projection/cache state entering attention) or elsewhere outside the local accumulation kernel.
+- update: `scripts/trace_i2s_drift_step.sh` now supports `BITNET_DRIFT_TRACE_PARITY_STRICT` (default `1`) to enable targeted drift runs on non-strict kernel paths without editing the script.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).
