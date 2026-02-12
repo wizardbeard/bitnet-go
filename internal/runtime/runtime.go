@@ -1743,6 +1743,10 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 					vecL2Norm(st.attnOut),
 					vecL2Norm(x),
 				)
+				if driftTraceValuesN > 0 && (driftTraceLayer < 0 || driftTraceLayer == i) {
+					fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=attn_o_out values=%s\n", i, vecValuesCSV(st.attnOut, driftTraceValuesN))
+					fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=x_post_attn values=%s\n", i, vecValuesCSV(x, driftTraceValuesN))
+				}
 			}
 		} else if shouldDebug(pos) && i == 0 {
 			fmt.Fprintln(os.Stderr, "debug attn: disabled")

@@ -100,4 +100,4 @@ env \
 
 echo "[ref-drift-trace] family=$FAMILY step=$STEP pos=$POS token=$TOKEN prompt_tokens=$PROMPT_TOKENS_COUNT values_n=$VALUES_N"
 echo "[ref-drift-trace] log: $OUT"
-grep -E '^TOPK step='"$STEP"'|^TOKEN step='"$STEP"'|^DEBUG name=result_norm|^DEBUG_VALUES name=(result_norm|ffn_sub_norm|ffn_out|l_out)-|^DEBUG name=(attn_o_out|ffn_gate|ffn_up|ffn_out|ffn_down|l_out)-' "$OUT" || true
+grep -E '^TOPK step='"$STEP"'|^TOKEN step='"$STEP"'|^DEBUG name=result_norm|^DEBUG_VALUES name=(result_norm|attn_o_out|ffn_inp|ffn_sub_norm|ffn_out|l_out)-|^DEBUG name=(attn_o_out|ffn_gate|ffn_up|ffn_out|ffn_down|l_out)-' "$OUT" || true

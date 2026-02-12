@@ -609,6 +609,13 @@ CPU parity status matrix snapshot:
     - `ffn_act` vs ref `ffn_out`: mean abs `~5472.41`, max abs `~24713.6`.
     - `x_post_ffn` vs ref `l_out`: mean abs `~44.6648`, max abs `~98.6467`.
   - this confirms we can now directly inspect post-FFN residual-state value drift (not only norm summaries) at the failing step/token path.
+- update: added attention-side layer-value drift slices in Go trace and comparator mapping:
+  - Go drift trace now emits layer-value slices for `attn_o_out` and `x_post_attn`.
+  - comparator now maps `x_post_attn -> ffn_inp` on the reference side.
+  - with step 14 / layer 14 (first 16 values):
+    - `attn_o_out` vs ref `attn_o_out`: mean abs `~2.97701`, max abs `~6.76165`.
+    - `x_post_attn` vs ref `ffn_inp`: mean abs `~42.1157`, max abs `~76.8915`.
+  - compared to post-FFN (`x_post_ffn` mean abs `~44.6648`), the residual-state drift is already large by `x_post_attn`, indicating most divergence is introduced pre-FFN and then carried through FFN rather than created solely within FFN.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).
