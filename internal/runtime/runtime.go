@@ -178,6 +178,7 @@ var driftTraceStep = parseEnvInt("BITNET_DRIFT_TRACE_STEP", -1)
 var driftTraceToken = parseEnvInt("BITNET_DRIFT_TRACE_TOKEN", -1)
 var driftTraceValuesN = parseEnvInt("BITNET_DRIFT_TRACE_VALUES_N", 16)
 var driftTraceLayer = parseEnvInt("BITNET_DRIFT_TRACE_LAYER", -1)
+var driftQKVRefF32 = os.Getenv("BITNET_DRIFT_QKV_REF_F32") == "1"
 var driftAttnAccRef = os.Getenv("BITNET_DRIFT_ATTN_ACC_REF") == "1"
 var driftAttnOutRefF32 = os.Getenv("BITNET_DRIFT_ATTN_OUT_REF_F32") == "1"
 var ffnShareI2SQuant = os.Getenv("BITNET_FFN_SHARE_I2S_QUANT") != "0"
@@ -637,6 +638,9 @@ type llamaLayer struct {
 	ffnGate         linearWeight
 	ffnUp           linearWeight
 	ffnDown         linearWeight
+	debugAttnQF32   []float32
+	debugAttnKF32   []float32
+	debugAttnVF32   []float32
 	debugAttnOutF32 []float32
 	debugFFNGateF32 []float32
 	debugFFNUpF32   []float32
@@ -1125,6 +1129,17 @@ func loadLlamaLayer(info gguf.ModelInfo, loader *modelTensorLoader, layerIdx int
 	}
 	if linearOutputLen(l.ffnDown) != hidden {
 		return llamaLayer{}, fmt.Errorf("%sffn_down.weight output dim=%d want=%d", prefix, linearOutputLen(l.ffnDown), hidden)
+	}
+	if driftQKVRefF32 {
+		if l.debugAttnQF32, err = loader.readTensorAsF32(prefix + "attn_q.weight"); err != nil {
+			return llamaLayer{}, err
+		}
+		if l.debugAttnKF32, err = loader.readTensorAsF32(prefix + "attn_k.weight"); err != nil {
+			return llamaLayer{}, err
+		}
+		if l.debugAttnVF32, err = loader.readTensorAsF32(prefix + "attn_v.weight"); err != nil {
+			return llamaLayer{}, err
+		}
 	}
 	if driftAttnOutRefF32 {
 		if l.debugAttnOutF32, err = loader.readTensorAsF32(prefix + "attn_output.weight"); err != nil {
@@ -1692,6 +1707,54 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 				debugVecValues("Qcur", st.q, debugValuesN)
 				debugVecValues("Kcur", st.k, debugValuesN)
 				debugVecValues("Vcur", st.v, debugValuesN)
+			}
+			if traceDrift && driftQKVRefF32 && (driftTraceLayer < 0 || driftTraceLayer == i) && len(layer.debugAttnQF32) > 0 && len(layer.debugAttnKF32) > 0 && len(layer.debugAttnVF32) > 0 {
+				refQ := make([]float32, len(st.q))
+				refK := make([]float32, len(st.k))
+				refV := make([]float32, len(st.v))
+				wQRef := linearWeight{
+					data:       layer.debugAttnQF32,
+					rows:       layer.attnQ.rows,
+					cols:       layer.attnQ.cols,
+					transposed: layer.attnQ.transposed,
+					qtype:      gguf.GGMLTypeF32,
+				}
+				wKRef := linearWeight{
+					data:       layer.debugAttnKF32,
+					rows:       layer.attnK.rows,
+					cols:       layer.attnK.cols,
+					transposed: layer.attnK.transposed,
+					qtype:      gguf.GGMLTypeF32,
+				}
+				wVRef := linearWeight{
+					data:       layer.debugAttnVF32,
+					rows:       layer.attnV.rows,
+					cols:       layer.attnV.cols,
+					transposed: layer.attnV.transposed,
+					qtype:      gguf.GGMLTypeF32,
+				}
+				linearApplyIntoWeight(refQ, wQRef, n1)
+				linearApplyIntoWeight(refK, wKRef, n1)
+				linearApplyIntoWeight(refV, wVRef, n1)
+				qMean, qMax := vecAbsDiffStats(st.q, refQ)
+				kMean, kMax := vecAbsDiffStats(st.k, refK)
+				vMean, vMax := vecAbsDiffStats(st.v, refV)
+				fmt.Fprintf(
+					os.Stderr,
+					"drift_trace qkv_ref layer=%d q_mean_abs=%g q_max_abs=%g k_mean_abs=%g k_max_abs=%g v_mean_abs=%g v_max_abs=%g\n",
+					i,
+					qMean,
+					qMax,
+					kMean,
+					kMax,
+					vMean,
+					vMax,
+				)
+			}
+			if traceDrift && driftTraceValuesN > 0 && (driftTraceLayer < 0 || driftTraceLayer == i) {
+				fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=Qcur values=%s\n", i, vecValuesCSV(st.q, driftTraceValuesN))
+				fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=Kcur values=%s\n", i, vecValuesCSV(st.k, driftTraceValuesN))
+				fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=Vcur values=%s\n", i, vecValuesCSV(st.v, driftTraceValuesN))
 			}
 			applyRoPEInPlace(st.q, pos, block.attnHeads, block.ropeFreqBase, block.ropeScale, block.ropeScalingType, block.ropeDim, block.ropeNeox, block.ropeYarnBetaFast, block.ropeYarnBetaSlow, block.ropeYarnExtFactor, block.ropeYarnAttnFactor)
 			applyRoPEInPlace(st.k, pos, block.kvHeads, block.ropeFreqBase, block.ropeScale, block.ropeScalingType, block.ropeDim, block.ropeNeox, block.ropeYarnBetaFast, block.ropeYarnBetaSlow, block.ropeYarnExtFactor, block.ropeYarnAttnFactor)

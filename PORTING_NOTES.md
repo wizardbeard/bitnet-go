@@ -638,6 +638,20 @@ CPU parity status matrix snapshot:
     - `path=opt`, `cur_l2=155.0907`, `ref_l2=155.0907`, `mean_abs=1.2359615e-07`, `max_abs=1.5258789e-05`.
   - conclusion: attention accumulation/softmax kernel path also matches reference very closely; remaining cross-impl drift is more likely upstream (Q/K/V projection/cache state entering attention) or elsewhere outside the local accumulation kernel.
 - update: `scripts/trace_i2s_drift_step.sh` now supports `BITNET_DRIFT_TRACE_PARITY_STRICT` (default `1`) to enable targeted drift runs on non-strict kernel paths without editing the script.
+- update: added targeted Q/K/V projection reference check and direct ref value comparison hooks:
+  - new env: `BITNET_DRIFT_QKV_REF_F32=1`.
+  - when enabled with drift tracing, Go recomputes per-layer f32 reference projections for `attn_q/attn_k/attn_v` from the same `attn_norm` input and prints:
+    - `drift_trace qkv_ref layer=... q_mean_abs=... q_max_abs=... k_mean_abs=... k_max_abs=... v_mean_abs=... v_max_abs=...`
+  - at step 14 / layer 14:
+    - `q_mean_abs~4.70e-07`, `q_max_abs~6.32e-06`
+    - `k_mean_abs~8.83e-07`, `k_max_abs~7.15e-06`
+    - `v_mean_abs~1.18e-06`, `v_max_abs~9.06e-06`
+  - reference trace now emits layered `DEBUG_VALUES` for `Qcur-*`, `Kcur-*`, and `Vcur-*` so Go-vs-ref value slices can be compared directly.
+  - Go-vs-ref layer-value deltas at step 14 / layer 14 (first 16 values):
+    - `Qcur`: mean abs `~0.02136`, max abs `~0.04554`
+    - `Kcur`: mean abs `~0.04523`, max abs `~0.12179`
+    - `Vcur`: mean abs `~0.14084`, max abs `~0.34227`
+  - conclusion: local Q/K/V projection kernels match f32 references closely; cross-impl divergence is already present in Q/K/V tensors (especially `Vcur`) before attention accumulation/output kernels.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).
