@@ -5,6 +5,25 @@ on:
   pull_request:
 
 jobs:
+  cpu-parity-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+          cache: true
+      - name: cpu-parity-audit
+        env:
+          BITNET_AUDIT_FETCH: "1"
+          BITNET_YARN_MODEL_URL: https://huggingface.co/mradermacher/YarnGPT2b-GGUF/resolve/main/YarnGPT2b.f16.gguf
+          BITNET_YARN_MODEL_FILE: YarnGPT2b.f16.gguf
+          BITNET_I2S_2B_MODEL_URL: https://huggingface.co/microsoft/bitnet-b1.58-2B-4T-gguf/resolve/main/ggml-model-i2_s.gguf
+          BITNET_I2S_2B_MODEL_FILE: ggml-model-i2_s.gguf
+        run: |
+          ./scripts/audit_cpu_parity.sh
+
   go:
     runs-on: ubuntu-latest
     timeout-minutes: 30

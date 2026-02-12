@@ -569,6 +569,7 @@ CPU parity status matrix snapshot:
   - i2_s + i2_s_2b smoke parity,
   - fixture seed determinism with stochastic sampling controls.
   - optional fetch bootstrap: `BITNET_AUDIT_FETCH=1`.
+- update: CI now includes a dedicated `cpu-parity-audit` job that executes `./scripts/audit_cpu_parity.sh` with fixture fetch enabled (`BITNET_AUDIT_FETCH=1`) so the full parity matrix is continuously re-verified via the same single command used locally.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).

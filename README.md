@@ -115,6 +115,7 @@ CI note:
 - CI runs `./scripts/fetch_testdata_gguf.sh` with `BITNET_FETCH_I2S_2B=1` and
   `BITNET_I2S_2B_MODEL_URL` set to the BitNet 2B i2_s GGUF, so the 2B smoke parity
   test can run when enabled.
+- CI runs a dedicated `cpu-parity-audit` job via `./scripts/audit_cpu_parity.sh` (with fixture fetch enabled) to continuously re-verify the full parity matrix through one command.
 - CI also runs non-gating benchmark jobs (`bench-smoke`, `bench-kernels`, `bench-runtime`) to track perf regressions.
 - CI also runs a non-gating targeted i2_s+i8_s kernel benchmark (`bench-i2s-kernels`) and uploads the result artifact (`.bench/i2s-kernels.txt`).
 - CI also runs a non-gating repeat-harness thread sweep (`bench-perf-repeat`) and uploads:
