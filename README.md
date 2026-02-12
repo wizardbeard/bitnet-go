@@ -54,7 +54,7 @@ Overrides:
 - `BITNET_BENCH_SWEEP=1` (run batch sweep 1/2/4)
 - `BITNET_REPEAT_RUNS` (for `bench_perf_repeat.sh`, default `5`)
 - `BITNET_FORCE_AVX2=1` (force AVX2 i2_s i8_s matvec fast path on amd64+cgo; auto-detects when available)
-- `BITNET_MATVEC_THREADS` (enable parallel i2_s i8_s matvec when AVX2 is unavailable; try `NumCPU-2`)
+- `BITNET_MATVEC_THREADS` (enable parallel i2_s i8_s matvec when AVX2 is unavailable; tune per host, `4-8` is a good starting range on 8-core CPUs)
 - `BITNET_I2S_I8S_DISABLE_FAST=1` (disable AVX2 i2_s+i8_s fast paths to tune fallback dispatch behavior)
 - `BITNET_I2S_I8S_PAR_ROWS_MIN` / `BITNET_I2S_I8S_PAR_COLS_MIN` (parallel fallback thresholds, defaults `512`)
 - `BITNET_I2S_I8S_PAR_CHUNK_ROWS` / `BITNET_I2S_I8S_PAR_CHUNK_COLS` (parallel fallback chunk overrides; default auto)
@@ -63,6 +63,7 @@ Overrides:
 - `BITNET_I2S_I8S_FAST_PAR_COLS_MIN` (minimum output cols for transposed fast-range parallel split; default `512`)
 - `BITNET_I2S_I8S_FAST_PAR_NT_COLS_MIN` (minimum input cols for non-transposed fast-range parallel split; default `0` / disabled)
   - sweep note (i7-11800H, fallback path): current defaults outperformed tested alternatives (`min_1024`, fixed chunk sizes, `block_min_rows=128`)
+  - host note (i7-11800H): repeat-harness sweep favored `BITNET_MATVEC_THREADS=8` over `1/4/6` for end-to-end medians
 - Arm64-specific overrides use the same suffix with `BITNET_ARM64_` prefix (example: `BITNET_ARM64_I2S_I8S_BLOCK_MIN_ROWS=256`).
 - `BITNET_I2S_I8S_POOL` (set `0` to disable reusable fallback worker pool)
 - `BITNET_I2S_I8S_POOL_WORKERS` (override fallback worker pool size; default `GOMAXPROCS`)

@@ -582,3 +582,25 @@ Progress against Phase 3 performance tuning:
   - e2e.elapsed median: `13.210763 s`
   - e2e.tokps median: `1.135438 tok/s`
   - raw artifact: `.bench/perf-repeat-fastpar512-baseline.tsv`
+- update: swept host thread settings for fallback i2_s parallelism using repeat harness (`scripts/bench_perf_repeat.sh`, 3 runs each, `BITNET_I2S_I8S_FAST_PAR_COLS_MIN=512`).
+  - `BITNET_MATVEC_THREADS=1` medians:
+    - runtime.default_prefix: `2104345472 ns/op`
+    - runtime.full_sort: `2141556246 ns/op`
+    - e2e.elapsed: `20.073591 s`
+    - e2e.tokps: `0.747250 tok/s`
+  - `BITNET_MATVEC_THREADS=4` medians:
+    - runtime.default_prefix: `974802010 ns/op`
+    - runtime.full_sort: `1054316740 ns/op`
+    - e2e.elapsed: `13.795313 s`
+    - e2e.tokps: `1.087326 tok/s`
+  - `BITNET_MATVEC_THREADS=6` medians:
+    - runtime.default_prefix: `873829172 ns/op`
+    - runtime.full_sort: `963712301 ns/op`
+    - e2e.elapsed: `12.873320 s`
+    - e2e.tokps: `1.165201 tok/s`
+  - `BITNET_MATVEC_THREADS=8` medians:
+    - runtime.default_prefix: `883313656 ns/op`
+    - runtime.full_sort: `921085452 ns/op`
+    - e2e.elapsed: `12.640325 s`
+    - e2e.tokps: `1.186678 tok/s`
+  - result: on this i7-11800H host, keep `BITNET_MATVEC_THREADS=8` as the recommended local benchmark baseline (`6` remains close and acceptable where CPU contention is higher).
