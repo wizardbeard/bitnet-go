@@ -242,6 +242,7 @@ bool name_values_matches(const char * name) {
         "ffn_down",
         "ffn_sub_norm",
         "ffn_out",
+        "l_out",
     };
     for (const char * base : layered) {
         if (matches_layered_tensor(name, base)) {

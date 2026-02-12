@@ -602,6 +602,13 @@ CPU parity status matrix snapshot:
   - Go trace supports `BITNET_DRIFT_TRACE_VALUES_N` and `BITNET_DRIFT_TRACE_LAYER`.
   - compare script supports `BITNET_DRIFT_COMPARE_LAYER` / `BITNET_DRIFT_COMPARE_NAME`.
   - at step 14 with layer-targeted `ffn_sub_norm` comparison (layer 14, first 16 values), mean abs drift is `~0.00699` (max abs `~0.03271`), larger than the final `result_norm` first-16 mean abs drift (`~0.00214`), which suggests divergence is already visible at FFN sub-norm output and then partially attenuates before final output norm.
+- update: expanded layer-value drift mapping and reference value capture:
+  - reference tracer now emits `DEBUG_VALUES` for `l_out-*` in addition to existing FFN/value tensors.
+  - `compare_i2s_drift_logs.sh` now maps layer-value comparisons `ffn_act -> ffn_out` and `x_post_ffn -> l_out` (overrideable via `BITNET_DRIFT_COMPARE_REF_NAME`).
+  - with step 14 / layer 14 (first 16 values):
+    - `ffn_act` vs ref `ffn_out`: mean abs `~5472.41`, max abs `~24713.6`.
+    - `x_post_ffn` vs ref `l_out`: mean abs `~44.6648`, max abs `~98.6467`.
+  - this confirms we can now directly inspect post-FFN residual-state value drift (not only norm summaries) at the failing step/token path.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).

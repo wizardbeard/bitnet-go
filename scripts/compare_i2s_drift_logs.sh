@@ -6,6 +6,16 @@ REF_LOG=${2:-.bench/ref-i2s-drift-trace-i2s.log}
 OUT=${BITNET_DRIFT_COMPARE_OUT:-.bench/i2s-drift-compare.tsv}
 TRACE_LAYER=${BITNET_DRIFT_COMPARE_LAYER:-14}
 TRACE_NAME=${BITNET_DRIFT_COMPARE_NAME:-ffn_sub_norm}
+TRACE_REF_NAME=${BITNET_DRIFT_COMPARE_REF_NAME:-$TRACE_NAME}
+
+case "$TRACE_NAME" in
+  ffn_act)
+    TRACE_REF_NAME=${BITNET_DRIFT_COMPARE_REF_NAME:-ffn_out}
+    ;;
+  x_post_ffn)
+    TRACE_REF_NAME=${BITNET_DRIFT_COMPARE_REF_NAME:-l_out}
+    ;;
+esac
 
 if [ ! -f "$GO_LOG" ]; then
   echo "go log not found: $GO_LOG" >&2
@@ -193,7 +203,7 @@ go_layer_values=$(awk -v layer="$TRACE_LAYER" -v name="$TRACE_NAME" '
   }
 ' "$GO_LOG")
 
-ref_layer_values=$(awk -v layer="$TRACE_LAYER" -v name="$TRACE_NAME" '
+ref_layer_values=$(awk -v layer="$TRACE_LAYER" -v name="$TRACE_REF_NAME" '
   $1=="DEBUG_VALUES" {
     gotName = ""
     gotValues = ""
@@ -213,7 +223,7 @@ ref_layer_values=$(awk -v layer="$TRACE_LAYER" -v name="$TRACE_NAME" '
 ' "$REF_LOG")
 
 if [ -n "${go_layer_values:-}" ] && [ -n "${ref_layer_values:-}" ]; then
-  layer_values_delta=$(awk -v g="$go_layer_values" -v r="$ref_layer_values" -v layer="$TRACE_LAYER" -v name="$TRACE_NAME" '
+  layer_values_delta=$(awk -v g="$go_layer_values" -v r="$ref_layer_values" -v layer="$TRACE_LAYER" -v name="$TRACE_NAME" -v ref_name="$TRACE_REF_NAME" '
     BEGIN {
       ng = split(g, ga, ",")
       nr = split(r, ra, ",")
@@ -236,7 +246,7 @@ if [ -n "${go_layer_values:-}" ] && [ -n "${ref_layer_values:-}" ]; then
         }
       }
       mean = sum / n
-      printf "layer=%s name=%s n=%d mean_abs=%g max_abs=%g max_idx=%d go=%g ref=%g", layer, name, n, mean, max, maxi, ga[maxi+1], ra[maxi+1]
+      printf "layer=%s name=%s ref_name=%s n=%d mean_abs=%g max_abs=%g max_idx=%d go=%g ref=%g", layer, name, ref_name, n, mean, max, maxi, ga[maxi+1], ra[maxi+1]
     }
   ')
   echo "[drift-compare] layer-values $layer_values_delta"
