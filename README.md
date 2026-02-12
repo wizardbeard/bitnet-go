@@ -45,6 +45,8 @@ Repeated perf harness (runtime + e2e medians/p95):
 `sh ./scripts/bench_perf_repeat.sh`
 Thread-sweep wrapper for repeated perf harness:
 `sh ./scripts/bench_perf_repeat_matrix.sh`
+Drift report vs checked-in baseline:
+`sh ./scripts/report_perf_repeat_drift.sh .bench/perf-repeat-summary.tsv testdata/perf-repeat-summary-baseline.tsv`
 Overrides:
 - `BITNET_BENCH_MODEL`
 - `BITNET_BENCH_PROMPT` or `BITNET_BENCH_PROMPT_FILE`
@@ -117,8 +119,12 @@ CI note:
 - CI also runs a non-gating repeat-harness thread sweep (`bench-perf-repeat`) and uploads:
   - `.bench/perf-repeat-summary.tsv` (medians by thread)
   - `.bench/perf-repeat-best.env` (selected best thread on that runner)
+  - `.bench/perf-repeat-drift.tsv` (delta vs `testdata/perf-repeat-summary-baseline.tsv`)
   - `.bench/perf-repeat-threads*.tsv` (raw per-run results)
   - summary schema is validated in CI via `scripts/validate_perf_repeat_summary.sh` before selecting best thread
+
+Baseline refresh:
+- after reviewing a new stable summary, update `testdata/perf-repeat-summary-baseline.tsv` from `.bench/perf-repeat-summary.tsv` in the same commit as the related perf tuning change.
 - CI also runs a non-gating arm64 i2_s benchmark+sweep job and uploads arm64 artifacts (`bench-i2s-kernels-arm64`, `bench-i2s-sweep-arm64`).
   - arm64 job also uploads machine-readable sweep summary (`bench-i2s-sweep-summary-arm64`) and suggested env defaults (`i2s-defaults-arm64`).
 

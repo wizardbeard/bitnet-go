@@ -1,0 +1,5 @@
+thread	runtime_default_prefix_ns	runtime_full_sort_ns	e2e_elapsed_s	e2e_tokps	raw_tsv
+1	2104345472.000000	2141556246.000000	20.073591	0.747250	.bench/perf-repeat-fastpar512-threads1.tsv
+4	974802010.000000	1054316740.000000	13.795313	1.087326	.bench/perf-repeat-fastpar512-threads4.tsv
+6	873829172.000000	963712301.000000	12.873320	1.165201	.bench/perf-repeat-fastpar512-threads6.tsv
+8	883313656.000000	921085452.000000	12.640325	1.186678	.bench/perf-repeat-fastpar512-threads8.tsv

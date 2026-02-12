@@ -608,4 +608,5 @@ Progress against Phase 3 performance tuning:
   - new script: `scripts/bench_perf_repeat_matrix.sh` runs `bench_perf_repeat.sh` over a thread list (`BITNET_REPEAT_THREADS`, default `1 4 6 8`) and emits `.bench/perf-repeat-summary.tsv` with median metrics per thread.
   - new script: `scripts/select_perf_repeat_threads.sh` selects the best thread (highest median tok/s, tie-break by lower elapsed) and writes `.bench/perf-repeat-best.env`.
   - new script: `scripts/validate_perf_repeat_summary.sh` validates summary schema/fields so malformed artifacts fail fast.
-  - CI (`.github/workflows/ci.yml`) now runs this sweep non-gating, validates summary format, and uploads summary + raw TSV artifacts.
+  - new script: `scripts/report_perf_repeat_drift.sh` compares current summary against checked-in baseline (`testdata/perf-repeat-summary-baseline.tsv`) and emits `.bench/perf-repeat-drift.tsv` with per-thread deltas.
+  - CI (`.github/workflows/ci.yml`) now runs this sweep non-gating, validates summary format, reports baseline drift, and uploads summary + drift + raw TSV artifacts.

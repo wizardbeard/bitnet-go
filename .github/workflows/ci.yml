@@ -178,6 +178,15 @@ jobs:
             echo "Skipping select step (summary missing)"
           fi
         continue-on-error: true
+      - name: report-perf-repeat-drift
+        if: always()
+        run: |
+          if [ -f .bench/perf-repeat-summary.tsv ] && [ -f testdata/perf-repeat-summary-baseline.tsv ]; then
+            ./scripts/report_perf_repeat_drift.sh .bench/perf-repeat-summary.tsv testdata/perf-repeat-summary-baseline.tsv
+          else
+            echo "Skipping drift report (summary or baseline missing)"
+          fi
+        continue-on-error: true
       - name: upload-bench-perf-repeat
         if: always()
         uses: actions/upload-artifact@v4
@@ -186,6 +195,7 @@ jobs:
           path: |
             .bench/perf-repeat-summary.tsv
             .bench/perf-repeat-best.env
+            .bench/perf-repeat-drift.tsv
             .bench/perf-repeat-threads*.tsv
           if-no-files-found: warn
       - name: bench-kernels
