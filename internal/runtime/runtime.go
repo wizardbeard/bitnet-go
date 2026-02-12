@@ -178,6 +178,7 @@ var driftTraceStep = parseEnvInt("BITNET_DRIFT_TRACE_STEP", -1)
 var driftTraceToken = parseEnvInt("BITNET_DRIFT_TRACE_TOKEN", -1)
 var driftTraceValuesN = parseEnvInt("BITNET_DRIFT_TRACE_VALUES_N", 16)
 var driftTraceLayer = parseEnvInt("BITNET_DRIFT_TRACE_LAYER", -1)
+var driftRopeRefF64 = os.Getenv("BITNET_DRIFT_ROPE_REF_F64") == "1"
 var driftQKVRefF32 = os.Getenv("BITNET_DRIFT_QKV_REF_F32") == "1"
 var driftAttnAccRef = os.Getenv("BITNET_DRIFT_ATTN_ACC_REF") == "1"
 var driftAttnOutRefF32 = os.Getenv("BITNET_DRIFT_ATTN_OUT_REF_F32") == "1"
@@ -1756,8 +1757,31 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 				fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=Kcur values=%s\n", i, vecValuesCSV(st.k, driftTraceValuesN))
 				fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=Vcur values=%s\n", i, vecValuesCSV(st.v, driftTraceValuesN))
 			}
+			var qPreRoPE []float32
+			var kPreRoPE []float32
+			if traceDrift && driftRopeRefF64 && (driftTraceLayer < 0 || driftTraceLayer == i) {
+				qPreRoPE = append(qPreRoPE, st.q...)
+				kPreRoPE = append(kPreRoPE, st.k...)
+			}
 			applyRoPEInPlace(st.q, pos, block.attnHeads, block.ropeFreqBase, block.ropeScale, block.ropeScalingType, block.ropeDim, block.ropeNeox, block.ropeYarnBetaFast, block.ropeYarnBetaSlow, block.ropeYarnExtFactor, block.ropeYarnAttnFactor)
 			applyRoPEInPlace(st.k, pos, block.kvHeads, block.ropeFreqBase, block.ropeScale, block.ropeScalingType, block.ropeDim, block.ropeNeox, block.ropeYarnBetaFast, block.ropeYarnBetaSlow, block.ropeYarnExtFactor, block.ropeYarnAttnFactor)
+			if len(qPreRoPE) > 0 && len(kPreRoPE) > 0 {
+				qRef := append([]float32(nil), qPreRoPE...)
+				kRef := append([]float32(nil), kPreRoPE...)
+				applyRoPEInPlaceRefF64(qRef, pos, block.attnHeads, block.ropeFreqBase, block.ropeScale, block.ropeScalingType, block.ropeDim, block.ropeNeox, block.ropeYarnBetaFast, block.ropeYarnBetaSlow, block.ropeYarnExtFactor, block.ropeYarnAttnFactor)
+				applyRoPEInPlaceRefF64(kRef, pos, block.kvHeads, block.ropeFreqBase, block.ropeScale, block.ropeScalingType, block.ropeDim, block.ropeNeox, block.ropeYarnBetaFast, block.ropeYarnBetaSlow, block.ropeYarnExtFactor, block.ropeYarnAttnFactor)
+				qMean, qMax := vecAbsDiffStats(st.q, qRef)
+				kMean, kMax := vecAbsDiffStats(st.k, kRef)
+				fmt.Fprintf(
+					os.Stderr,
+					"drift_trace rope_ref layer=%d q_mean_abs=%g q_max_abs=%g k_mean_abs=%g k_max_abs=%g\n",
+					i,
+					qMean,
+					qMax,
+					kMean,
+					kMax,
+				)
+			}
 			if debugAttnMeta && shouldDebug(pos) && i == 0 {
 				debugVecSlice("q.post", st.q, 8)
 				debugVecSlice("k.post", st.k, 8)
@@ -2838,6 +2862,68 @@ func applyRoPEInPlace(v []float32, pos, heads int, base, scale float32, scalingT
 			v[offset+i] = x0*cosT - x1*sinT
 			v[offset+i+1] = x0*sinT + x1*cosT
 			theta = float32(float64(theta) * thetaScale)
+		}
+	}
+}
+
+func applyRoPEInPlaceRefF64(v []float32, pos, heads int, base, scale float32, scalingType string, ropeDim int, ropeNeox bool, betaFast, betaSlow, extFactor, attnFactor float32) {
+	if heads <= 0 || len(v) == 0 {
+		return
+	}
+	if len(v)%heads != 0 {
+		heads = 1
+	}
+	headDim := len(v) / heads
+	if headDim < 2 || base <= 0 {
+		return
+	}
+	if ropeDim <= 0 || ropeDim > headDim {
+		ropeDim = headDim
+	}
+	half := ropeDim / 2
+	if half == 0 {
+		return
+	}
+	posf := ropeScaledPosition(pos, scale, scalingType)
+	thetaScale := math.Pow(float64(base), -2.0/float64(ropeDim))
+	isYarn := scalingType == "yarn"
+	for h := 0; h < heads; h++ {
+		offset := h * headDim
+		theta := posf
+		if ropeNeox {
+			halfDim := ropeDim / 2
+			for i := 0; i+1 < ropeDim; i += 2 {
+				var cosT, sinT float64
+				if isYarn {
+					c, s := ropeYarnCosSin(float32(theta), scale, betaFast, betaSlow, extFactor, attnFactor, i)
+					cosT = float64(c)
+					sinT = float64(s)
+				} else {
+					sinT, cosT = math.Sincos(theta)
+				}
+				pair := i / 2
+				x0 := float64(v[offset+pair])
+				x1 := float64(v[offset+pair+halfDim])
+				v[offset+pair] = float32(x0*cosT - x1*sinT)
+				v[offset+pair+halfDim] = float32(x0*sinT + x1*cosT)
+				theta *= thetaScale
+			}
+			continue
+		}
+		for i := 0; i+1 < ropeDim; i += 2 {
+			var cosT, sinT float64
+			if isYarn {
+				c, s := ropeYarnCosSin(float32(theta), scale, betaFast, betaSlow, extFactor, attnFactor, i)
+				cosT = float64(c)
+				sinT = float64(s)
+			} else {
+				sinT, cosT = math.Sincos(theta)
+			}
+			x0 := float64(v[offset+i])
+			x1 := float64(v[offset+i+1])
+			v[offset+i] = float32(x0*cosT - x1*sinT)
+			v[offset+i+1] = float32(x0*sinT + x1*cosT)
+			theta *= thetaScale
 		}
 	}
 }

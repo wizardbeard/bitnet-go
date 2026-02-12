@@ -662,6 +662,15 @@ CPU parity status matrix snapshot:
     - optimized path (`layout=opt`, `BITNET_DRIFT_TRACE_PARITY_STRICT=0`, `BITNET_KV_ROWMAJOR=0`): `mean_abs=0`, `max_abs=0`
     - row-major path (`layout=rowmajor`, `BITNET_DRIFT_TRACE_PARITY_STRICT=0`, `BITNET_KV_ROWMAJOR=1`): `mean_abs=0`, `max_abs=0`
   - conclusion: V cache write/read indexing is correct across supported layouts on this host; current i2_s parity gap is not caused by cache storage permutation/stride errors.
+- update: added targeted RoPE reference check (`f64`) for traced layers:
+  - new env: `BITNET_DRIFT_ROPE_REF_F64=1`.
+  - drift trace now emits:
+    - `drift_trace rope_ref layer=... q_mean_abs=... q_max_abs=... k_mean_abs=... k_max_abs=...`
+  - method: compare current in-place RoPE output against a separate reference application path that tracks theta progression in float64.
+  - measured at step 14 / layer 14:
+    - `q_mean_abs~1.66e-08`, `q_max_abs~2.38e-07`
+    - `k_mean_abs~3.76e-08`, `k_max_abs~4.77e-07`
+  - conclusion: RoPE numerical implementation is effectively identical at the traced failing point; remaining drift is not explained by local RoPE precision/rotation math.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).
