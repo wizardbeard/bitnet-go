@@ -795,6 +795,18 @@ CPU parity status matrix snapshot:
       - `ref_input_vs_go_qkv`: `Q=0.03431`, `K=0.05618`, `V=0.10487`
   - observed shift: non-strict path reduces cross-implementation Q/K/V drift by roughly `~8-15%` at this point.
   - interpretation: strict path semantics amplify mismatch at the traced step; the residual gap still exists in non-strict mode, but this isolates part of the difference to strict-path behavior rather than model decode or replay plumbing.
+- update: added strict-component sweep harness for Q/K/V alignment drift.
+  - new script: `scripts/sweep_qkv_strict_toggles.sh`
+    - runs `probe_qkv_alignment.sh` with `BITNET_QKV_PROBE_PARITY_STRICT=0`,
+    - toggles one strict knob per run,
+    - emits summary table: `.bench/qkv-strict-sweep-summary.tsv`.
+  - measured at step 14 / layer 14 (`i2s`, cross-side means shown as `go_input_vs_ref_qkv`):
+    - baseline: `Q=0.03423`, `K=0.05603`, `V=0.10549`
+    - `BITNET_STRICT_KQ=1`: `Q=0.03122`, `K=0.05320`, `V=0.09279`
+    - `BITNET_STRICT_ATTENTION=1`: `Q=0.03280`, `K=0.05304`, `V=0.10093`
+    - `BITNET_STRICT_EXPF=1`: `Q=0.03186`, `K=0.05236`, `V=0.09808`
+    - `BITNET_STRICT_ATTENTION_REF=1`: `Q=0.03439`, `K=0.05630`, `V=0.10396`
+  - interpretation: in this slice, enabling `BITNET_STRICT_KQ` produced the largest single reduction in cross-side V drift (about `~12%` vs baseline), with `BITNET_STRICT_EXPF` also helping; `STRICT_ATTENTION_REF` had little effect. This points next debugging focus toward Q·K score path semantics/precision rather than cache layout or matvec decode.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).
