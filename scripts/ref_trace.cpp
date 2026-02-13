@@ -104,6 +104,7 @@ struct DebugState {
 
 bool g_print_values = false;
 int g_values_n = 8;
+std::string g_values_name;
 
 bool starts_with(const char * s, const char * prefix) {
     if (s == nullptr || prefix == nullptr) {
@@ -209,6 +210,9 @@ bool name_matches(const char * name) {
 bool name_values_matches(const char * name) {
     if (name == nullptr || name[0] == '\0') {
         return false;
+    }
+    if (!g_values_name.empty()) {
+        return g_values_name == name;
     }
     const char * targets[] = {
         "kq_soft_max_ext-0",
@@ -382,6 +386,7 @@ int main() {
     const bool token_by_token = env_or_bool("BITNET_REF_TOKEN_BY_TOKEN", false);
     g_print_values = env_or_bool("BITNET_REF_DEBUG_VALUES", false);
     g_values_n = env_or_int("BITNET_REF_DEBUG_VALUES_N", 8);
+    g_values_name = env_or("BITNET_REF_DEBUG_VALUES_NAME", "");
 
     if (model_path.empty()) {
         std::fprintf(stderr, "BITNET_REF_MODEL is required\n");

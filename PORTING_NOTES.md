@@ -723,6 +723,16 @@ CPU parity status matrix snapshot:
   - emitted metric example (layer 14):
     - `drift_weight_audit layer=14 tensor=attn_v.weight n=1638400 rows=2560 cols=640 transposed=true out_rows=640 mean_abs=0 max_abs=0 row_probe=0 row_mean_abs=0 row_max_abs=0`
   - conclusion: no evidence of decode corruption or file-handle/path-dependent read differences for `attn_v.weight`; decode parity is exact in this audit.
+- update: added offline `Vcur` recompute probe from reference-exported `attn_norm` vectors.
+  - new command: `go run ./cmd/vcurprobe --model <gguf> --layer <n> --attn-norm-csv <file> --vcur-ref-csv <file>`
+  - new driver script: `scripts/probe_vcur_from_ref_norm.sh`:
+    - builds ref + tracer,
+    - exports full `attn_norm-<layer>` and `Vcur-<layer>` from reference trace at target position,
+    - recomputes `Vcur` in Go from decoded `blk.<layer>.attn_v.weight`,
+    - reports diff vs reference `Vcur`.
+  - measured at step 14 / layer 14 (`i2s`):
+    - `vcurprobe ... mean_abs=0.009907405 max_abs=0.054590106`
+  - conclusion: with reference `attn_norm` as input, Go-side `attn_v` projection is substantially closer to reference than in-runtime `Vcur` drift (`~0.140841`), further isolating remaining mismatch to runtime-path behavior around V projection inputs/execution rather than a gross weight decode/layout issue.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).
