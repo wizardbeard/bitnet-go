@@ -237,6 +237,7 @@ bool name_values_matches(const char * name) {
     }
     const char * layered[] = {
         "kq_soft_max_ext",
+        "attn_norm",
         "attn_sub_norm",
         "attn_o_out",
         "Qcur",
