@@ -715,6 +715,14 @@ CPU parity status matrix snapshot:
     - `quant_flip_t`: `skipped=1 alt_len=2560 want=640`
     - `f32_flip_t`: `skipped=1 alt_len=2560 want=640`
   - conclusion: a simple transpose-interpretation flip cannot explain the Vcur mismatch for this fixture; the mismatch is not addressable by toggling `attn_v` transpose semantics alone.
+- update: added direct `attn_v.weight` decode audit (loader vs independent read path):
+  - new env: `BITNET_DRIFT_V_WEIGHT_AUDIT=1`.
+  - at model-load time for traced layers, runtime now compares:
+    - primary decoded f32 tensor used for debug/projection checks, and
+    - independent `gguf.ReadTensorAsF32FromFile` decode from a fresh file handle.
+  - emitted metric example (layer 14):
+    - `drift_weight_audit layer=14 tensor=attn_v.weight n=1638400 rows=2560 cols=640 transposed=true out_rows=640 mean_abs=0 max_abs=0 row_probe=0 row_mean_abs=0 row_max_abs=0`
+  - conclusion: no evidence of decode corruption or file-handle/path-dependent read differences for `attn_v.weight`; decode parity is exact in this audit.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).

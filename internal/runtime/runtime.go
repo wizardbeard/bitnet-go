@@ -181,6 +181,7 @@ var driftTraceLayer = parseEnvInt("BITNET_DRIFT_TRACE_LAYER", -1)
 var driftRopeRefF64 = os.Getenv("BITNET_DRIFT_ROPE_REF_F64") == "1"
 var driftQKVRefF32 = os.Getenv("BITNET_DRIFT_QKV_REF_F32") == "1"
 var driftVProjVariants = os.Getenv("BITNET_DRIFT_V_PROJ_VARIANTS") == "1"
+var driftVWeightAudit = os.Getenv("BITNET_DRIFT_V_WEIGHT_AUDIT") == "1"
 var driftAttnAccRef = os.Getenv("BITNET_DRIFT_ATTN_ACC_REF") == "1"
 var driftAttnOutRefF32 = os.Getenv("BITNET_DRIFT_ATTN_OUT_REF_F32") == "1"
 var ffnShareI2SQuant = os.Getenv("BITNET_FFN_SHARE_I2S_QUANT") != "0"
@@ -1141,6 +1142,48 @@ func loadLlamaLayer(info gguf.ModelInfo, loader *modelTensorLoader, layerIdx int
 		}
 		if l.debugAttnVF32, err = loader.readTensorAsF32(prefix + "attn_v.weight"); err != nil {
 			return llamaLayer{}, err
+		}
+	}
+	if driftVWeightAudit && (driftTraceLayer < 0 || driftTraceLayer == layerIdx) {
+		if len(l.debugAttnVF32) == 0 {
+			if l.debugAttnVF32, err = loader.readTensorAsF32(prefix + "attn_v.weight"); err != nil {
+				fmt.Fprintf(os.Stderr, "drift_weight_audit layer=%d tensor=attn_v.weight skipped=1 reason=read_primary err=%v\n", layerIdx, err)
+			}
+		}
+		if len(l.debugAttnVF32) > 0 && loader != nil && loader.f != nil {
+			modelPath := loader.f.Name()
+			fAudit, openErr := os.Open(modelPath)
+			if openErr != nil {
+				fmt.Fprintf(os.Stderr, "drift_weight_audit layer=%d tensor=attn_v.weight skipped=1 reason=open_independent err=%v\n", layerIdx, openErr)
+			} else {
+				indep, readErr := gguf.ReadTensorAsF32FromFile(fAudit, info, prefix+"attn_v.weight")
+				_ = fAudit.Close()
+				if readErr != nil {
+					fmt.Fprintf(os.Stderr, "drift_weight_audit layer=%d tensor=attn_v.weight skipped=1 reason=read_independent err=%v\n", layerIdx, readErr)
+				} else {
+					meanAbs, maxAbs := vecAbsDiffStats(l.debugAttnVF32, indep)
+					outRows := linearOutputLen(l.attnV)
+					rowProbe := 0
+					rowA := linearRowValues(l.debugAttnVF32, l.attnV.rows, l.attnV.cols, l.attnV.transposed, rowProbe, 16)
+					rowB := linearRowValues(indep, l.attnV.rows, l.attnV.cols, l.attnV.transposed, rowProbe, 16)
+					rowMean, rowMax := vecAbsDiffStats(rowA, rowB)
+					fmt.Fprintf(
+						os.Stderr,
+						"drift_weight_audit layer=%d tensor=attn_v.weight n=%d rows=%d cols=%d transposed=%v out_rows=%d mean_abs=%g max_abs=%g row_probe=%d row_mean_abs=%g row_max_abs=%g\n",
+						layerIdx,
+						len(l.debugAttnVF32),
+						l.attnV.rows,
+						l.attnV.cols,
+						l.attnV.transposed,
+						outRows,
+						meanAbs,
+						maxAbs,
+						rowProbe,
+						rowMean,
+						rowMax,
+					)
+				}
+			}
 		}
 	}
 	if driftAttnOutRefF32 {
@@ -3156,6 +3199,36 @@ func attnHeadWeightsFromQK(q, keys []float32, steps, qHeads, kvHeads, kStepDim, 
 	inv := 1 / sum
 	for i := range out {
 		out[i] *= inv
+	}
+	return out
+}
+
+func linearRowValues(data []float32, rows, cols int, transposed bool, row, n int) []float32 {
+	if rows <= 0 || cols <= 0 || len(data) < rows*cols || n <= 0 {
+		return nil
+	}
+	if transposed {
+		if row < 0 || row >= cols {
+			return nil
+		}
+		if n > rows {
+			n = rows
+		}
+		out := make([]float32, n)
+		for i := 0; i < n; i++ {
+			out[i] = data[i+rows*row]
+		}
+		return out
+	}
+	if row < 0 || row >= rows {
+		return nil
+	}
+	if n > cols {
+		n = cols
+	}
+	out := make([]float32, n)
+	for i := 0; i < n; i++ {
+		out[i] = data[row+rows*i]
 	}
 	return out
 }
