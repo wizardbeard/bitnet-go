@@ -764,6 +764,26 @@ CPU parity status matrix snapshot:
       - `Kcur` mean abs `~0.0648-0.0651`
       - `Vcur` mean abs `~0.1158-0.1162`
   - conclusion: Go runtime Q/K/V projection is self-consistent to near machine precision given its traced input; remaining parity gap is now narrowed to cross-implementation projection semantics/state alignment (not an internal Go replay inconsistency).
+- update: generalized traced i2_s matvec A/B audit from `V` to full `Q/K/V`.
+  - new env: `BITNET_DRIFT_QKV_MATVEC_AB=1`.
+  - drift trace now emits `drift_trace qkv_proj_ab ...` with:
+    - current runtime vs forced i2_s ref-matvec deltas for Q/K/V,
+    - current runtime vs f32 decode replay deltas for Q/K/V,
+    - i2_s ref-matvec vs f32 decode replay deltas for Q/K/V.
+  - measured at step 14 / layer 14 (`i2s`):
+    - current vs i2_s ref:
+      - `Q` mean abs `0.00417354`
+      - `K` mean abs `0.00681270`
+      - `V` mean abs `0.01116203`
+    - current vs f32 replay:
+      - `Q` mean abs `4.70e-07`
+      - `K` mean abs `8.83e-07`
+      - `V` mean abs `1.18e-06`
+    - i2_s ref vs f32 replay:
+      - `Q` mean abs `0.00417354`
+      - `K` mean abs `0.00681268`
+      - `V` mean abs `0.01116204`
+  - conclusion: at the traced point, Go runtime Q/K/V path is effectively identical to f32 decode replay and differs from i2_s ref-matvec by a small amount; this still does not account for the much larger Go-vs-reference cross-implementation Q/K/V deltas, reinforcing that the remaining gap is reference-vs-Go semantics/state alignment rather than an internal Go QKV path inconsistency.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).

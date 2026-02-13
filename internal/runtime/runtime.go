@@ -180,6 +180,7 @@ var driftTraceValuesN = parseEnvInt("BITNET_DRIFT_TRACE_VALUES_N", 16)
 var driftTraceLayer = parseEnvInt("BITNET_DRIFT_TRACE_LAYER", -1)
 var driftRopeRefF64 = os.Getenv("BITNET_DRIFT_ROPE_REF_F64") == "1"
 var driftQKVRefF32 = os.Getenv("BITNET_DRIFT_QKV_REF_F32") == "1"
+var driftQKVMatvecAB = os.Getenv("BITNET_DRIFT_QKV_MATVEC_AB") == "1"
 var driftVProjVariants = os.Getenv("BITNET_DRIFT_V_PROJ_VARIANTS") == "1"
 var driftVWeightAudit = os.Getenv("BITNET_DRIFT_V_WEIGHT_AUDIT") == "1"
 var driftVMatvecAB = os.Getenv("BITNET_DRIFT_V_MATVEC_AB") == "1"
@@ -1134,7 +1135,7 @@ func loadLlamaLayer(info gguf.ModelInfo, loader *modelTensorLoader, layerIdx int
 	if linearOutputLen(l.ffnDown) != hidden {
 		return llamaLayer{}, fmt.Errorf("%sffn_down.weight output dim=%d want=%d", prefix, linearOutputLen(l.ffnDown), hidden)
 	}
-	if driftQKVRefF32 || driftVProjVariants {
+	if driftQKVRefF32 || driftQKVMatvecAB || driftVProjVariants {
 		if l.debugAttnQF32, err = loader.readTensorAsF32(prefix + "attn_q.weight"); err != nil {
 			return llamaLayer{}, err
 		}
@@ -1796,6 +1797,103 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 					vMean,
 					vMax,
 				)
+			}
+			if traceDrift && driftQKVMatvecAB && (driftTraceLayer < 0 || driftTraceLayer == i) {
+				qKernelRef := make([]float32, len(st.q))
+				kKernelRef := make([]float32, len(st.k))
+				vKernelRef := make([]float32, len(st.v))
+				linearApplyIntoWeightI2SRef(qKernelRef, layer.attnQ, n1)
+				linearApplyIntoWeightI2SRef(kKernelRef, layer.attnK, n1)
+				linearApplyIntoWeightI2SRef(vKernelRef, layer.attnV, n1)
+				qCurRefMean, qCurRefMax := vecAbsDiffStats(st.q, qKernelRef)
+				kCurRefMean, kCurRefMax := vecAbsDiffStats(st.k, kKernelRef)
+				vCurRefMean, vCurRefMax := vecAbsDiffStats(st.v, vKernelRef)
+				if len(layer.debugAttnQF32) > 0 && len(layer.debugAttnKF32) > 0 && len(layer.debugAttnVF32) > 0 {
+					qF32Ref := make([]float32, len(st.q))
+					kF32Ref := make([]float32, len(st.k))
+					vF32Ref := make([]float32, len(st.v))
+					wQF32 := linearWeight{
+						data:       layer.debugAttnQF32,
+						rows:       layer.attnQ.rows,
+						cols:       layer.attnQ.cols,
+						transposed: layer.attnQ.transposed,
+						qtype:      gguf.GGMLTypeF32,
+					}
+					wKF32 := linearWeight{
+						data:       layer.debugAttnKF32,
+						rows:       layer.attnK.rows,
+						cols:       layer.attnK.cols,
+						transposed: layer.attnK.transposed,
+						qtype:      gguf.GGMLTypeF32,
+					}
+					wVF32 := linearWeight{
+						data:       layer.debugAttnVF32,
+						rows:       layer.attnV.rows,
+						cols:       layer.attnV.cols,
+						transposed: layer.attnV.transposed,
+						qtype:      gguf.GGMLTypeF32,
+					}
+					linearApplyIntoWeight(qF32Ref, wQF32, n1)
+					linearApplyIntoWeight(kF32Ref, wKF32, n1)
+					linearApplyIntoWeight(vF32Ref, wVF32, n1)
+					qCurF32Mean, qCurF32Max := vecAbsDiffStats(st.q, qF32Ref)
+					kCurF32Mean, kCurF32Max := vecAbsDiffStats(st.k, kF32Ref)
+					vCurF32Mean, vCurF32Max := vecAbsDiffStats(st.v, vF32Ref)
+					qRefF32Mean, qRefF32Max := vecAbsDiffStats(qKernelRef, qF32Ref)
+					kRefF32Mean, kRefF32Max := vecAbsDiffStats(kKernelRef, kF32Ref)
+					vRefF32Mean, vRefF32Max := vecAbsDiffStats(vKernelRef, vF32Ref)
+					fmt.Fprintf(
+						os.Stderr,
+						"drift_trace qkv_proj_ab layer=%d q_qtype=%d k_qtype=%d v_qtype=%d q_cur_vs_i2s_ref_mean_abs=%g q_cur_vs_i2s_ref_max_abs=%g k_cur_vs_i2s_ref_mean_abs=%g k_cur_vs_i2s_ref_max_abs=%g v_cur_vs_i2s_ref_mean_abs=%g v_cur_vs_i2s_ref_max_abs=%g q_cur_vs_f32_mean_abs=%g q_cur_vs_f32_max_abs=%g k_cur_vs_f32_mean_abs=%g k_cur_vs_f32_max_abs=%g v_cur_vs_f32_mean_abs=%g v_cur_vs_f32_max_abs=%g q_i2s_ref_vs_f32_mean_abs=%g q_i2s_ref_vs_f32_max_abs=%g k_i2s_ref_vs_f32_mean_abs=%g k_i2s_ref_vs_f32_max_abs=%g v_i2s_ref_vs_f32_mean_abs=%g v_i2s_ref_vs_f32_max_abs=%g\n",
+						i,
+						int(layer.attnQ.qtype),
+						int(layer.attnK.qtype),
+						int(layer.attnV.qtype),
+						qCurRefMean,
+						qCurRefMax,
+						kCurRefMean,
+						kCurRefMax,
+						vCurRefMean,
+						vCurRefMax,
+						qCurF32Mean,
+						qCurF32Max,
+						kCurF32Mean,
+						kCurF32Max,
+						vCurF32Mean,
+						vCurF32Max,
+						qRefF32Mean,
+						qRefF32Max,
+						kRefF32Mean,
+						kRefF32Max,
+						vRefF32Mean,
+						vRefF32Max,
+					)
+					if driftTraceValuesN > 0 {
+						fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=Qcur_i2s_ref values=%s\n", i, vecValuesCSV(qKernelRef, driftTraceValuesN))
+						fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=Kcur_i2s_ref values=%s\n", i, vecValuesCSV(kKernelRef, driftTraceValuesN))
+						fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=Vcur_i2s_ref values=%s\n", i, vecValuesCSV(vKernelRef, driftTraceValuesN))
+					}
+				} else {
+					fmt.Fprintf(
+						os.Stderr,
+						"drift_trace qkv_proj_ab layer=%d q_qtype=%d k_qtype=%d v_qtype=%d q_cur_vs_i2s_ref_mean_abs=%g q_cur_vs_i2s_ref_max_abs=%g k_cur_vs_i2s_ref_mean_abs=%g k_cur_vs_i2s_ref_max_abs=%g v_cur_vs_i2s_ref_mean_abs=%g v_cur_vs_i2s_ref_max_abs=%g f32_ref_missing=1\n",
+						i,
+						int(layer.attnQ.qtype),
+						int(layer.attnK.qtype),
+						int(layer.attnV.qtype),
+						qCurRefMean,
+						qCurRefMax,
+						kCurRefMean,
+						kCurRefMax,
+						vCurRefMean,
+						vCurRefMax,
+					)
+					if driftTraceValuesN > 0 {
+						fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=Qcur_i2s_ref values=%s\n", i, vecValuesCSV(qKernelRef, driftTraceValuesN))
+						fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=Kcur_i2s_ref values=%s\n", i, vecValuesCSV(kKernelRef, driftTraceValuesN))
+						fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=Vcur_i2s_ref values=%s\n", i, vecValuesCSV(vKernelRef, driftTraceValuesN))
+					}
+				}
 			}
 			if traceDrift && driftVProjVariants && (driftTraceLayer < 0 || driftTraceLayer == i) {
 				wVFlip := layer.attnV
