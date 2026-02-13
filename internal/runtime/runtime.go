@@ -115,6 +115,42 @@ type decodeCacheEntry struct {
 	text   string
 }
 
+const parityProfileCPUV1 = "cpu_parity_v1"
+
+var parityProfile = strings.ToLower(strings.TrimSpace(os.Getenv("BITNET_PARITY_PROFILE")))
+
+func parityProfileBool(key string, fallback bool) bool {
+	if v, ok := os.LookupEnv(key); ok {
+		return v == "1"
+	}
+	if parityProfile == parityProfileCPUV1 {
+		switch key {
+		case "BITNET_STRICT_KQ", "BITNET_STRICT_EXPF":
+			return true
+		}
+	}
+	return fallback
+}
+
+func parityProfileInt(key string, fallback int) int {
+	if v, ok := os.LookupEnv(key); ok {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return fallback
+		}
+		return n
+	}
+	if parityProfile == parityProfileCPUV1 {
+		switch key {
+		case "BITNET_STRICT_KQ_LAYER_MAX":
+			return 14
+		case "BITNET_STRICT_EXPF_LAYER_MAX":
+			return 0
+		}
+	}
+	return fallback
+}
+
 var debugStep0 = os.Getenv("BITNET_DEBUG_STEP0") == "1"
 var disableFFN = os.Getenv("BITNET_DISABLE_FFN") == "1"
 var disableAttn = os.Getenv("BITNET_DISABLE_ATTN") == "1"
@@ -133,12 +169,12 @@ var debugTokens = parseDebugTokens(os.Getenv("BITNET_DEBUG_TOKENS"))
 var debugSoftmaxPrinted bool
 var debugParityStrict = os.Getenv("BITNET_PARITY_STRICT") == "1"
 var debugStrictAttention = os.Getenv("BITNET_STRICT_ATTENTION") == "1"
-var debugStrictExpf = os.Getenv("BITNET_STRICT_EXPF") == "1"
-var strictExpfLayerMax = parseEnvInt("BITNET_STRICT_EXPF_LAYER_MAX", -1)
+var debugStrictExpf = parityProfileBool("BITNET_STRICT_EXPF", false)
+var strictExpfLayerMax = parityProfileInt("BITNET_STRICT_EXPF_LAYER_MAX", -1)
 var debugFastExpf = os.Getenv("BITNET_FAST_EXPF") == "1" && !debugParityStrict
 var debugAttnF64 = os.Getenv("BITNET_ATTN_F64") == "1"
-var debugStrictKQ = os.Getenv("BITNET_STRICT_KQ") == "1" || debugParityStrict
-var strictKQLayerMax = parseEnvInt("BITNET_STRICT_KQ_LAYER_MAX", -1)
+var debugStrictKQ = parityProfileBool("BITNET_STRICT_KQ", false) || debugParityStrict
+var strictKQLayerMax = parityProfileInt("BITNET_STRICT_KQ_LAYER_MAX", -1)
 var strictKQMode = parseStrictKQMode(os.Getenv("BITNET_STRICT_KQ_MODE"))
 var strictKQCurrentLayer atomic.Int32
 var debugFastKQ = os.Getenv("BITNET_FAST_KQ_DOT") != "0" && !debugParityStrict

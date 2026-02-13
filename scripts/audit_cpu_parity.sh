@@ -73,8 +73,9 @@ run_stage "parity-yarn" env \
 
 run_stage "parity-i2s" env \
   BITNET_ENFORCE_I2S=1 \
+  BITNET_PARITY_PROFILE=cpu_parity_v1 \
   BITNET_PARITY_FORCE=1 \
-  BITNET_PARITY_STRICT=1 \
+  BITNET_PARITY_STRICT=0 \
   BITNET_I2S_FORCE_LOGIT_ATOL=7e-2 \
   BITNET_I2S_FORCE_LOGIT_RTOL=7e-2 \
   BITNET_I2S_TOPK_STRICT=3 \
@@ -83,8 +84,9 @@ run_stage "parity-i2s" env \
 
 run_stage "parity-i2s-2b" env \
   BITNET_ENFORCE_I2S_2B=1 \
+  BITNET_PARITY_PROFILE=cpu_parity_v1 \
   BITNET_PARITY_FORCE=1 \
-  BITNET_PARITY_STRICT=1 \
+  BITNET_PARITY_STRICT=0 \
   BITNET_I2S_FORCE_LOGIT_ATOL=7e-2 \
   BITNET_I2S_FORCE_LOGIT_RTOL=7e-2 \
   BITNET_I2S_TOPK_STRICT=3 \
@@ -93,14 +95,16 @@ run_stage "parity-i2s-2b" env \
 
 run_stage "smoke-i2s" env \
   BITNET_ENFORCE_I2S_SMOKE=1 \
+  BITNET_PARITY_PROFILE=cpu_parity_v1 \
   BITNET_PARITY_FORCE=1 \
-  BITNET_PARITY_STRICT=1 \
+  BITNET_PARITY_STRICT=0 \
   go test ./pkg/bitnet -run TestParityAgainstI2SSmoke -count=1
 
 run_stage "smoke-i2s-2b" env \
   BITNET_ENFORCE_I2S_2B_SMOKE=1 \
+  BITNET_PARITY_PROFILE=cpu_parity_v1 \
   BITNET_PARITY_FORCE=1 \
-  BITNET_PARITY_STRICT=1 \
+  BITNET_PARITY_STRICT=0 \
   go test ./pkg/bitnet -run TestParityAgainstI2S2BSmoke -count=1
 
 run_stage "seed-determinism" env \

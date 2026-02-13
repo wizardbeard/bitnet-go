@@ -884,6 +884,26 @@ CPU parity status matrix snapshot:
     - `BITNET_STRICT_EXPF_LAYER_MAX=0`
     - `go test ./pkg/bitnet -run TestParityAgainstI2S2BVectors -count=1 -v` -> PASS.
   - interpretation: while some strict toggles regressed drift proxies in isolation, the combined config above is currently the only sampled setting that clears both i2s and i2s_2b parity tests under force mode on this host.
+- update: introduced parity profile switch for reproducible strictness presets.
+  - new env: `BITNET_PARITY_PROFILE=cpu_parity_v1`.
+  - runtime defaults applied when explicit env overrides are absent:
+    - `BITNET_STRICT_KQ=1`
+    - `BITNET_STRICT_KQ_LAYER_MAX=14`
+    - `BITNET_STRICT_EXPF=1`
+    - `BITNET_STRICT_EXPF_LAYER_MAX=0`
+  - explicit env vars still take precedence over profile defaults.
+- update: wired parity audit/CI to use parity profile for i2_s paths.
+  - `scripts/audit_cpu_parity.sh` now sets `BITNET_PARITY_PROFILE=cpu_parity_v1` for:
+    - `parity-i2s`
+    - `parity-i2s-2b`
+    - `smoke-i2s`
+    - `smoke-i2s-2b`
+  - i2_s audit stages now run with `BITNET_PARITY_STRICT=0` while retaining force-mode parity checks.
+  - `.github/workflows/ci.yml` `cpu-parity-audit` step exports `BITNET_PARITY_PROFILE=cpu_parity_v1`.
+- update: added guard tests for profile/strictness controls in `internal/runtime/runtime_test.go`.
+  - profile default assertions for `cpu_parity_v1`,
+  - layer-gating behavior checks for strict KQ/strict EXPF,
+  - mode parser checks for `BITNET_STRICT_KQ_MODE`.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).

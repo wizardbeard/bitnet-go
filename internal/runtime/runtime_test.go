@@ -12,6 +12,113 @@ import (
 	"bitnet-go/internal/gguf"
 )
 
+func unsetEnvForTest(t *testing.T, key string) {
+	t.Helper()
+	old, ok := os.LookupEnv(key)
+	if err := os.Unsetenv(key); err != nil {
+		t.Fatalf("Unsetenv(%s): %v", key, err)
+	}
+	t.Cleanup(func() {
+		if ok {
+			_ = os.Setenv(key, old)
+			return
+		}
+		_ = os.Unsetenv(key)
+	})
+}
+
+func TestParityProfileDefaultsCPUV1(t *testing.T) {
+	unsetEnvForTest(t, "BITNET_STRICT_KQ")
+	unsetEnvForTest(t, "BITNET_STRICT_EXPF")
+	unsetEnvForTest(t, "BITNET_STRICT_KQ_LAYER_MAX")
+	unsetEnvForTest(t, "BITNET_STRICT_EXPF_LAYER_MAX")
+
+	oldProfile := parityProfile
+	parityProfile = parityProfileCPUV1
+	t.Cleanup(func() { parityProfile = oldProfile })
+
+	if !parityProfileBool("BITNET_STRICT_KQ", false) {
+		t.Fatalf("BITNET_STRICT_KQ profile default = false, want true")
+	}
+	if !parityProfileBool("BITNET_STRICT_EXPF", false) {
+		t.Fatalf("BITNET_STRICT_EXPF profile default = false, want true")
+	}
+	if got := parityProfileInt("BITNET_STRICT_KQ_LAYER_MAX", -1); got != 14 {
+		t.Fatalf("BITNET_STRICT_KQ_LAYER_MAX profile default = %d, want 14", got)
+	}
+	if got := parityProfileInt("BITNET_STRICT_EXPF_LAYER_MAX", -1); got != 0 {
+		t.Fatalf("BITNET_STRICT_EXPF_LAYER_MAX profile default = %d, want 0", got)
+	}
+}
+
+func TestStrictKQEnabledForCurrentLayer(t *testing.T) {
+	oldStrict := debugStrictKQ
+	oldMax := strictKQLayerMax
+	oldLayer := strictKQCurrentLayer.Load()
+	t.Cleanup(func() {
+		debugStrictKQ = oldStrict
+		strictKQLayerMax = oldMax
+		strictKQCurrentLayer.Store(oldLayer)
+	})
+
+	debugStrictKQ = true
+	strictKQLayerMax = 14
+
+	strictKQCurrentLayer.Store(7)
+	if !strictKQEnabledForCurrentLayer() {
+		t.Fatalf("strictKQEnabledForCurrentLayer() = false, want true for layer 7 <= 14")
+	}
+	strictKQCurrentLayer.Store(20)
+	if strictKQEnabledForCurrentLayer() {
+		t.Fatalf("strictKQEnabledForCurrentLayer() = true, want false for layer 20 > 14")
+	}
+	strictKQCurrentLayer.Store(-1)
+	if !strictKQEnabledForCurrentLayer() {
+		t.Fatalf("strictKQEnabledForCurrentLayer() = false, want true for unknown layer")
+	}
+}
+
+func TestStrictExpfEnabledForCurrentLayer(t *testing.T) {
+	oldStrict := debugStrictExpf
+	oldMax := strictExpfLayerMax
+	oldLayer := strictKQCurrentLayer.Load()
+	t.Cleanup(func() {
+		debugStrictExpf = oldStrict
+		strictExpfLayerMax = oldMax
+		strictKQCurrentLayer.Store(oldLayer)
+	})
+
+	debugStrictExpf = true
+	strictExpfLayerMax = 0
+
+	strictKQCurrentLayer.Store(0)
+	if !strictExpfEnabledForCurrentLayer() {
+		t.Fatalf("strictExpfEnabledForCurrentLayer() = false, want true for layer 0 <= 0")
+	}
+	strictKQCurrentLayer.Store(1)
+	if strictExpfEnabledForCurrentLayer() {
+		t.Fatalf("strictExpfEnabledForCurrentLayer() = true, want false for layer 1 > 0")
+	}
+}
+
+func TestParseStrictKQMode(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{in: "", want: "ggml"},
+		{in: "ggml", want: "ggml"},
+		{in: "naive", want: "naive"},
+		{in: "f64", want: "f64"},
+		{in: "bad", want: "ggml"},
+	}
+	for _, tc := range cases {
+		if got := parseStrictKQMode(tc.in); got != tc.want {
+			t.Fatalf("parseStrictKQMode(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestRunForwardStubDeterministic(t *testing.T) {
 	a := make([]int32, 8)
 	b := make([]int32, 8)

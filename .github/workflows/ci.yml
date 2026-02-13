@@ -16,6 +16,7 @@ jobs:
           cache: true
       - name: cpu-parity-audit
         env:
+          BITNET_PARITY_PROFILE: cpu_parity_v1
           BITNET_AUDIT_FETCH: "1"
           BITNET_YARN_MODEL_URL: https://huggingface.co/mradermacher/YarnGPT2b-GGUF/resolve/main/YarnGPT2b.f16.gguf
           BITNET_YARN_MODEL_FILE: YarnGPT2b.f16.gguf
