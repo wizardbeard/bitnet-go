@@ -904,6 +904,27 @@ CPU parity status matrix snapshot:
   - profile default assertions for `cpu_parity_v1`,
   - layer-gating behavior checks for strict KQ/strict EXPF,
   - mode parser checks for `BITNET_STRICT_KQ_MODE`.
+- update: added convenience runner for the pinned parity profile:
+  - new script: `scripts/run_parity_profile_cpu_v1.sh`.
+  - runs forced-token parity tests for both i2_s and i2_s_2b with:
+    - `BITNET_PARITY_PROFILE=cpu_parity_v1`
+    - `BITNET_PARITY_FORCE=1`
+    - `BITNET_PARITY_STRICT=0`
+    - `BITNET_PARITY_FORCE_RELAX_TOPK=1`
+- update: reran drift trace with the pinned profile on non-strict parity path:
+  - command:
+    - `BITNET_PARITY_PROFILE=cpu_parity_v1 BITNET_DRIFT_TRACE_PARITY_STRICT=0 BITNET_DRIFT_TRACE_LAYER=14 BITNET_DRIFT_TRACE_VALUES_N=16 ./scripts/trace_i2s_drift_step.sh i2s`
+  - parity force still first-fails early at step 2 in this trace mode (`token=644`, `got=8.255120`, `want=7.684045`), but targeted step/layer logs are emitted.
+  - step-14 compare snapshot (`token=55358`):
+    - Go logit: `7.674998`
+    - ref logit: `7.74704838`
+  - output norm slice diff (`result_norm`, first 16):
+    - mean abs: `0.00328628`
+    - max abs: `0.0109185`
+  - V projection slice diff (`Vcur`, layer 14, first 16):
+    - mean abs: `0.147528`
+    - max abs: `0.428548`
+  - interpretation: current profile keeps both parity fixtures green while residual traced drift is still concentrated around `Vcur` at the known step-14 hotspot.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).
