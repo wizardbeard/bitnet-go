@@ -180,6 +180,7 @@ var driftTraceValuesN = parseEnvInt("BITNET_DRIFT_TRACE_VALUES_N", 16)
 var driftTraceLayer = parseEnvInt("BITNET_DRIFT_TRACE_LAYER", -1)
 var driftRopeRefF64 = os.Getenv("BITNET_DRIFT_ROPE_REF_F64") == "1"
 var driftQKVRefF32 = os.Getenv("BITNET_DRIFT_QKV_REF_F32") == "1"
+var driftVProjVariants = os.Getenv("BITNET_DRIFT_V_PROJ_VARIANTS") == "1"
 var driftAttnAccRef = os.Getenv("BITNET_DRIFT_ATTN_ACC_REF") == "1"
 var driftAttnOutRefF32 = os.Getenv("BITNET_DRIFT_ATTN_OUT_REF_F32") == "1"
 var ffnShareI2SQuant = os.Getenv("BITNET_FFN_SHARE_I2S_QUANT") != "0"
@@ -1131,7 +1132,7 @@ func loadLlamaLayer(info gguf.ModelInfo, loader *modelTensorLoader, layerIdx int
 	if linearOutputLen(l.ffnDown) != hidden {
 		return llamaLayer{}, fmt.Errorf("%sffn_down.weight output dim=%d want=%d", prefix, linearOutputLen(l.ffnDown), hidden)
 	}
-	if driftQKVRefF32 {
+	if driftQKVRefF32 || driftVProjVariants {
 		if l.debugAttnQF32, err = loader.readTensorAsF32(prefix + "attn_q.weight"); err != nil {
 			return llamaLayer{}, err
 		}
@@ -1751,6 +1752,61 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 					vMean,
 					vMax,
 				)
+			}
+			if traceDrift && driftVProjVariants && (driftTraceLayer < 0 || driftTraceLayer == i) {
+				wVFlip := layer.attnV
+				wVFlip.transposed = !wVFlip.transposed
+				if linearOutputLen(wVFlip) == len(st.v) {
+					vAlt := make([]float32, len(st.v))
+					linearApplyIntoWeight(vAlt, wVFlip, n1)
+					meanAbs, maxAbs := vecAbsDiffStats(st.v, vAlt)
+					fmt.Fprintf(
+						os.Stderr,
+						"drift_trace v_proj_variant layer=%d kind=quant_flip_t mean_abs=%g max_abs=%g\n",
+						i,
+						meanAbs,
+						maxAbs,
+					)
+				} else {
+					fmt.Fprintf(
+						os.Stderr,
+						"drift_trace v_proj_variant layer=%d kind=quant_flip_t skipped=1 alt_len=%d want=%d\n",
+						i,
+						linearOutputLen(wVFlip),
+						len(st.v),
+					)
+				}
+				if len(layer.debugAttnVF32) > 0 {
+					wVF32 := linearWeight{
+						data:       layer.debugAttnVF32,
+						rows:       layer.attnV.rows,
+						cols:       layer.attnV.cols,
+						transposed: layer.attnV.transposed,
+						qtype:      gguf.GGMLTypeF32,
+					}
+					wVF32Flip := wVF32
+					wVF32Flip.transposed = !wVF32Flip.transposed
+					if linearOutputLen(wVF32Flip) == len(st.v) {
+						vAlt := make([]float32, len(st.v))
+						linearApplyIntoWeight(vAlt, wVF32Flip, n1)
+						meanAbs, maxAbs := vecAbsDiffStats(st.v, vAlt)
+						fmt.Fprintf(
+							os.Stderr,
+							"drift_trace v_proj_variant layer=%d kind=f32_flip_t mean_abs=%g max_abs=%g\n",
+							i,
+							meanAbs,
+							maxAbs,
+						)
+					} else {
+						fmt.Fprintf(
+							os.Stderr,
+							"drift_trace v_proj_variant layer=%d kind=f32_flip_t skipped=1 alt_len=%d want=%d\n",
+							i,
+							linearOutputLen(wVF32Flip),
+							len(st.v),
+						)
+					}
+				}
 			}
 			if traceDrift && driftTraceValuesN > 0 && (driftTraceLayer < 0 || driftTraceLayer == i) {
 				fmt.Fprintf(

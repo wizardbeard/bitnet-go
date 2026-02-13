@@ -708,6 +708,13 @@ CPU parity status matrix snapshot:
     - `attn_norm` mean abs `~0.000570644`
     - `Vcur` mean abs `~0.140841`
   - conclusion: attention weight path is close after alignment; strongest remaining early divergence remains specific to V projection output (`Vcur`) rather than attn_norm input or softmax path.
+- update: added `attn_v` projection variant probe at traced layer:
+  - new env: `BITNET_DRIFT_V_PROJ_VARIANTS=1`.
+  - drift trace now attempts flipped-transpose variants for `attn_v` (quant and f32) and reports compatibility/stats.
+  - at step 14 / layer 14:
+    - `quant_flip_t`: `skipped=1 alt_len=2560 want=640`
+    - `f32_flip_t`: `skipped=1 alt_len=2560 want=640`
+  - conclusion: a simple transpose-interpretation flip cannot explain the Vcur mismatch for this fixture; the mismatch is not addressable by toggling `attn_v` transpose semantics alone.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).
