@@ -784,6 +784,17 @@ CPU parity status matrix snapshot:
       - `K` mean abs `0.00681268`
       - `V` mean abs `0.01116204`
   - conclusion: at the traced point, Go runtime Q/K/V path is effectively identical to f32 decode replay and differs from i2_s ref-matvec by a small amount; this still does not account for the much larger Go-vs-reference cross-implementation Q/K/V deltas, reinforcing that the remaining gap is reference-vs-Go semantics/state alignment rather than an internal Go QKV path inconsistency.
+- update: compared Q/K/V alignment replay under strict vs non-strict Go trace path.
+  - `scripts/probe_qkv_alignment.sh` now accepts `BITNET_QKV_PROBE_PARITY_STRICT` (default `1`) and passes through to `trace_i2s_drift_step.sh`.
+  - measured at step 14 / layer 14 (`i2s`):
+    - strict (`parity_strict=1`) cross-side means:
+      - `go_input_vs_ref_qkv`: `Q=0.03794`, `K=0.06506`, `V=0.11623`
+      - `ref_input_vs_go_qkv`: `Q=0.03755`, `K=0.06482`, `V=0.11579`
+    - non-strict (`parity_strict=0`) cross-side means:
+      - `go_input_vs_ref_qkv`: `Q=0.03423`, `K=0.05603`, `V=0.10549`
+      - `ref_input_vs_go_qkv`: `Q=0.03431`, `K=0.05618`, `V=0.10487`
+  - observed shift: non-strict path reduces cross-implementation Q/K/V drift by roughly `~8-15%` at this point.
+  - interpretation: strict path semantics amplify mismatch at the traced step; the residual gap still exists in non-strict mode, but this isolates part of the difference to strict-path behavior rather than model decode or replay plumbing.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).

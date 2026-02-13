@@ -5,6 +5,7 @@ FAMILY=${1:-i2s}
 LAYER=${BITNET_QKV_PROBE_LAYER:-14}
 STEP=${BITNET_QKV_PROBE_STEP:-14}
 OUT_DIR=${BITNET_QKV_PROBE_OUT_DIR:-.bench}
+PARITY_STRICT=${BITNET_QKV_PROBE_PARITY_STRICT:-1}
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 TESTDATA_DIR="$ROOT_DIR/testdata"
 
@@ -135,7 +136,7 @@ BITNET_DRIFT_TRACE_OUT="$GO_LOG" \
 BITNET_DRIFT_TRACE_STEP="$STEP" \
 BITNET_DRIFT_TRACE_LAYER="$LAYER" \
 BITNET_DRIFT_TRACE_VALUES_N="$VALUES_N" \
-BITNET_DRIFT_TRACE_PARITY_STRICT=1 \
+BITNET_DRIFT_TRACE_PARITY_STRICT="$PARITY_STRICT" \
 ./scripts/trace_i2s_drift_step.sh "$FAMILY" >/dev/null
 
 BITNET_REF_DRIFT_TRACE_OUT="$REF_LOG" \
@@ -170,7 +171,7 @@ for f in "$GO_ATTN" "$GO_Q" "$GO_K" "$GO_V" "$REF_ATTN" "$REF_Q" "$REF_K" "$REF_
 done
 
 {
-  echo "qkvprobe family=$FAMILY layer=$LAYER step=$STEP pos=$POS model=$MODEL_PATH"
+  echo "qkvprobe family=$FAMILY layer=$LAYER step=$STEP pos=$POS parity_strict=$PARITY_STRICT model=$MODEL_PATH"
   compare_csv "$GO_ATTN" "$REF_ATTN" "go_attn_norm_vs_ref_attn_norm"
   go run ./cmd/qkvprobe --model "$MODEL_PATH" --layer "$LAYER" --input-csv "$GO_ATTN" --q-ref-csv "$GO_Q" --k-ref-csv "$GO_K" --v-ref-csv "$GO_V" --label "replay_go_input_vs_go_qkv"
   go run ./cmd/qkvprobe --model "$MODEL_PATH" --layer "$LAYER" --input-csv "$REF_ATTN" --q-ref-csv "$REF_Q" --k-ref-csv "$REF_K" --v-ref-csv "$REF_V" --label "replay_ref_input_vs_ref_qkv"
