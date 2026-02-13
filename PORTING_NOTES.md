@@ -839,6 +839,22 @@ CPU parity status matrix snapshot:
     - `layer_max=14`: `Q=0.0318648`, `K=0.0523582`, `V=0.0980846`
     - `layer_max=29`: `Q=0.0318648`, `K=0.0523582`, `V=0.0980846`
   - interpretation: in this trace slice, strict-exp improvement appears to saturate immediately (equivalent by `layer_max=0`), suggesting softmax-exp precision impact is dominated by earliest layers; strict-KQ still yields the larger V improvement overall.
+- update: added interaction sweep for `STRICT_KQ_LAYER_MAX` with early strict-exp.
+  - new script: `scripts/sweep_qkv_kq_expf_cutoffs.sh`
+    - runs non-strict baseline,
+    - `expf_l0`,
+    - `kq_l{0,7,14,29}`,
+    - and each `kq_l*` combined with `expf_l0`.
+  - measured at step 14 / layer 14 (`i2s`, `go_input_vs_ref_qkv` means):
+    - baseline: `Q=0.03423`, `K=0.05603`, `V=0.10549`
+    - `expf_l0`: `Q=0.03186`, `K=0.05236`, `V=0.09808` (improves vs baseline)
+    - `kq_l7`: `Q=0.031996`, `K=0.05141`, `V=0.09514` (best K among sampled cutoffs)
+    - `kq_l14`: `Q=0.03122`, `K=0.05320`, `V=0.09279` (best V among sampled cutoffs)
+    - `kq_l14_expf_l0`: `Q=0.03503`, `K=0.05728`, `V=0.10797` (regresses vs both baseline and `kq_l14`)
+  - interpretation:
+    - strict-exp (`l0`) helps when used alone,
+    - but combining it with mid/full strict-KQ strongly regresses this drift metric.
+    - this indicates non-linear interaction between KQ-dot and softmax-exp strictness; next work should keep them independently controllable and avoid stacked strictness when evaluating parity deltas.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).
