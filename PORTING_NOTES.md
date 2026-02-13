@@ -867,6 +867,23 @@ CPU parity status matrix snapshot:
     - `f64`: `Q=0.03408`, `K=0.05657`, `V=0.10539` (better than naive, worse than ggml)
   - interpretation: the current strict-KQ `ggml` accumulation/order remains the best of sampled modes for this parity slice; moving to naive/f64 strict dot semantics regresses cross-side drift.
 - update: drift trace harness now defaults to verbose test output (`BITNET_DRIFT_TRACE_VERBOSE=1`) so trace logs are available even when parity tests pass.
+- update: added direct parity-mismatch sweep at traced step.
+  - new script: `scripts/sweep_parity_step14_configs.sh`
+    - runs `TestParityAgainstI2SVectors` across selected strictness configs,
+    - reports first mismatch (`step/token/got/want/abs_err`) and traced `step14_logit`.
+  - measured (`i2s`, traced step 14):
+    - `baseline`, `kq_l7`, `kq_l14`, `expf_l0`, `kq_l7_expf_l0`:
+      - all failed with first mismatch at `step=2 token=644`, `abs_err=0.612025`.
+    - `kq_l14_expf_l0`:
+      - **passed** test (no mismatch line),
+      - traced `step14_logit=7.674998`.
+  - cross-check: same config also passes `i2s_2b` parity test:
+    - `BITNET_STRICT_KQ=1`
+    - `BITNET_STRICT_KQ_LAYER_MAX=14`
+    - `BITNET_STRICT_EXPF=1`
+    - `BITNET_STRICT_EXPF_LAYER_MAX=0`
+    - `go test ./pkg/bitnet -run TestParityAgainstI2S2BVectors -count=1 -v` -> PASS.
+  - interpretation: while some strict toggles regressed drift proxies in isolation, the combined config above is currently the only sampled setting that clears both i2s and i2s_2b parity tests under force mode on this host.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).
