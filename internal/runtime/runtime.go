@@ -1853,7 +1853,7 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 				}
 			}
 			if traceDrift && driftTraceValuesN > 0 && (driftTraceLayer < 0 || driftTraceLayer == i) {
-				if w := attnHead0WeightsNormalized(st.scores, pos+1); len(w) > 0 {
+				if w := attnHeadWeightsFromQK(st.q, st.keys, pos+1, block.attnHeads, block.kvHeads, len(st.k), 0); len(w) > 0 {
 					fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=attn_softmax_h0 values=%s\n", i, vecValuesCSV(w, driftTraceValuesN))
 				}
 			}
@@ -3054,17 +3054,46 @@ func vecAbsDiffStats(a, b []float32) (meanAbs, maxAbs float32) {
 	return sum / float32(n), maxAbs
 }
 
-func attnHead0WeightsNormalized(scores []float32, steps int) []float32 {
-	if steps <= 0 || len(scores) < steps {
+func attnHeadWeightsFromQK(q, keys []float32, steps, qHeads, kvHeads, kStepDim, head int) []float32 {
+	if steps <= 0 || len(q) == 0 || len(keys) == 0 {
 		return nil
 	}
-	out := make([]float32, steps)
-	copy(out, scores[:steps])
-	var sum float32
-	for i := range out {
-		sum += out[i]
+	if qHeads <= 0 {
+		qHeads = 1
 	}
-	if sum <= 0 {
+	if kvHeads <= 0 {
+		kvHeads = qHeads
+	}
+	if len(q)%qHeads != 0 {
+		return nil
+	}
+	headDim := len(q) / qHeads
+	if headDim == 0 || head < 0 || head >= qHeads {
+		return nil
+	}
+	if kStepDim <= 0 || kStepDim%kvHeads != 0 || kStepDim/kvHeads != headDim {
+		return nil
+	}
+	kvHead := head * kvHeads / qHeads
+	kBase := kvHead * headDim
+	qBase := head * headDim
+	qh := q[qBase : qBase+headDim]
+	out := make([]float32, steps)
+	scale := float32(1.0 / math.Sqrt(float64(headDim)))
+	maxScore := float32(-math.MaxFloat32)
+	for i := 0; i < steps; i++ {
+		kb := i*kStepDim + kBase
+		if kb+headDim > len(keys) {
+			return nil
+		}
+		s := dotF32GGML(qh, keys[kb:kb+headDim]) * scale
+		out[i] = s
+		if s > maxScore {
+			maxScore = s
+		}
+	}
+	sum := softmaxInPlace(out, maxScore)
+	if sum == 0 {
 		return out
 	}
 	inv := 1 / sum
