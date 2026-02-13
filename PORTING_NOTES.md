@@ -743,6 +743,27 @@ CPU parity status matrix snapshot:
   - measured at step 14 / layer 14 (`i2s`):
     - `cur_vs_i2s_ref_mean_abs=0.011162029`, `cur_vs_i2s_ref_max_abs=0.041639507`
   - conclusion: runtime fast i2_s V projection and i2_s reference matvec are already close at the failing point, so the larger Go-vs-ref `Vcur` gap is likely not a pure fast-kernel arithmetic issue; the remaining source is more likely upstream/downstream state alignment around traced step/layer context.
+- update: added full-vector Q/K/V alignment replay probe from traced logs.
+  - new command: `go run ./cmd/qkvprobe --model <gguf> --layer <n> --input-csv <attn_norm.csv> --q-ref-csv <q.csv> --k-ref-csv <k.csv> --v-ref-csv <v.csv> --label <tag>`
+  - new driver script: `scripts/probe_qkv_alignment.sh`
+    - runs Go + ref drift traces at the same step/layer with full vector export (`values_n=4096`),
+    - extracts `attn_norm`, `Qcur`, `Kcur`, `Vcur` for both sides,
+    - runs four replay comparisons (`go/ref input` x `go/ref targets`).
+  - measured at step 14 / layer 14 (`i2s`):
+    - `go_attn_norm_vs_ref_attn_norm`: mean abs `0.000543262`, max abs `0.00251197`
+    - `replay_go_input_vs_go_qkv`:
+      - `Qcur` mean abs `4.70e-07`
+      - `Kcur` mean abs `8.83e-07`
+      - `Vcur` mean abs `1.18e-06`
+    - `replay_ref_input_vs_ref_qkv`:
+      - `Qcur` mean abs `0.00424763`
+      - `Kcur` mean abs `0.00643999`
+      - `Vcur` mean abs `0.0099074`
+    - cross-side (`replay_go_input_vs_ref_qkv` and `replay_ref_input_vs_go_qkv`) remained large:
+      - `Qcur` mean abs `~0.0375-0.0379`
+      - `Kcur` mean abs `~0.0648-0.0651`
+      - `Vcur` mean abs `~0.1158-0.1162`
+  - conclusion: Go runtime Q/K/V projection is self-consistent to near machine precision given its traced input; remaining parity gap is now narrowed to cross-implementation projection semantics/state alignment (not an internal Go replay inconsistency).
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).
