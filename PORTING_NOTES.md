@@ -807,6 +807,16 @@ CPU parity status matrix snapshot:
     - `BITNET_STRICT_EXPF=1`: `Q=0.03186`, `K=0.05236`, `V=0.09808`
     - `BITNET_STRICT_ATTENTION_REF=1`: `Q=0.03439`, `K=0.05630`, `V=0.10396`
   - interpretation: in this slice, enabling `BITNET_STRICT_KQ` produced the largest single reduction in cross-side V drift (about `~12%` vs baseline), with `BITNET_STRICT_EXPF` also helping; `STRICT_ATTENTION_REF` had little effect. This points next debugging focus toward Q·K score path semantics/precision rather than cache layout or matvec decode.
+- update: expanded strict sweep to include toggle combinations.
+  - `scripts/sweep_qkv_strict_toggles.sh` now tests:
+    - `strict_kq_expf`
+    - `strict_kq_attention`
+    - `strict_kq_expf_attention`
+  - measured at step 14 / layer 14 (`i2s`, `go_input_vs_ref_qkv` means):
+    - `strict_kq_expf`: `Q=0.03503`, `K=0.05728`, `V=0.10797` (worse than baseline and worse than `strict_kq` alone)
+    - `strict_kq_attention`: `Q=0.03122`, `K=0.05320`, `V=0.09279` (effectively same as `strict_kq` alone)
+    - `strict_kq_expf_attention`: `Q=0.03364`, `K=0.05799`, `V=0.10228` (worse than `strict_kq` alone)
+  - interpretation: in this slice, `BITNET_STRICT_KQ=1` remains the best single lever; combining it with `STRICT_EXPF` regresses cross-side drift, so next work should focus on isolating Q·K dot-product ordering/precision behavior specifically rather than stacking strict softmax toggles.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).

@@ -31,27 +31,17 @@ extract_mean_abs() {
 
 run_case() {
   name=$1
-  env_key=$2
-  env_val=$3
+  shift
   out_dir="$OUT_BASE/$name"
   mkdir -p "$out_dir"
 
-  if [ -n "$env_key" ]; then
-    env \
-      BITNET_QKV_PROBE_OUT_DIR="$out_dir" \
-      BITNET_QKV_PROBE_LAYER="$LAYER" \
-      BITNET_QKV_PROBE_STEP="$STEP" \
-      BITNET_QKV_PROBE_PARITY_STRICT=0 \
-      "$env_key=$env_val" \
-      "$ROOT_DIR/scripts/probe_qkv_alignment.sh" "$FAMILY" >/dev/null
-  else
-    env \
-      BITNET_QKV_PROBE_OUT_DIR="$out_dir" \
-      BITNET_QKV_PROBE_LAYER="$LAYER" \
-      BITNET_QKV_PROBE_STEP="$STEP" \
-      BITNET_QKV_PROBE_PARITY_STRICT=0 \
-      "$ROOT_DIR/scripts/probe_qkv_alignment.sh" "$FAMILY" >/dev/null
-  fi
+  env \
+    BITNET_QKV_PROBE_OUT_DIR="$out_dir" \
+    BITNET_QKV_PROBE_LAYER="$LAYER" \
+    BITNET_QKV_PROBE_STEP="$STEP" \
+    BITNET_QKV_PROBE_PARITY_STRICT=0 \
+    "$@" \
+    "$ROOT_DIR/scripts/probe_qkv_alignment.sh" "$FAMILY" >/dev/null
 
   report="$out_dir/qkvprobe-${FAMILY}-L${LAYER}-S${STEP}.txt"
   if [ ! -f "$report" ]; then
@@ -76,11 +66,14 @@ run_case() {
 
 {
   printf "case\tgo_in_ref_q\tgo_in_ref_k\tgo_in_ref_v\tref_in_go_q\tref_in_go_k\tref_in_go_v\n"
-  run_case "baseline" "" ""
-  run_case "strict_kq" "BITNET_STRICT_KQ" "1"
-  run_case "strict_attention" "BITNET_STRICT_ATTENTION" "1"
-  run_case "strict_expf" "BITNET_STRICT_EXPF" "1"
-  run_case "strict_attention_ref" "BITNET_STRICT_ATTENTION_REF" "1"
+  run_case "baseline"
+  run_case "strict_kq" BITNET_STRICT_KQ=1
+  run_case "strict_attention" BITNET_STRICT_ATTENTION=1
+  run_case "strict_expf" BITNET_STRICT_EXPF=1
+  run_case "strict_attention_ref" BITNET_STRICT_ATTENTION_REF=1
+  run_case "strict_kq_expf" BITNET_STRICT_KQ=1 BITNET_STRICT_EXPF=1
+  run_case "strict_kq_attention" BITNET_STRICT_KQ=1 BITNET_STRICT_ATTENTION=1
+  run_case "strict_kq_expf_attention" BITNET_STRICT_KQ=1 BITNET_STRICT_EXPF=1 BITNET_STRICT_ATTENTION=1
 } > "$SUMMARY"
 
 echo "qkv strict sweep summary: $SUMMARY"
