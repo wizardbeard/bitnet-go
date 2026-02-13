@@ -973,3 +973,12 @@ Progress against Phase 3 performance tuning:
   - new script: `scripts/validate_perf_repeat_summary.sh` validates summary schema/fields so malformed artifacts fail fast.
   - new script: `scripts/report_perf_repeat_drift.sh` compares current summary against checked-in baseline (`testdata/perf-repeat-summary-baseline.tsv`) and emits `.bench/perf-repeat-drift.tsv` with per-thread deltas.
   - CI (`.github/workflows/ci.yml`) now runs this sweep non-gating, validates summary format, reports baseline drift, and uploads summary + drift + raw TSV artifacts.
+- update: added strictness-reduction sweep for `cpu_parity_v1` profile defaults.
+  - new script: `scripts/sweep_cpu_parity_profile_reduction.sh`.
+  - output artifact: `.bench/cpu-parity-profile-reduction.tsv`.
+  - tested cases (both `i2s` and `i2s_2b`): `baseline`, `kq_l13`, `kq_l12`, `kq_l10`, `kq_l13_expf_l0`, `kq_l14_no_expf`, `no_expf`, `expf_all_layers`.
+  - current sweep result:
+    - pass: `baseline`, `kq_l13`, `kq_l12`, `kq_l13_expf_l0`, `expf_all_layers`
+    - fail at step 2/token 644 (`abs_err=0.612025`): `kq_l10`, `kq_l14_no_expf`, `no_expf`
+  - action: reduced `cpu_parity_v1` default from `BITNET_STRICT_KQ_LAYER_MAX=14` to `BITNET_STRICT_KQ_LAYER_MAX=12`.
+  - retained `BITNET_STRICT_EXPF=1` and `BITNET_STRICT_EXPF_LAYER_MAX=0` because disabling strict expf still fails immediately on both fixture families.

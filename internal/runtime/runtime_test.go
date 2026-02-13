@@ -43,8 +43,8 @@ func TestParityProfileDefaultsCPUV1(t *testing.T) {
 	if !parityProfileBool("BITNET_STRICT_EXPF", false) {
 		t.Fatalf("BITNET_STRICT_EXPF profile default = false, want true")
 	}
-	if got := parityProfileInt("BITNET_STRICT_KQ_LAYER_MAX", -1); got != 14 {
-		t.Fatalf("BITNET_STRICT_KQ_LAYER_MAX profile default = %d, want 14", got)
+	if got := parityProfileInt("BITNET_STRICT_KQ_LAYER_MAX", -1); got != 12 {
+		t.Fatalf("BITNET_STRICT_KQ_LAYER_MAX profile default = %d, want 12", got)
 	}
 	if got := parityProfileInt("BITNET_STRICT_EXPF_LAYER_MAX", -1); got != 0 {
 		t.Fatalf("BITNET_STRICT_EXPF_LAYER_MAX profile default = %d, want 0", got)

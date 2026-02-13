@@ -143,7 +143,7 @@ func parityProfileInt(key string, fallback int) int {
 	if parityProfile == parityProfileCPUV1 {
 		switch key {
 		case "BITNET_STRICT_KQ_LAYER_MAX":
-			return 14
+			return 12
 		case "BITNET_STRICT_EXPF_LAYER_MAX":
 			return 0
 		}
