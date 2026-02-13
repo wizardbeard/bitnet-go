@@ -828,6 +828,17 @@ CPU parity status matrix snapshot:
     - `layer_max=14`: `Q=0.031220`, `K=0.05320`, `V=0.09279`
     - `layer_max=29`: `Q=0.031220`, `K=0.05320`, `V=0.09279` (same as full strict KQ)
   - interpretation: most of the strict-KQ benefit is accumulated by mid-stack (`<=14`), with negligible additional gain above that point in this trace; this supports focusing parity debugging on earlier/mid attention layers first.
+- update: added layer-scoped strict-exp control for attention softmax.
+  - new env: `BITNET_STRICT_EXPF_LAYER_MAX=<layer>` (effective when `BITNET_STRICT_EXPF=1`).
+  - behavior:
+    - strict `expf32` path is used only for attention softmax in layers `<= layer_max`,
+    - default (`-1`) keeps prior behavior.
+  - cutoff probe (`i2s`, step 14/layer 14, `go_input_vs_ref_qkv` means):
+    - `layer_max=0`:  `Q=0.0318648`, `K=0.0523582`, `V=0.0980846`
+    - `layer_max=7`:  `Q=0.0318648`, `K=0.0523582`, `V=0.0980846`
+    - `layer_max=14`: `Q=0.0318648`, `K=0.0523582`, `V=0.0980846`
+    - `layer_max=29`: `Q=0.0318648`, `K=0.0523582`, `V=0.0980846`
+  - interpretation: in this trace slice, strict-exp improvement appears to saturate immediately (equivalent by `layer_max=0`), suggesting softmax-exp precision impact is dominated by earliest layers; strict-KQ still yields the larger V improvement overall.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).

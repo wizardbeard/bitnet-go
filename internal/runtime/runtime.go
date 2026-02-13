@@ -134,6 +134,7 @@ var debugSoftmaxPrinted bool
 var debugParityStrict = os.Getenv("BITNET_PARITY_STRICT") == "1"
 var debugStrictAttention = os.Getenv("BITNET_STRICT_ATTENTION") == "1"
 var debugStrictExpf = os.Getenv("BITNET_STRICT_EXPF") == "1"
+var strictExpfLayerMax = parseEnvInt("BITNET_STRICT_EXPF_LAYER_MAX", -1)
 var debugFastExpf = os.Getenv("BITNET_FAST_EXPF") == "1" && !debugParityStrict
 var debugAttnF64 = os.Getenv("BITNET_ATTN_F64") == "1"
 var debugStrictKQ = os.Getenv("BITNET_STRICT_KQ") == "1" || debugParityStrict
@@ -272,6 +273,20 @@ func strictKQEnabledForCurrentLayer() bool {
 		return true
 	}
 	return layer <= strictKQLayerMax
+}
+
+func strictExpfEnabledForCurrentLayer() bool {
+	if !debugStrictExpf {
+		return false
+	}
+	if strictExpfLayerMax < 0 {
+		return true
+	}
+	layer := int(strictKQCurrentLayer.Load())
+	if layer < 0 {
+		return true
+	}
+	return layer <= strictExpfLayerMax
 }
 
 func parseDebugPosOffset(v string) int {
@@ -2072,7 +2087,9 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 				attnPath = "ref"
 				// Match ggml accumulation order in parity-strict mode.
 				storeCacheVectorV(st.values, pos, st.v, block.kvHeads)
+				strictKQCurrentLayer.Store(int32(i))
 				causalAttentionMultiHeadIntoReference(st.attnAcc, st.q, st.keys, st.values, pos+1, block.attnHeads, block.kvHeads, len(st.k), len(st.v))
+				strictKQCurrentLayer.Store(-1)
 			} else if debugKVRowMajor {
 				attnPath = "rowmajor"
 				storeCacheVectorVRowMajor(st.values, pos, st.v, block.kvHeads)
@@ -2820,7 +2837,7 @@ func causalAttentionMultiHeadIntoReference(dst, q, keys, values []float32, steps
 		for i := 0; i < steps; i++ {
 			diff := scores[i] - maxScore
 			var w float32
-			if debugStrictExpf || debugFastExpf {
+			if strictExpfEnabledForCurrentLayer() || debugFastExpf {
 				w = expf32(diff)
 			} else {
 				w = float32(math.Exp(float64(diff)))
