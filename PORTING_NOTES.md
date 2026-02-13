@@ -700,6 +700,14 @@ CPU parity status matrix snapshot:
     - `attn_norm` mean abs drift `~0.000570644`, max abs `~0.00111579`
     - `Vcur` mean abs drift remains `~0.140841`, max abs `~0.342274`
   - conclusion: upstream `attn_norm` input is already very close, so the large `Vcur` divergence is introduced in/around the V projection path rather than inherited from normalization input drift.
+- update: strengthened attention-weight alignment and V-path isolation:
+  - corrected `attn_softmax_h0` extraction (strict path no longer reads uninitialized score buffer; weights are derived directly from `q + keys`).
+  - updated softmax comparison at step 14 / layer 14 (first 16 values):
+    - `attn_softmax_h0` vs ref `kq_soft_max_ext`: mean abs `~0.00126782`, max abs `~0.0104088`.
+  - with this alignment fix, `attn_norm` is still very close while `Vcur` remains much larger:
+    - `attn_norm` mean abs `~0.000570644`
+    - `Vcur` mean abs `~0.140841`
+  - conclusion: attention weight path is close after alignment; strongest remaining early divergence remains specific to V projection output (`Vcur`) rather than attn_norm input or softmax path.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).
