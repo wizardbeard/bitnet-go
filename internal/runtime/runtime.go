@@ -139,6 +139,7 @@ var debugFastExpf = os.Getenv("BITNET_FAST_EXPF") == "1" && !debugParityStrict
 var debugAttnF64 = os.Getenv("BITNET_ATTN_F64") == "1"
 var debugStrictKQ = os.Getenv("BITNET_STRICT_KQ") == "1" || debugParityStrict
 var strictKQLayerMax = parseEnvInt("BITNET_STRICT_KQ_LAYER_MAX", -1)
+var strictKQMode = parseStrictKQMode(os.Getenv("BITNET_STRICT_KQ_MODE"))
 var strictKQCurrentLayer atomic.Int32
 var debugFastKQ = os.Getenv("BITNET_FAST_KQ_DOT") != "0" && !debugParityStrict
 var debugFastV = os.Getenv("BITNET_FAST_V_DOT") != "0" && !debugParityStrict
@@ -273,6 +274,46 @@ func strictKQEnabledForCurrentLayer() bool {
 		return true
 	}
 	return layer <= strictKQLayerMax
+}
+
+func parseStrictKQMode(v string) string {
+	switch strings.TrimSpace(strings.ToLower(v)) {
+	case "", "ggml":
+		return "ggml"
+	case "naive":
+		return "naive"
+	case "f64":
+		return "f64"
+	default:
+		return "ggml"
+	}
+}
+
+func dotKQStrictForCurrentLayer(a, b []float32) float32 {
+	switch strictKQMode {
+	case "naive":
+		n := len(a)
+		if len(b) < n {
+			n = len(b)
+		}
+		var sum float32
+		for i := 0; i < n; i++ {
+			sum += a[i] * b[i]
+		}
+		return sum
+	case "f64":
+		n := len(a)
+		if len(b) < n {
+			n = len(b)
+		}
+		var sum float64
+		for i := 0; i < n; i++ {
+			sum += float64(a[i]) * float64(b[i])
+		}
+		return float32(sum)
+	default:
+		return dotF32GGML(a, b)
+	}
 }
 
 func strictExpfEnabledForCurrentLayer() bool {
@@ -2683,7 +2724,7 @@ func causalAttentionMultiHeadIntoGeneric(dst, scores, q, keys, values []float32,
 			kb := i*kStepDim + kBase
 			var sum float32
 			if strictKQEnabledForCurrentLayer() {
-				sum = dotF32GGML(qh, keys[kb:kb+headDim])
+				sum = dotKQStrictForCurrentLayer(qh, keys[kb:kb+headDim])
 			} else if debugFastKQ {
 				sum = dotF32FastN(keys, kb, qh, 0, headDim)
 			} else if debugAttnF64 {

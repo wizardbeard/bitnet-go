@@ -855,6 +855,18 @@ CPU parity status matrix snapshot:
     - strict-exp (`l0`) helps when used alone,
     - but combining it with mid/full strict-KQ strongly regresses this drift metric.
     - this indicates non-linear interaction between KQ-dot and softmax-exp strictness; next work should keep them independently controllable and avoid stacked strictness when evaluating parity deltas.
+- update: added strict-KQ dot mode control and sweep.
+  - new env: `BITNET_STRICT_KQ_MODE` with values:
+    - `ggml` (default),
+    - `naive` (simple float32 accumulation),
+    - `f64` (float64 accumulation, cast to float32).
+  - new script: `scripts/sweep_qkv_kq_modes.sh` (sweeps modes with `BITNET_STRICT_KQ=1` and configurable `BITNET_STRICT_KQ_LAYER_MAX`).
+  - measured at step 14 / layer 14 (`i2s`, `kq_layer_max=14`, `go_input_vs_ref_qkv` means):
+    - `ggml`: `Q=0.03122`, `K=0.05320`, `V=0.09279` (best)
+    - `naive`: `Q=0.03470`, `K=0.05729`, `V=0.10734` (worst)
+    - `f64`: `Q=0.03408`, `K=0.05657`, `V=0.10539` (better than naive, worse than ggml)
+  - interpretation: the current strict-KQ `ggml` accumulation/order remains the best of sampled modes for this parity slice; moving to naive/f64 strict dot semantics regresses cross-side drift.
+- update: drift trace harness now defaults to verbose test output (`BITNET_DRIFT_TRACE_VERBOSE=1`) so trace logs are available even when parity tests pass.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).

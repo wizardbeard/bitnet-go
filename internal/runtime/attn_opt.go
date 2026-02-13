@@ -57,7 +57,7 @@ func causalAttentionMultiHeadIntoOptimized(dst, scores, q, keys, values []float3
 			kb := i*kStepDim + kBase
 			var sum float32
 			if strictKQEnabledForCurrentLayer() {
-				sum = dotF32GGML(qh, keys[kb:kb+headDim])
+				sum = dotKQStrictForCurrentLayer(qh, keys[kb:kb+headDim])
 			} else if debugFastKQ {
 				sum = dotF32FastN(keys, kb, qh, 0, headDim)
 			} else {
@@ -183,7 +183,7 @@ func causalAttentionMultiHeadIntoRowMajor(dst, scores, q, keys, values []float32
 			kb := i*kStepDim + kBase
 			var sum float32
 			if strictKQEnabledForCurrentLayer() {
-				sum = dotF32GGML(qh, keys[kb:kb+headDim])
+				sum = dotKQStrictForCurrentLayer(qh, keys[kb:kb+headDim])
 			} else if debugFastKQ {
 				sum = dotF32FastN(keys, kb, qh, 0, headDim)
 			} else {
