@@ -733,6 +733,16 @@ CPU parity status matrix snapshot:
   - measured at step 14 / layer 14 (`i2s`):
     - `vcurprobe ... mean_abs=0.009907405 max_abs=0.054590106`
   - conclusion: with reference `attn_norm` as input, Go-side `attn_v` projection is substantially closer to reference than in-runtime `Vcur` drift (`~0.140841`), further isolating remaining mismatch to runtime-path behavior around V projection inputs/execution rather than a gross weight decode/layout issue.
+- update: added in-runtime V projection A/B matvec audit on traced layer.
+  - new env: `BITNET_DRIFT_V_MATVEC_AB=1`.
+  - for traced layers, runtime now computes:
+    - `Vcur` via normal path (`linearApplyQKV`), and
+    - `Vcur_i2s_ref` via forced i2_s reference matvec (`MatVec[I|TI]2SI8SRef`) on the same `attn_norm` input.
+  - emitted metric:
+    - `drift_trace v_proj_ab layer=... cur_vs_i2s_ref_mean_abs=... cur_vs_i2s_ref_max_abs=...`
+  - measured at step 14 / layer 14 (`i2s`):
+    - `cur_vs_i2s_ref_mean_abs=0.011162029`, `cur_vs_i2s_ref_max_abs=0.041639507`
+  - conclusion: runtime fast i2_s V projection and i2_s reference matvec are already close at the failing point, so the larger Go-vs-ref `Vcur` gap is likely not a pure fast-kernel arithmetic issue; the remaining source is more likely upstream/downstream state alignment around traced step/layer context.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).

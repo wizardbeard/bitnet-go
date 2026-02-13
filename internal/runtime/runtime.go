@@ -182,6 +182,7 @@ var driftRopeRefF64 = os.Getenv("BITNET_DRIFT_ROPE_REF_F64") == "1"
 var driftQKVRefF32 = os.Getenv("BITNET_DRIFT_QKV_REF_F32") == "1"
 var driftVProjVariants = os.Getenv("BITNET_DRIFT_V_PROJ_VARIANTS") == "1"
 var driftVWeightAudit = os.Getenv("BITNET_DRIFT_V_WEIGHT_AUDIT") == "1"
+var driftVMatvecAB = os.Getenv("BITNET_DRIFT_V_MATVEC_AB") == "1"
 var driftAttnAccRef = os.Getenv("BITNET_DRIFT_ATTN_ACC_REF") == "1"
 var driftAttnOutRefF32 = os.Getenv("BITNET_DRIFT_ATTN_OUT_REF_F32") == "1"
 var ffnShareI2SQuant = os.Getenv("BITNET_FFN_SHARE_I2S_QUANT") != "0"
@@ -1848,6 +1849,52 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 							linearOutputLen(wVF32Flip),
 							len(st.v),
 						)
+					}
+				}
+			}
+			if traceDrift && driftVMatvecAB && (driftTraceLayer < 0 || driftTraceLayer == i) {
+				vKernelRef := make([]float32, len(st.v))
+				linearApplyIntoWeightI2SRef(vKernelRef, layer.attnV, n1)
+				curRefMean, curRefMax := vecAbsDiffStats(st.v, vKernelRef)
+				if len(layer.debugAttnVF32) > 0 {
+					vF32Ref := make([]float32, len(st.v))
+					wVF32 := linearWeight{
+						data:       layer.debugAttnVF32,
+						rows:       layer.attnV.rows,
+						cols:       layer.attnV.cols,
+						transposed: layer.attnV.transposed,
+						qtype:      gguf.GGMLTypeF32,
+					}
+					linearApplyIntoWeight(vF32Ref, wVF32, n1)
+					curF32Mean, curF32Max := vecAbsDiffStats(st.v, vF32Ref)
+					refF32Mean, refF32Max := vecAbsDiffStats(vKernelRef, vF32Ref)
+					fmt.Fprintf(
+						os.Stderr,
+						"drift_trace v_proj_ab layer=%d qtype=%d cur_vs_i2s_ref_mean_abs=%g cur_vs_i2s_ref_max_abs=%g cur_vs_f32_mean_abs=%g cur_vs_f32_max_abs=%g i2s_ref_vs_f32_mean_abs=%g i2s_ref_vs_f32_max_abs=%g\n",
+						i,
+						int(layer.attnV.qtype),
+						curRefMean,
+						curRefMax,
+						curF32Mean,
+						curF32Max,
+						refF32Mean,
+						refF32Max,
+					)
+					if driftTraceValuesN > 0 {
+						fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=Vcur_i2s_ref values=%s\n", i, vecValuesCSV(vKernelRef, driftTraceValuesN))
+						fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=Vcur_f32_ref values=%s\n", i, vecValuesCSV(vF32Ref, driftTraceValuesN))
+					}
+				} else {
+					fmt.Fprintf(
+						os.Stderr,
+						"drift_trace v_proj_ab layer=%d qtype=%d cur_vs_i2s_ref_mean_abs=%g cur_vs_i2s_ref_max_abs=%g f32_ref_missing=1\n",
+						i,
+						int(layer.attnV.qtype),
+						curRefMean,
+						curRefMax,
+					)
+					if driftTraceValuesN > 0 {
+						fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=Vcur_i2s_ref values=%s\n", i, vecValuesCSV(vKernelRef, driftTraceValuesN))
 					}
 				}
 			}
@@ -3788,6 +3835,37 @@ func linearApplyIntoWeightI2SQuantized(dst []float32, w linearWeight, scratch []
 		debugVecDiff("i2s_matvec.ref.diff", dst, ref)
 		debugI2SMatvecPrinted = true
 	}
+}
+
+func linearApplyIntoWeightI2SRef(dst []float32, w linearWeight, x []float32) {
+	if w.qtype != gguf.GGMLTypeI2_S || len(w.i2sPacked) == 0 {
+		linearApplyIntoWeight(dst, w, x)
+		return
+	}
+	scratch := i8ScratchPool.Get().([]int8)
+	scratch = scratch[:0]
+	if cap(scratch) < len(x) {
+		scratch = make([]int8, len(x))
+	} else {
+		scratch = scratch[:len(x)]
+	}
+	actScale, _ := kernels.QuantizeRowI8S(scratch, x)
+	if debugI2SInvertActScale && actScale != 0 {
+		actScale = 1 / actScale
+	}
+	if actScale == 0 {
+		for i := range dst {
+			dst[i] = 0
+		}
+		i8ScratchPool.Put(scratch[:0])
+		return
+	}
+	if w.transposed {
+		kernels.MatVecTI2SI8SRef(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale)
+	} else {
+		kernels.MatVecI2SI8SRef(dst, w.i2sPacked, w.rows, w.cols, scratch, w.i2sScale, actScale)
+	}
+	i8ScratchPool.Put(scratch[:0])
 }
 
 func linearApplyIntoWeightTransposed(dst []float32, w linearWeight, x []float32, transposed bool) {
