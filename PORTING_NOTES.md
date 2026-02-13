@@ -817,6 +817,17 @@ CPU parity status matrix snapshot:
     - `strict_kq_attention`: `Q=0.03122`, `K=0.05320`, `V=0.09279` (effectively same as `strict_kq` alone)
     - `strict_kq_expf_attention`: `Q=0.03364`, `K=0.05799`, `V=0.10228` (worse than `strict_kq` alone)
   - interpretation: in this slice, `BITNET_STRICT_KQ=1` remains the best single lever; combining it with `STRICT_EXPF` regresses cross-side drift, so next work should focus on isolating Q·K dot-product ordering/precision behavior specifically rather than stacking strict softmax toggles.
+- update: added layer-scoped KQ strictness control for targeted isolation.
+  - new env: `BITNET_STRICT_KQ_LAYER_MAX=<layer>` (effective when `BITNET_STRICT_KQ=1`).
+  - behavior:
+    - strict Q·K dot path is used only for attention layers `<= layer_max`,
+    - default (`-1`) keeps prior behavior (strict on all layers when enabled).
+  - quick cutoff probe (`i2s`, step 14/layer 14, `go_input_vs_ref_qkv` means):
+    - `layer_max=0`: `Q=0.03403`, `K=0.05650`, `V=0.10534`
+    - `layer_max=7`: `Q=0.031996`, `K=0.05141`, `V=0.09514`
+    - `layer_max=14`: `Q=0.031220`, `K=0.05320`, `V=0.09279`
+    - `layer_max=29`: `Q=0.031220`, `K=0.05320`, `V=0.09279` (same as full strict KQ)
+  - interpretation: most of the strict-KQ benefit is accumulated by mid-stack (`<=14`), with negligible additional gain above that point in this trace; this supports focusing parity debugging on earlier/mid attention layers first.
 
 Progress against Phase 3 performance tuning:
 - update: finalized transposed i2_s fast-range threshold retune using repeat-harness A/B (`scripts/bench_perf_repeat.sh`, 4 runs each, i7-11800H, `BITNET_MATVEC_THREADS=6`).

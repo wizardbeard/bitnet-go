@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"bitnet-go/internal/gguf"
@@ -136,6 +137,8 @@ var debugStrictExpf = os.Getenv("BITNET_STRICT_EXPF") == "1"
 var debugFastExpf = os.Getenv("BITNET_FAST_EXPF") == "1" && !debugParityStrict
 var debugAttnF64 = os.Getenv("BITNET_ATTN_F64") == "1"
 var debugStrictKQ = os.Getenv("BITNET_STRICT_KQ") == "1" || debugParityStrict
+var strictKQLayerMax = parseEnvInt("BITNET_STRICT_KQ_LAYER_MAX", -1)
+var strictKQCurrentLayer atomic.Int32
 var debugFastKQ = os.Getenv("BITNET_FAST_KQ_DOT") != "0" && !debugParityStrict
 var debugFastV = os.Getenv("BITNET_FAST_V_DOT") != "0" && !debugParityStrict
 var debugKVRowMajor = os.Getenv("BITNET_KV_ROWMAJOR") != "0"
@@ -198,6 +201,10 @@ var i8ScratchPool = sync.Pool{
 	},
 }
 
+func init() {
+	strictKQCurrentLayer.Store(-1)
+}
+
 type samplingConfig struct {
 	temp float32
 	topP float32
@@ -251,6 +258,20 @@ func parseDebugPos(v string) int {
 		return -1
 	}
 	return n
+}
+
+func strictKQEnabledForCurrentLayer() bool {
+	if !debugStrictKQ {
+		return false
+	}
+	if strictKQLayerMax < 0 {
+		return true
+	}
+	layer := int(strictKQCurrentLayer.Load())
+	if layer < 0 {
+		return true
+	}
+	return layer <= strictKQLayerMax
 }
 
 func parseDebugPosOffset(v string) int {
@@ -2055,11 +2076,15 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 			} else if debugKVRowMajor {
 				attnPath = "rowmajor"
 				storeCacheVectorVRowMajor(st.values, pos, st.v, block.kvHeads)
+				strictKQCurrentLayer.Store(int32(i))
 				causalAttentionMultiHeadIntoRowMajor(st.attnAcc, st.scores, st.q, st.keys, st.values, pos+1, block.attnHeads, block.kvHeads, len(st.k), len(st.v), pos)
+				strictKQCurrentLayer.Store(-1)
 			} else {
 				attnPath = "opt"
 				storeCacheVectorV(st.values, pos, st.v, block.kvHeads)
+				strictKQCurrentLayer.Store(int32(i))
 				causalAttentionMultiHeadInto(st.attnAcc, st.scores, st.q, st.keys, st.values, pos+1, block.attnHeads, block.kvHeads, len(st.k), len(st.v), pos)
+				strictKQCurrentLayer.Store(-1)
 			}
 			if traceDrift && (driftTraceLayer < 0 || driftTraceLayer == i) {
 				rowMajor := attnPath == "rowmajor"
@@ -2640,7 +2665,7 @@ func causalAttentionMultiHeadIntoGeneric(dst, scores, q, keys, values []float32,
 		for i := 0; i < steps; i++ {
 			kb := i*kStepDim + kBase
 			var sum float32
-			if debugStrictKQ {
+			if strictKQEnabledForCurrentLayer() {
 				sum = dotF32GGML(qh, keys[kb:kb+headDim])
 			} else if debugFastKQ {
 				sum = dotF32FastN(keys, kb, qh, 0, headDim)
