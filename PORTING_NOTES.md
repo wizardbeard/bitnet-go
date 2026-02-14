@@ -1135,3 +1135,14 @@ Progress against Phase 3 performance tuning:
     - `attn_softmax_h2`: mean abs `0.0019848`, max abs `0.005459`
     - `attn_softmax_h3`: mean abs `8.88e-05`, max abs `1.37e-04`
   - interpretation: the softmax perturbation is head-dependent (largest on head 2) before being amplified into large `attn_o_out/x_post_attn` deltas.
+- update: added per-head attention-output contribution tracing for boundary probe.
+  - new runtime env: `BITNET_DRIFT_TRACE_ATTN_OUT_HEADS=<n>` (default `0` disabled).
+  - when enabled in drift tracing, runtime now emits:
+    - `drift_trace attn_out_head layer=<l> head=<h> subnorm_l2=<...> proj_l2=<...>`
+  - boundary probe (`q=6` vs `q=7`, `KQ=f64`, layer 7) now compares head contribution norms (heads `0..3`).
+  - measured `q6 vs q7` head deltas (identical on `i2s` and `i2s_2b`):
+    - `head0`: `subnorm_l2 diff=0.015309`, `proj_l2 diff=1.09565`
+    - `head1`: `subnorm_l2 diff=0.0071251`, `proj_l2 diff=0.47816`
+    - `head2`: `subnorm_l2 diff=0.048089`, `proj_l2 diff=3.72404`
+    - `head3`: `subnorm_l2 diff=0.0001875`, `proj_l2 diff=0.00438`
+  - interpretation: head 2 is the dominant contributor to the downstream attention-output amplification at the deterministic `q=6` failure boundary.

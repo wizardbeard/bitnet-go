@@ -6,6 +6,7 @@ STEP=${BITNET_QF32_KQ_F64_BOUNDARY_STEP:-2}
 LAYER=${BITNET_QF32_KQ_F64_BOUNDARY_LAYER:-7}
 VALUES_N=${BITNET_QF32_KQ_F64_BOUNDARY_VALUES_N:-16}
 SOFTMAX_HEADS=${BITNET_QF32_KQ_F64_BOUNDARY_SOFTMAX_HEADS:-4}
+ATTN_OUT_HEADS=${BITNET_QF32_KQ_F64_BOUNDARY_ATTN_OUT_HEADS:-4}
 KQ_LAYER_MAX=${BITNET_QF32_KQ_F64_BOUNDARY_KQ_LAYER_MAX:-12}
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 OUT_DIR=${BITNET_QF32_KQ_F64_BOUNDARY_OUT_DIR:-.bench/qf32-kq-f64-boundary}
@@ -49,6 +50,7 @@ run_case() {
     BITNET_DRIFT_TRACE_LAYER="$LAYER" \
     BITNET_DRIFT_TRACE_VALUES_N="$VALUES_N" \
     BITNET_DRIFT_TRACE_SOFTMAX_HEADS="$SOFTMAX_HEADS" \
+    BITNET_DRIFT_TRACE_ATTN_OUT_HEADS="$ATTN_OUT_HEADS" \
     go test ./pkg/bitnet -run "$TEST_RE" -count=1 -v >"$log" 2>&1
   status=$?
   set -e
@@ -92,6 +94,26 @@ csv_diff_stats() {
   }'
 }
 
+extract_head_metric() {
+  file=$1
+  head=$2
+  metric=$3
+  awk -v layer="$LAYER" -v h="$head" -v m="$metric" '
+    $1=="drift_trace" && $2=="attn_out_head" {
+      gotLayer=0; gotHead=0; val=""
+      for(i=1;i<=NF;i++){
+        if($i=="layer="layer) gotLayer=1
+        if($i=="head="h) gotHead=1
+        if(index($i,m"=")==1){ sub("^"m"=","",$i); val=$i }
+      }
+      if(gotLayer==1 && gotHead==1 && val!=""){
+        print val
+        exit
+      }
+    }
+  ' "$file"
+}
+
 meta_file="$OUT_DIR/${FAMILY}-meta.tsv"
 {
   printf "q_layer\ttest_status\tmismatch\tstep_logit\n"
@@ -130,6 +152,22 @@ log7="$OUT_DIR/${FAMILY}-q7.log"
       stats=$(csv_diff_stats "$v6" "$v7")
       printf "%s\t%s\n" "$name" "$stats"
     fi
+  done
+  h=0
+  while [ "$h" -lt "$ATTN_OUT_HEADS" ]; do
+    s6=$(extract_head_metric "$log6" "$h" "subnorm_l2")
+    s7=$(extract_head_metric "$log7" "$h" "subnorm_l2")
+    if [ -n "$s6" ] && [ -n "$s7" ]; then
+      stats=$(csv_diff_stats "$s6" "$s7")
+      printf "attn_out_head%d_subnorm_l2\t%s\n" "$h" "$stats"
+    fi
+    p6=$(extract_head_metric "$log6" "$h" "proj_l2")
+    p7=$(extract_head_metric "$log7" "$h" "proj_l2")
+    if [ -n "$p6" ] && [ -n "$p7" ]; then
+      stats=$(csv_diff_stats "$p6" "$p7")
+      printf "attn_out_head%d_proj_l2\t%s\n" "$h" "$stats"
+    fi
+    h=$((h + 1))
   done
 } > "$SUMMARY"
 
