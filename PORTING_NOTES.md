@@ -1037,3 +1037,12 @@ Progress against Phase 3 performance tuning:
     - fail: `qf32_l0`, `qf32_l4` (early mismatch at step 2)
     - pass: `qf32_l8`, `qf32_l12`, `qf32_l14`, and `qf32_all_layers`
   - interpretation: Q-path f32 sensitivity transition occurs between layers `4` and `8`; later-layer substitution can satisfy current force-mode tolerance, while very early-layer substitution increases mismatch.
+- update: refined Q-path transition with finer cutoff sweep (`5,6,7`).
+  - command:
+    - `BITNET_QF32_SWEEP_LAYERS='5 6 7' ./scripts/sweep_qf32_layermax.sh i2s`
+    - `BITNET_QF32_SWEEP_LAYERS='5 6 7' ./scripts/sweep_qf32_layermax.sh i2s_2b`
+  - result (identical on both fixture families):
+    - `qf32_l5`: fail (`step=2`, `token=644`, `abs_err=0.632134`)
+    - `qf32_l6`: pass
+    - `qf32_l7`: pass
+  - interpretation: smallest passing sampled cutoff is `BITNET_STRICT_Q_F32_LAYER_MAX=6`; failure boundary is between `5` and `6` for this fixture/tolerance setup.
