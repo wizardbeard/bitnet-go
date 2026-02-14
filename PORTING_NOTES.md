@@ -490,6 +490,7 @@ Progress against step 3 (tokenizer parity matrix completeness):
 - update: CI now runs explicit tokenizer vocab-prompt vector checks for GPT2/Falcon/Qwen2 fixtures:
   - `go test ./internal/tokenizer -run 'TestTokenizerGPT2FixturePrompt|TestTokenizerFalconFixturePrompt|TestTokenizerQwen2FixturePrompt' -count=1`
 - effect: tokenizer coverage for maintained vocab-only fixtures is no longer only implicit via the broad `go test ./...` step.
+- update: hardened optional model-fixture prompt tests (`*_FromModelFixtureIfPresent`) to skip cleanly when the referenced model disappears between fixture resolution and model-info open (e.g., transient/missing local YaRN fixture), while still failing on non-`ENOENT` parse/read errors.
 
 Progress against step 4 (tokenizer + seed determinism re-confirmation):
 - update: `TestSeedDeterminismFixtures` now runs determinism assertions under seeded stochastic sampling controls (`temp/top-p/top-k`) instead of relying on greedy-only defaults.

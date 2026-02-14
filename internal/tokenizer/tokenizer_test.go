@@ -2,6 +2,7 @@ package tokenizer
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -334,13 +335,20 @@ func TestTokenizerI2S2BFixturePrompt(t *testing.T) {
 func assertFixturePromptTokens(t *testing.T, modelFile, promptFile, expectedFile, hint string) {
 	t.Helper()
 	root := filepath.Join("..", "..", "testdata")
-	info, err := gguf.ReadModelInfo(filepath.Join(root, modelFile))
+	modelPath := filepath.Join(root, modelFile)
+	info, err := gguf.ReadModelInfo(modelPath)
 	if err != nil {
 		t.Fatalf("ReadModelInfo(%s) error = %v; %s", modelFile, err, hint)
 	}
+	assertFixturePromptTokensWithModelInfo(t, info, promptFile, expectedFile, hint)
+}
+
+func assertFixturePromptTokensWithModelInfo(t *testing.T, info gguf.ModelInfo, promptFile, expectedFile, hint string) {
+	t.Helper()
+	root := filepath.Join("..", "..", "testdata")
 	tok, err := NewFromModelInfo(info)
 	if err != nil {
-		t.Fatalf("NewFromModelInfo(%s) error = %v", modelFile, err)
+		t.Fatalf("NewFromModelInfo() error = %v", err)
 	}
 
 	promptBytes, err := os.ReadFile(filepath.Join(root, promptFile))
@@ -396,7 +404,14 @@ func assertFixturePromptTokensFromModelFixtureIfPresent(t *testing.T, modelFixtu
 	if _, err := os.Stat(modelPath); err != nil {
 		t.Skipf("skipping fixture prompt parity; model missing: %s", modelPath)
 	}
-	assertFixturePromptTokens(t, modelFile, promptFile, expectedFile, hint)
+	info, err := gguf.ReadModelInfo(modelPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			t.Skipf("skipping fixture prompt parity; model missing: %s", modelPath)
+		}
+		t.Fatalf("ReadModelInfo(%s) error = %v; %s", modelFile, err, hint)
+	}
+	assertFixturePromptTokensWithModelInfo(t, info, promptFile, expectedFile, hint)
 }
 
 func equalStringSlices(a, b []string) bool {
