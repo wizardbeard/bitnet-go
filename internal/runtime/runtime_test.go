@@ -128,6 +128,33 @@ func TestStrictVRefEnabledForCurrentLayer(t *testing.T) {
 	}
 }
 
+func TestStrictVF32EnabledForCurrentLayer(t *testing.T) {
+	oldStrict := debugStrictVF32
+	oldMax := strictVF32LayerMax
+	oldLayer := strictKQCurrentLayer.Load()
+	t.Cleanup(func() {
+		debugStrictVF32 = oldStrict
+		strictVF32LayerMax = oldMax
+		strictKQCurrentLayer.Store(oldLayer)
+	})
+
+	debugStrictVF32 = true
+	strictVF32LayerMax = 5
+
+	strictKQCurrentLayer.Store(5)
+	if !strictVF32EnabledForCurrentLayer() {
+		t.Fatalf("strictVF32EnabledForCurrentLayer() = false, want true for layer 5 <= 5")
+	}
+	strictKQCurrentLayer.Store(6)
+	if strictVF32EnabledForCurrentLayer() {
+		t.Fatalf("strictVF32EnabledForCurrentLayer() = true, want false for layer 6 > 5")
+	}
+	strictKQCurrentLayer.Store(-1)
+	if !strictVF32EnabledForCurrentLayer() {
+		t.Fatalf("strictVF32EnabledForCurrentLayer() = false, want true for unknown layer")
+	}
+}
+
 func TestParseStrictKQMode(t *testing.T) {
 	cases := []struct {
 		in   string

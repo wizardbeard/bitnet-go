@@ -173,6 +173,8 @@ var debugStrictExpf = parityProfileBool("BITNET_STRICT_EXPF", false)
 var strictExpfLayerMax = parityProfileInt("BITNET_STRICT_EXPF_LAYER_MAX", -1)
 var debugStrictVRef = os.Getenv("BITNET_STRICT_V_REF") == "1"
 var strictVRefLayerMax = parseEnvInt("BITNET_STRICT_V_REF_LAYER_MAX", -1)
+var debugStrictVF32 = os.Getenv("BITNET_STRICT_V_F32") == "1"
+var strictVF32LayerMax = parseEnvInt("BITNET_STRICT_V_F32_LAYER_MAX", -1)
 var debugFastExpf = os.Getenv("BITNET_FAST_EXPF") == "1" && !debugParityStrict
 var debugAttnF64 = os.Getenv("BITNET_ATTN_F64") == "1"
 var debugStrictKQ = parityProfileBool("BITNET_STRICT_KQ", false) || debugParityStrict
@@ -380,6 +382,20 @@ func strictVRefEnabledForCurrentLayer() bool {
 		return true
 	}
 	return layer <= strictVRefLayerMax
+}
+
+func strictVF32EnabledForCurrentLayer() bool {
+	if !debugStrictVF32 {
+		return false
+	}
+	if strictVF32LayerMax < 0 {
+		return true
+	}
+	layer := int(strictKQCurrentLayer.Load())
+	if layer < 0 {
+		return true
+	}
+	return layer <= strictVF32LayerMax
 }
 
 func parseDebugPosOffset(v string) int {
@@ -1264,7 +1280,7 @@ func loadLlamaLayer(info gguf.ModelInfo, loader *modelTensorLoader, layerIdx int
 	if linearOutputLen(l.ffnDown) != hidden {
 		return llamaLayer{}, fmt.Errorf("%sffn_down.weight output dim=%d want=%d", prefix, linearOutputLen(l.ffnDown), hidden)
 	}
-	if driftQKVRefF32 || driftQKVMatvecAB || driftVProjVariants {
+	if driftQKVRefF32 || driftQKVMatvecAB || driftVProjVariants || debugStrictVF32 {
 		if l.debugAttnQF32, err = loader.readTensorAsF32(prefix + "attn_q.weight"); err != nil {
 			return llamaLayer{}, err
 		}
@@ -1861,7 +1877,7 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 				debugVecValues("attn_norm", n1, debugValuesN)
 			}
 			strictKQCurrentLayer.Store(int32(i))
-			linearApplyQKV(st.q, st.k, st.v, layer.attnQ, layer.attnK, layer.attnV, n1)
+			linearApplyQKV(st.q, st.k, st.v, layer.attnQ, layer.attnK, layer.attnV, n1, layer.debugAttnVF32)
 			strictKQCurrentLayer.Store(-1)
 			if debugAttnMeta && shouldDebug(pos) && i == 0 {
 				qHead := 0
@@ -4108,7 +4124,7 @@ func linearApplyIntoWeightTransposed(dst []float32, w linearWeight, x []float32,
 	linearApplyIntoWeight(dst, w, x)
 }
 
-func linearApplyQKV(dstQ, dstK, dstV []float32, wQ, wK, wV linearWeight, x []float32) {
+func linearApplyQKV(dstQ, dstK, dstV []float32, wQ, wK, wV linearWeight, x []float32, vF32 []float32) {
 	if wQ.qtype == gguf.GGMLTypeF32 && wK.qtype == gguf.GGMLTypeF32 && wV.qtype == gguf.GGMLTypeF32 &&
 		!wQ.transposed && !wK.transposed && !wV.transposed &&
 		wQ.rows == wK.rows && wQ.rows == wV.rows &&
@@ -4129,6 +4145,17 @@ func linearApplyQKV(dstQ, dstK, dstV []float32, wQ, wK, wV linearWeight, x []flo
 	}
 	linearApplyIntoWeight(dstQ, wQ, x)
 	linearApplyIntoWeight(dstK, wK, x)
+	if strictVF32EnabledForCurrentLayer() && len(vF32) >= wV.rows*wV.cols {
+		wVF32 := linearWeight{
+			data:       vF32,
+			rows:       wV.rows,
+			cols:       wV.cols,
+			transposed: wV.transposed,
+			qtype:      gguf.GGMLTypeF32,
+		}
+		linearApplyIntoWeight(dstV, wVF32, x)
+		return
+	}
 	if strictVRefEnabledForCurrentLayer() {
 		linearApplyIntoWeightI2SRef(dstV, wV, x)
 		return

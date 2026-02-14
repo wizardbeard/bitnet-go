@@ -995,3 +995,11 @@ Progress against Phase 3 performance tuning:
     - baseline (`BITNET_STRICT_V_REF=0`): `logit=7.636367`, first mismatch still `step=2 token=644`.
     - V-ref forced (`BITNET_STRICT_V_REF=1`, `BITNET_STRICT_V_REF_LAYER_MAX=14`): `logit=7.636367`, same mismatch signature.
   - conclusion: forcing reference i2_s arithmetic for `attn_v` projection does not improve the observed parity gap at this hotspot, which further suggests divergence source is outside the local V matvec kernel implementation.
+- update: added targeted V-projection f32 override to isolate quantized-path effects.
+  - new envs:
+    - `BITNET_STRICT_V_F32=1`: route `attn_v` projection through decoded f32 `attn_v.weight`.
+    - `BITNET_STRICT_V_F32_LAYER_MAX=<n>`: optional per-layer gate.
+  - measured A/B at step-14 hotspot (`BITNET_PARITY_PROFILE=cpu_parity_v1`, non-strict parity path):
+    - default (`BITNET_STRICT_V_F32=0`): `step14 token=55358 logit=7.636367`, first mismatch `step=2 token=644`.
+    - f32 V override (`BITNET_STRICT_V_F32=1`, `BITNET_STRICT_V_F32_LAYER_MAX=14`): `step14 token=55358 logit=7.928564`, first mismatch shifts to `step=2 token=40` with larger error.
+  - conclusion: replacing quantized `attn_v` projection with decoded f32 does not close parity and instead increases drift for this fixture, so current mismatch is unlikely to be dominated by quantized V-projection arithmetic alone.
