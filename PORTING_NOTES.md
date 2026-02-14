@@ -1087,3 +1087,18 @@ Progress against Phase 3 performance tuning:
     - `q=6`: `ggml` pass, `naive` pass, `f64` fail
     - `q=7`: `ggml` pass, `naive` pass, `f64` pass
   - interpretation: behavior is non-monotonic for `f64` near the Q transition boundary (`5-7`), while `ggml`/`naive` show the expected transition (`fail at 5`, pass at `>=6`).
+- update: repeated unstable `f64` boundary cells to check determinism vs run jitter.
+  - new script: `scripts/sweep_qf32_kq_f64_repeat.sh`
+  - command:
+    - `BITNET_QF32_KQ_F64_REPEAT_N=3 ./scripts/sweep_qf32_kq_f64_repeat.sh i2s`
+    - `BITNET_QF32_KQ_F64_REPEAT_N=3 ./scripts/sweep_qf32_kq_f64_repeat.sh i2s_2b`
+  - artifacts:
+    - `.bench/qf32-kq-f64-repeat-i2s.tsv`
+    - `.bench/qf32-kq-f64-repeat-summary-i2s.tsv`
+    - `.bench/qf32-kq-f64-repeat-i2s_2b.tsv`
+    - `.bench/qf32-kq-f64-repeat-summary-i2s_2b.tsv`
+  - repeated results (identical for both families):
+    - `q=5`: `3/3` pass
+    - `q=6`: `0/3` pass (`3/3` fail at `step=2 token=40 abs_err=0.797712`)
+    - `q=7`: `3/3` pass
+  - interpretation: this `f64` boundary pattern is deterministic on this host/fixture set, not run-to-run jitter.
