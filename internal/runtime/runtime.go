@@ -4314,6 +4314,37 @@ func linearApplyQKV(dstQ, dstK, dstV []float32, wQ, wK, wV linearWeight, x []flo
 			return
 		}
 	}
+	// Quantize once when all three projections are i2_s and strict/debug overrides are off.
+	if wQ.qtype == gguf.GGMLTypeI2_S &&
+		wK.qtype == gguf.GGMLTypeI2_S &&
+		wV.qtype == gguf.GGMLTypeI2_S &&
+		len(wQ.i2sPacked) > 0 &&
+		len(wK.i2sPacked) > 0 &&
+		len(wV.i2sPacked) > 0 &&
+		!(debugI2SFloat && !debugI2SForceQuant) &&
+		!strictQF32EnabledForCurrentLayer() &&
+		!strictKF32EnabledForCurrentLayer() &&
+		!strictVF32EnabledForCurrentLayer() &&
+		!strictVRefEnabledForCurrentLayer() {
+		scratch := i8ScratchPool.Get().([]int8)
+		if cap(scratch) < len(x) {
+			scratch = make([]int8, len(x))
+		} else {
+			scratch = scratch[:len(x)]
+		}
+		actScale, actSum := kernels.QuantizeRowI8S(scratch, x)
+		if debugI2SDisableActSum {
+			actSum = 0
+		}
+		if debugI2SInvertActScale && actScale != 0 {
+			actScale = 1 / actScale
+		}
+		linearApplyIntoWeightI2SQuantized(dstQ, wQ, scratch, actScale, actSum)
+		linearApplyIntoWeightI2SQuantized(dstK, wK, scratch, actScale, actSum)
+		linearApplyIntoWeightI2SQuantized(dstV, wV, scratch, actScale, actSum)
+		i8ScratchPool.Put(scratch[:0])
+		return
+	}
 	if strictQF32EnabledForCurrentLayer() && len(qF32) >= wQ.rows*wQ.cols {
 		wQF32 := linearWeight{
 			data:       qF32,

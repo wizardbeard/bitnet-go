@@ -980,6 +980,12 @@ Progress against Phase 3 performance tuning:
     - before: `2012900447 ns/op`, `2117814 B/op`, `580 allocs/op` (`-benchtime 12x`)
     - after: `2072165598 ns/op`, `698458 B/op`, `578 allocs/op` (`-benchtime 12x`)
   - interpretation: allocation volume dropped by ~67% for this workload; throughput stayed within expected run-to-run noise band on this host.
+- update: added i2_s Q/K/V shared-quantization fast path in `linearApplyQKV` (quantize activation once, reuse for all three projections when strict/debug overrides are off).
+  - code path: `internal/runtime/runtime.go` (`linearApplyQKV`).
+  - benchmark check (`BenchmarkGenerateTopPCompare/default_prefix`, `BITNET_PROMPT_CACHE_CAP=0`, i7-11800H, `-benchtime 12x`):
+    - before this change: `2072165598 ns/op`, `698458 B/op`, `578 allocs/op`
+    - after this change: `2158169039 ns/op`, `694218 B/op`, `398 allocs/op`
+  - interpretation: allocation count dropped by ~31% (578 -> 398 allocs/op) with minimal bytes/op change; ns/op is currently noisy on this host, so next step is repeat-harness A/B to confirm steady-state throughput impact.
 - update: added strictness-reduction sweep for `cpu_parity_v1` profile defaults.
   - new script: `scripts/sweep_cpu_parity_profile_reduction.sh`.
   - output artifact: `.bench/cpu-parity-profile-reduction.tsv`.
