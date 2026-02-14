@@ -1058,3 +1058,18 @@ Progress against Phase 3 performance tuning:
   - current results (identical on `i2s` and `i2s_2b`):
     - all sampled cases fail: `kf32_all_layers`, `kf32_l0`, `kf32_l4`, `kf32_l8`, `kf32_l12`, `kf32_l14`.
   - interpretation: unlike Q-path substitution, K-path f32 substitution appears uniformly harmful for this fixture/tolerance setup; no late-layer safe region was observed in sampled cutoffs.
+- update: added `qf32_l6 + strict KQ mode` sweep to isolate attention-score accumulation effects.
+  - new script: `scripts/sweep_qf32_kq_modes.sh`
+  - defaults:
+    - `BITNET_STRICT_Q_F32=1`
+    - `BITNET_STRICT_Q_F32_LAYER_MAX=6`
+    - `BITNET_STRICT_KQ=1`
+    - `BITNET_STRICT_KQ_LAYER_MAX=12`
+    - mode list: `ggml naive f64`
+  - artifacts:
+    - `.bench/qf32-kq-modes-i2s.tsv`
+    - `.bench/qf32-kq-modes-i2s_2b.tsv`
+  - current results (identical for `i2s` and `i2s_2b`):
+    - pass: `qf32_l6_kq_default` (same as `ggml`), `qf32_l6_kq_ggml`, `qf32_l6_kq_naive`
+    - fail: `qf32_l6_kq_f64` (`step=2`, `token=40`, `abs_err=0.797712`)
+  - interpretation: with Q-path f32 limited to early layers, strict KQ dot mode remains sensitive; `f64` accumulation diverges from reference path here while `ggml`/`naive` remain within current force-mode tolerance.
