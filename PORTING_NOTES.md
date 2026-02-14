@@ -1102,3 +1102,27 @@ Progress against Phase 3 performance tuning:
     - `q=6`: `0/3` pass (`3/3` fail at `step=2 token=40 abs_err=0.797712`)
     - `q=7`: `3/3` pass
   - interpretation: this `f64` boundary pattern is deterministic on this host/fixture set, not run-to-run jitter.
+- update: added targeted boundary probe for `q=6` vs `q=7` under `KQ=f64`.
+  - new script: `scripts/probe_qf32_kq_f64_boundary.sh`
+  - configuration:
+    - `BITNET_STRICT_Q_F32=1`
+    - `BITNET_STRICT_KQ=1`
+    - `BITNET_STRICT_KQ_MODE=f64`
+    - traced at `step=2`, `layer=7`, `values_n=16`
+  - artifacts:
+    - `.bench/qf32-kq-f64-boundary/i2s-meta.tsv`
+    - `.bench/qf32-kq-f64-boundary/i2s-L7-S2.tsv`
+    - `.bench/qf32-kq-f64-boundary/i2s_2b-meta.tsv`
+    - `.bench/qf32-kq-f64-boundary/i2s_2b-L7-S2.tsv`
+  - current results (identical for `i2s` and `i2s_2b`):
+    - `q=6`: fail at `step=2 token=40`
+    - `q=7`: pass
+    - `q6 vs q7` layer-7 value deltas:
+      - `attn_norm`: mean/max `0/0`
+      - `Qcur`: mean abs `0.002225`, max abs `0.006125`
+      - `Kcur`: mean/max `0/0`
+      - `Vcur`: mean/max `0/0`
+      - `attn_softmax_h0`: mean abs `0.0006876`, max abs `0.001518`
+      - `attn_o_out`: mean abs `0.442413`, max abs `1.009753`
+      - `x_post_attn`: mean abs `0.442413`, max abs `1.009766`
+  - interpretation: the deterministic `q=6` failure localizes to a Q-only perturbation at layer 7 that propagates through softmax into a much larger attention-output/residual-state delta; K/V paths remain unchanged in this probe.
