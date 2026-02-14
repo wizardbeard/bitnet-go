@@ -1017,6 +1017,10 @@ Progress against Phase 3 performance tuning:
     - K-only f32 (`BITNET_STRICT_K_F32=1`, `..._LAYER_MAX=14`):
       - `logit=7.997991`
       - mismatch worsens at same early point: `step=2 token=644 got=8.584351 want=7.684045`.
+    - Q+K f32 (`BITNET_STRICT_Q_F32=1`, `BITNET_STRICT_K_F32=1`, both `..._LAYER_MAX=14`):
+      - `logit=7.890706`
+      - still fails at same early point, but with smaller error than baseline: `step=2 token=644 got=8.215047 want=7.684045`.
   - interpretation:
     - K-path f32 substitution moves away from reference in this setup.
     - Q-path f32 substitution materially changes trajectory and may be informative for root-cause isolation, but it does not indicate a drop-in parity profile candidate (step-14 target logit shifts further from ref snapshot).
+    - Q+K jointly does not recover parity either, suggesting remaining divergence is not a simple independent precision issue in Q/K projection arithmetic alone.
