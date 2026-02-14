@@ -1606,6 +1606,8 @@ func runForwardLlamaStack(block *tensorBlock, seed int64, promptTokens []int32, 
 	n1 := scratch.n1
 	n2 := scratch.n2
 	logits := scratch.logits
+	probs := scratch.sampleProbs
+	idx := scratch.sampleIdx
 	layerStates := scratch.layerState
 
 	currentToken := seedToken(seed, block.vocabDim)
@@ -1619,11 +1621,6 @@ func runForwardLlamaStack(block *tensorBlock, seed int64, promptTokens []int32, 
 	}
 
 	sampler := newSampler(seed)
-	probs := make([]float32, block.vocabDim)
-	idx := make([]int, block.vocabDim)
-	for i := range idx {
-		idx[i] = i
-	}
 	var topkEntries []TopKEntry
 	var topkProbs []float32
 	var stepProfile *llamaStepProfile
@@ -1702,11 +1699,13 @@ type llamaLayerState struct {
 }
 
 type llamaRunScratch struct {
-	x          []float32
-	n1         []float32
-	n2         []float32
-	logits     []float32
-	layerState []llamaLayerState
+	x           []float32
+	n1          []float32
+	n2          []float32
+	logits      []float32
+	sampleProbs []float32
+	sampleIdx   []int
+	layerState  []llamaLayerState
 }
 
 type llamaStepProfile struct {
@@ -1778,6 +1777,13 @@ func resizeI8(buf []int8, n int) []int8 {
 	return buf[:n]
 }
 
+func resizeInt(buf []int, n int) []int {
+	if cap(buf) < n {
+		return make([]int, n)
+	}
+	return buf[:n]
+}
+
 func ensureLlamaLayerState(st *llamaLayerState, layer llamaLayer, hiddenDim, maxSeq, heads int) {
 	kdim := linearOutputLen(layer.attnK)
 	vdim := linearOutputLen(layer.attnV)
@@ -1811,6 +1817,8 @@ func getLlamaRunScratch(block *tensorBlock, maxSeq int) *llamaRunScratch {
 	s.n1 = resizeF32(s.n1, block.hiddenDim)
 	s.n2 = resizeF32(s.n2, block.hiddenDim)
 	s.logits = resizeF32(s.logits, block.vocabDim)
+	s.sampleProbs = resizeF32(s.sampleProbs, block.vocabDim)
+	s.sampleIdx = resizeInt(s.sampleIdx, block.vocabDim)
 	if cap(s.layerState) < len(block.layers) {
 		s.layerState = make([]llamaLayerState, len(block.layers))
 	} else {

@@ -974,6 +974,12 @@ Progress against Phase 3 performance tuning:
   - new script: `scripts/validate_perf_repeat_summary.sh` validates summary schema/fields so malformed artifacts fail fast.
   - new script: `scripts/report_perf_repeat_drift.sh` compares current summary against checked-in baseline (`testdata/perf-repeat-summary-baseline.tsv`) and emits `.bench/perf-repeat-drift.tsv` with per-thread deltas.
   - CI (`.github/workflows/ci.yml`) now runs this sweep non-gating, validates summary format, reports baseline drift, and uploads summary + drift + raw TSV artifacts.
+- update: reduced per-call generation sampling allocations by reusing `probs`/`idx` buffers from `llamaRunScratch` instead of allocating them in every `runForwardLlamaStack` invocation.
+  - code path: `internal/runtime/runtime.go` (`llamaRunScratch.sampleProbs`, `llamaRunScratch.sampleIdx`).
+  - benchmark check (`BenchmarkGenerateTopPCompare/default_prefix`, `BITNET_PROMPT_CACHE_CAP=0`, i7-11800H):
+    - before: `2012900447 ns/op`, `2117814 B/op`, `580 allocs/op` (`-benchtime 12x`)
+    - after: `2072165598 ns/op`, `698458 B/op`, `578 allocs/op` (`-benchtime 12x`)
+  - interpretation: allocation volume dropped by ~67% for this workload; throughput stayed within expected run-to-run noise band on this host.
 - update: added strictness-reduction sweep for `cpu_parity_v1` profile defaults.
   - new script: `scripts/sweep_cpu_parity_profile_reduction.sh`.
   - output artifact: `.bench/cpu-parity-profile-reduction.tsv`.
