@@ -230,6 +230,7 @@ var driftTraceToken = parseEnvInt("BITNET_DRIFT_TRACE_TOKEN", -1)
 var driftTraceValuesN = parseEnvInt("BITNET_DRIFT_TRACE_VALUES_N", 16)
 var driftTraceSoftmaxHeads = parseEnvInt("BITNET_DRIFT_TRACE_SOFTMAX_HEADS", 1)
 var driftTraceAttnOutHeads = parseEnvInt("BITNET_DRIFT_TRACE_ATTN_OUT_HEADS", 0)
+var driftTraceAttnOutTokens = parseEnvIntCSV("BITNET_DRIFT_TRACE_ATTN_OUT_TOKENS")
 var driftTraceLayer = parseEnvInt("BITNET_DRIFT_TRACE_LAYER", -1)
 var driftRopeRefF64 = os.Getenv("BITNET_DRIFT_ROPE_REF_F64") == "1"
 var driftQKVRefF32 = os.Getenv("BITNET_DRIFT_QKV_REF_F32") == "1"
@@ -422,6 +423,27 @@ func parseStrictQF32Heads(v string) map[int]struct{} {
 			continue
 		}
 		out[n] = struct{}{}
+	}
+	return out
+}
+
+func parseEnvIntCSV(key string) []int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]int, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		n, err := strconv.Atoi(p)
+		if err != nil {
+			continue
+		}
+		out = append(out, n)
 	}
 	return out
 }
@@ -2354,6 +2376,30 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 							vecL2Norm(n2[start:end]),
 							vecL2Norm(headOut),
 						)
+						if len(driftTraceAttnOutTokens) > 0 {
+							wOut := linearWeight{
+								data:       block.outputWeight,
+								dataF16:    block.outputWeightF16,
+								rows:       block.outputRows,
+								cols:       block.outputCols,
+								transposed: block.outputTransposed,
+								qtype:      block.outputWeightType,
+								i2sPacked:  block.outputWeightPacked,
+								i2sScale:   block.outputWeightScale,
+							}
+							for _, tok := range driftTraceAttnOutTokens {
+								if logit, ok := outputTokenLogit(wOut, headOut, tok); ok {
+									fmt.Fprintf(
+										os.Stderr,
+										"drift_trace attn_out_head_token layer=%d head=%d token=%d logit=%g\n",
+										i,
+										h,
+										tok,
+										logit,
+									)
+								}
+							}
+						}
 						for k := start; k < end; k++ {
 							headIn[k] = 0
 						}
@@ -3923,6 +3969,30 @@ func i2sLogitForToken(packed []byte, rows, cols, token int, vec []int8, weightSc
 	}
 	sum := i2sDotForToken(packed, rows, cols, token, vec, transposed)
 	return float32(sum-actSum) * (weightScale / actScale)
+}
+
+func outputTokenLogit(w linearWeight, x []float32, token int) (float32, bool) {
+	if token < 0 {
+		return 0, false
+	}
+	switch w.qtype {
+	case gguf.GGMLTypeI2_S:
+		if len(w.i2sPacked) == 0 {
+			return 0, false
+		}
+		vec := make([]int8, len(x))
+		actScale, actSum := kernels.QuantizeRowI8S(vec, x)
+		if actScale == 0 {
+			return 0, false
+		}
+		return i2sLogitForToken(w.i2sPacked, w.rows, w.cols, token, vec, w.i2sScale, actScale, actSum, w.transposed), true
+	case gguf.GGMLTypeF16:
+		return f16LogitForToken(w.dataF16, w.rows, w.cols, token, x, w.transposed), true
+	case gguf.GGMLTypeF32:
+		return f32LogitForToken(w.data, w.rows, w.cols, token, x, w.transposed), true
+	default:
+		return 0, false
+	}
 }
 
 func i2sDotForToken(packed []byte, rows, cols, token int, vec []int8, transposed bool) int32 {

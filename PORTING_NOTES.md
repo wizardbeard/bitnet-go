@@ -1210,3 +1210,20 @@ Progress against Phase 3 performance tuning:
     - failing `q_head0_1` has strongest `attn_softmax_h1/h2` and largest `attn_out_head2_proj_l2` delta (`~10.03`).
     - failing `q_head2_3` has strongest `attn_softmax_h0` and largest `attn_out_head0_proj_l2` delta (`~5.26`).
   - interpretation: instability appears tied to head-specific softmax/output-routing patterns (which head gets perturbed) rather than only total perturbation magnitude.
+- update: extended `ggml` pair-trace probe with per-head token-logit decomposition.
+  - runtime trace additions:
+    - new env: `BITNET_DRIFT_TRACE_ATTN_OUT_TOKENS=<csv>` (e.g. `40,644`)
+    - new emitted record:
+      - `drift_trace attn_out_head_token layer=<l> head=<h> token=<tok> logit=<v>`
+  - probe updates:
+    - `scripts/probe_qf32_kq_ggml_pair_trace.sh` now accepts `BITNET_QF32_KQ_GGML_PAIR_ATTN_OUT_TOKENS` (default `40,644`) and reports:
+      - `attn_out_head{h}_token{tok}_logit` delta stats vs `all_q_heads`
+  - current results (identical on `i2s` and `i2s_2b`):
+    - pass/fail split unchanged:
+      - pass: `all_q_heads`, `q_head0_2`
+      - fail: `q_head0_1` (step 2 token 40), `q_head2_3` (step 2 token 644)
+    - token-level findings:
+      - failing `q_head0_1` shows strongest sampled token-logit shift on `attn_out_head2_token644` (`~50.24`) and high `attn_out_head2_token40` (`~20.94`).
+      - failing `q_head2_3` shows broad high shifts across sampled heads/tokens (e.g. `attn_out_head3_token40` `~18.53`).
+      - passing `q_head0_2` still exhibits large token-level deltas in several heads/tokens.
+  - interpretation: per-head sampled output-logit magnitudes are informative but not sufficient to predict pass/fail; failure remains tied to interaction pattern and routing, not single scalar magnitude.

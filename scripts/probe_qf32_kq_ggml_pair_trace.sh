@@ -9,6 +9,7 @@ LAYER=${BITNET_QF32_KQ_GGML_PAIR_LAYER:-7}
 VALUES_N=${BITNET_QF32_KQ_GGML_PAIR_VALUES_N:-16}
 SOFTMAX_HEADS=${BITNET_QF32_KQ_GGML_PAIR_SOFTMAX_HEADS:-4}
 ATTN_OUT_HEADS=${BITNET_QF32_KQ_GGML_PAIR_ATTN_OUT_HEADS:-4}
+ATTN_OUT_TOKENS=${BITNET_QF32_KQ_GGML_PAIR_ATTN_OUT_TOKENS:-40,644}
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 OUT_DIR=${BITNET_QF32_KQ_GGML_PAIR_OUT_DIR:-.bench/qf32-kq-ggml-pair-trace}
 SUMMARY=${BITNET_QF32_KQ_GGML_PAIR_SUMMARY:-$OUT_DIR/${FAMILY}-L${LAYER}-S${STEP}.tsv}
@@ -56,6 +57,7 @@ run_case() {
     BITNET_DRIFT_TRACE_VALUES_N="$VALUES_N" \
     BITNET_DRIFT_TRACE_SOFTMAX_HEADS="$SOFTMAX_HEADS" \
     BITNET_DRIFT_TRACE_ATTN_OUT_HEADS="$ATTN_OUT_HEADS" \
+    BITNET_DRIFT_TRACE_ATTN_OUT_TOKENS="$ATTN_OUT_TOKENS" \
     go test ./pkg/bitnet -run "$TEST_RE" -count=1 -v >"$log" 2>&1
   status=$?
   set -e
@@ -97,6 +99,27 @@ extract_head_metric() {
         if(index($i,m"=")==1){ sub("^"m"=","",$i); val=$i }
       }
       if(gotLayer==1 && gotHead==1 && val!=""){
+        print val
+        exit
+      }
+    }
+  ' "$file"
+}
+
+extract_head_token_logit() {
+  file=$1
+  head=$2
+  token=$3
+  awk -v layer="$LAYER" -v h="$head" -v tok="$token" '
+    $1=="drift_trace" && $2=="attn_out_head_token" {
+      gotLayer=0; gotHead=0; gotTok=0; val=""
+      for(i=1;i<=NF;i++){
+        if($i=="layer="layer) gotLayer=1
+        if($i=="head="h) gotHead=1
+        if($i=="token="tok) gotTok=1
+        if(index($i,"logit=")==1){ sub(/^logit=/,"",$i); val=$i }
+      }
+      if(gotLayer==1 && gotHead==1 && gotTok==1 && val!=""){
         print val
         exit
       }
@@ -165,6 +188,14 @@ base_log="$OUT_DIR/${FAMILY}-all_q_heads.log"
         stats=$(csv_diff_stats "$pb" "$pc")
         printf "%s\tattn_out_head%d_proj_l2\t%s\n" "$case" "$h" "$stats"
       fi
+      for tok in $(printf "%s" "$ATTN_OUT_TOKENS" | tr ',' ' '); do
+        lb=$(extract_head_token_logit "$base_log" "$h" "$tok")
+        lc=$(extract_head_token_logit "$log" "$h" "$tok")
+        if [ -n "$lb" ] && [ -n "$lc" ]; then
+          stats=$(csv_diff_stats "$lb" "$lc")
+          printf "%s\tattn_out_head%d_token%d_logit\t%s\n" "$case" "$h" "$tok" "$stats"
+        fi
+      done
       h=$((h + 1))
     done
   done
