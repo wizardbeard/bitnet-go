@@ -1046,3 +1046,15 @@ Progress against Phase 3 performance tuning:
     - `qf32_l6`: pass
     - `qf32_l7`: pass
   - interpretation: smallest passing sampled cutoff is `BITNET_STRICT_Q_F32_LAYER_MAX=6`; failure boundary is between `5` and `6` for this fixture/tolerance setup.
+- update: added `BITNET_STRICT_K_F32_LAYER_MAX` sweep harness and verified no safe sampled cutoff.
+  - new script: `scripts/sweep_kf32_layermax.sh`
+  - defaults:
+    - layer set: `0 4 8 12 14` (override via `BITNET_KF32_SWEEP_LAYERS`)
+    - profile: `BITNET_PARITY_PROFILE=cpu_parity_v1`
+    - force mode: `BITNET_PARITY_FORCE=1`, `BITNET_PARITY_STRICT=0`
+  - artifacts:
+    - `.bench/kf32-layermax-sweep-i2s.tsv`
+    - `.bench/kf32-layermax-sweep-i2s_2b.tsv`
+  - current results (identical on `i2s` and `i2s_2b`):
+    - all sampled cases fail: `kf32_all_layers`, `kf32_l0`, `kf32_l4`, `kf32_l8`, `kf32_l12`, `kf32_l14`.
+  - interpretation: unlike Q-path substitution, K-path f32 substitution appears uniformly harmful for this fixture/tolerance setup; no late-layer safe region was observed in sampled cutoffs.
