@@ -101,6 +101,33 @@ func TestStrictExpfEnabledForCurrentLayer(t *testing.T) {
 	}
 }
 
+func TestStrictVRefEnabledForCurrentLayer(t *testing.T) {
+	oldStrict := debugStrictVRef
+	oldMax := strictVRefLayerMax
+	oldLayer := strictKQCurrentLayer.Load()
+	t.Cleanup(func() {
+		debugStrictVRef = oldStrict
+		strictVRefLayerMax = oldMax
+		strictKQCurrentLayer.Store(oldLayer)
+	})
+
+	debugStrictVRef = true
+	strictVRefLayerMax = 3
+
+	strictKQCurrentLayer.Store(2)
+	if !strictVRefEnabledForCurrentLayer() {
+		t.Fatalf("strictVRefEnabledForCurrentLayer() = false, want true for layer 2 <= 3")
+	}
+	strictKQCurrentLayer.Store(4)
+	if strictVRefEnabledForCurrentLayer() {
+		t.Fatalf("strictVRefEnabledForCurrentLayer() = true, want false for layer 4 > 3")
+	}
+	strictKQCurrentLayer.Store(-1)
+	if !strictVRefEnabledForCurrentLayer() {
+		t.Fatalf("strictVRefEnabledForCurrentLayer() = false, want true for unknown layer")
+	}
+}
+
 func TestParseStrictKQMode(t *testing.T) {
 	cases := []struct {
 		in   string

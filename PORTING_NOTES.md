@@ -986,3 +986,12 @@ Progress against Phase 3 performance tuning:
   - rerun (`.bench/cpu-parity-profile-reduction.tsv`) result:
     - `kq_l11` fails for both `i2s` and `i2s_2b` at the same early mismatch (`step=2`, `token=644`, `abs_err=0.612025`).
   - conclusion: current minimum verified safe cutoff remains `BITNET_STRICT_KQ_LAYER_MAX=12` for `cpu_parity_v1` on this host/fixture set.
+- update: added targeted V-projection reference toggle for runtime-path isolation.
+  - new envs:
+    - `BITNET_STRICT_V_REF=1`: route `attn_v` projection through `MatVec[I|TI]2SI8SRef` on the normal decode path.
+    - `BITNET_STRICT_V_REF_LAYER_MAX=<n>`: optional per-layer gate.
+  - implementation detail: QKV projection now sets the current layer index around `linearApplyQKV` so layer-scoped strict toggles can be applied consistently.
+  - A/B trace at known hotspot (`step=14`, `token=55358`, `BITNET_PARITY_PROFILE=cpu_parity_v1`, non-strict parity path):
+    - baseline (`BITNET_STRICT_V_REF=0`): `logit=7.636367`, first mismatch still `step=2 token=644`.
+    - V-ref forced (`BITNET_STRICT_V_REF=1`, `BITNET_STRICT_V_REF_LAYER_MAX=14`): `logit=7.636367`, same mismatch signature.
+  - conclusion: forcing reference i2_s arithmetic for `attn_v` projection does not improve the observed parity gap at this hotspot, which further suggests divergence source is outside the local V matvec kernel implementation.

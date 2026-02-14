@@ -171,6 +171,8 @@ var debugParityStrict = os.Getenv("BITNET_PARITY_STRICT") == "1"
 var debugStrictAttention = os.Getenv("BITNET_STRICT_ATTENTION") == "1"
 var debugStrictExpf = parityProfileBool("BITNET_STRICT_EXPF", false)
 var strictExpfLayerMax = parityProfileInt("BITNET_STRICT_EXPF_LAYER_MAX", -1)
+var debugStrictVRef = os.Getenv("BITNET_STRICT_V_REF") == "1"
+var strictVRefLayerMax = parseEnvInt("BITNET_STRICT_V_REF_LAYER_MAX", -1)
 var debugFastExpf = os.Getenv("BITNET_FAST_EXPF") == "1" && !debugParityStrict
 var debugAttnF64 = os.Getenv("BITNET_ATTN_F64") == "1"
 var debugStrictKQ = parityProfileBool("BITNET_STRICT_KQ", false) || debugParityStrict
@@ -364,6 +366,20 @@ func strictExpfEnabledForCurrentLayer() bool {
 		return true
 	}
 	return layer <= strictExpfLayerMax
+}
+
+func strictVRefEnabledForCurrentLayer() bool {
+	if !debugStrictVRef {
+		return false
+	}
+	if strictVRefLayerMax < 0 {
+		return true
+	}
+	layer := int(strictKQCurrentLayer.Load())
+	if layer < 0 {
+		return true
+	}
+	return layer <= strictVRefLayerMax
 }
 
 func parseDebugPosOffset(v string) int {
@@ -1844,7 +1860,9 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 				debugVecValues("inp_embd", x, debugValuesN)
 				debugVecValues("attn_norm", n1, debugValuesN)
 			}
+			strictKQCurrentLayer.Store(int32(i))
 			linearApplyQKV(st.q, st.k, st.v, layer.attnQ, layer.attnK, layer.attnV, n1)
+			strictKQCurrentLayer.Store(-1)
 			if debugAttnMeta && shouldDebug(pos) && i == 0 {
 				qHead := 0
 				kHead := 0
@@ -4111,6 +4129,10 @@ func linearApplyQKV(dstQ, dstK, dstV []float32, wQ, wK, wV linearWeight, x []flo
 	}
 	linearApplyIntoWeight(dstQ, wQ, x)
 	linearApplyIntoWeight(dstK, wK, x)
+	if strictVRefEnabledForCurrentLayer() {
+		linearApplyIntoWeightI2SRef(dstV, wV, x)
+		return
+	}
 	linearApplyIntoWeight(dstV, wV, x)
 }
 
