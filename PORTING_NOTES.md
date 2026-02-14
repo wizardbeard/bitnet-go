@@ -1146,3 +1146,20 @@ Progress against Phase 3 performance tuning:
     - `head2`: `subnorm_l2 diff=0.048089`, `proj_l2 diff=3.72404`
     - `head3`: `subnorm_l2 diff=0.0001875`, `proj_l2 diff=0.00438`
   - interpretation: head 2 is the dominant contributor to the downstream attention-output amplification at the deterministic `q=6` failure boundary.
+- update: added head-targeted Q-f32 ablation probe for `q=6`, `KQ=f64`.
+  - new runtime env:
+    - `BITNET_STRICT_Q_F32_HEAD=<idx>` (default `-1`, meaning apply Q-f32 override to all heads).
+  - new script: `scripts/probe_qf32_kq_f64_head_ablation.sh`
+    - runs `all-heads` and single-head cases (`0..3`).
+  - artifacts:
+    - `.bench/qf32-kq-f64-head-ablation/i2s.tsv`
+    - `.bench/qf32-kq-f64-head-ablation/i2s_2b.tsv`
+  - current results (identical for `i2s` and `i2s_2b`):
+    - fail:
+      - `all_q_heads` (step 2 token 40)
+      - `q_head0_only` (step 2 token 2675)
+    - pass:
+      - `q_head1_only`
+      - `q_head2_only`
+      - `q_head3_only`
+  - interpretation: despite larger per-head amplification metrics on head 2 in the previous probe, the deterministic boundary failure is not caused by head 2 override alone; head interaction and/or head-0 sensitivity appears to be the practical trigger in this ablation setup.
