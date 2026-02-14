@@ -1175,3 +1175,22 @@ Progress against Phase 3 performance tuning:
     - fail: `all_q_heads`, `q_head0_only`, `q_head0_2`, `q_head0_1`, `q_head2_3`
     - pass: `q_head2_only`
   - interpretation: boundary failure is driven by multi-head interaction, with head 0 sufficient but not necessary in all failing combinations (e.g., `2+3` also fails), reinforcing that cross-head coupling under `KQ=f64` is the key instability rather than a single-head-local issue.
+- update: added KQ-mode comparison for the same Q-headset ablations.
+  - new script: `scripts/probe_qf32_kq_headset_mode_matrix.sh`
+  - sweeps:
+    - KQ modes: `ggml`, `naive`, `f64`
+    - Q-headsets: `all`, `0`, `2`, `0+2`, `0+1`, `2+3`
+  - artifacts:
+    - `.bench/qf32-kq-headset-mode-matrix/i2s.tsv`
+    - `.bench/qf32-kq-headset-mode-matrix/i2s_2b.tsv`
+  - current results (identical for `i2s` and `i2s_2b`):
+    - always pass:
+      - `all`
+      - `head2_only`
+    - mode-sensitive:
+      - `head0_only`: pass on `ggml`, fail on `naive`/`f64`
+      - `head0+2`: pass on `ggml`, fail on `naive`/`f64`
+    - always fail:
+      - `head0+1`
+      - `head2+3`
+  - interpretation: failure is not specific to `f64`; several head-set combinations are unstable across modes, while the `ggml` mode uniquely stabilizes some head-0-including sets (`head0_only`, `head0+2`).
