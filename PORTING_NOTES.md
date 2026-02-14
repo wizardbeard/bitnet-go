@@ -982,3 +982,7 @@ Progress against Phase 3 performance tuning:
     - fail at step 2/token 644 (`abs_err=0.612025`): `kq_l10`, `kq_l14_no_expf`, `no_expf`
   - action: reduced `cpu_parity_v1` default from `BITNET_STRICT_KQ_LAYER_MAX=14` to `BITNET_STRICT_KQ_LAYER_MAX=12`.
   - retained `BITNET_STRICT_EXPF=1` and `BITNET_STRICT_EXPF_LAYER_MAX=0` because disabling strict expf still fails immediately on both fixture families.
+- update: extended reduction sweep with `kq_l11` candidate to confirm floor.
+  - rerun (`.bench/cpu-parity-profile-reduction.tsv`) result:
+    - `kq_l11` fails for both `i2s` and `i2s_2b` at the same early mismatch (`step=2`, `token=644`, `abs_err=0.612025`).
+  - conclusion: current minimum verified safe cutoff remains `BITNET_STRICT_KQ_LAYER_MAX=12` for `cpu_parity_v1` on this host/fixture set.

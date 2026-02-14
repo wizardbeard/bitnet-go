@@ -64,6 +64,7 @@ run_case() {
     run_case "$family" "baseline"
     run_case "$family" "kq_l13" BITNET_STRICT_KQ_LAYER_MAX=13
     run_case "$family" "kq_l12" BITNET_STRICT_KQ_LAYER_MAX=12
+    run_case "$family" "kq_l11" BITNET_STRICT_KQ_LAYER_MAX=11
     run_case "$family" "kq_l10" BITNET_STRICT_KQ_LAYER_MAX=10
     run_case "$family" "kq_l13_expf_l0" BITNET_STRICT_KQ_LAYER_MAX=13 BITNET_STRICT_EXPF=1 BITNET_STRICT_EXPF_LAYER_MAX=0
     run_case "$family" "kq_l14_no_expf" BITNET_STRICT_KQ=1 BITNET_STRICT_KQ_LAYER_MAX=14 BITNET_STRICT_EXPF=0
