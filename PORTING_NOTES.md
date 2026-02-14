@@ -1073,3 +1073,17 @@ Progress against Phase 3 performance tuning:
     - pass: `qf32_l6_kq_default` (same as `ggml`), `qf32_l6_kq_ggml`, `qf32_l6_kq_naive`
     - fail: `qf32_l6_kq_f64` (`step=2`, `token=40`, `abs_err=0.797712`)
   - interpretation: with Q-path f32 limited to early layers, strict KQ dot mode remains sensitive; `f64` accumulation diverges from reference path here while `ggml`/`naive` remain within current force-mode tolerance.
+- update: added Q-layer/KQ-mode matrix sweep around the transition edge (`q_layer_max in {5,6,7}`).
+  - new script: `scripts/sweep_qf32_kq_matrix.sh`
+  - defaults:
+    - `Q layer list`: `5 6 7`
+    - `KQ modes`: `ggml naive f64`
+    - `BITNET_STRICT_KQ_LAYER_MAX=12`
+  - artifacts:
+    - `.bench/qf32-kq-matrix-i2s.tsv`
+    - `.bench/qf32-kq-matrix-i2s_2b.tsv`
+  - current matrix results (identical for `i2s` and `i2s_2b`):
+    - `q=5`: `ggml` fail, `naive` fail, `f64` pass
+    - `q=6`: `ggml` pass, `naive` pass, `f64` fail
+    - `q=7`: `ggml` pass, `naive` pass, `f64` pass
+  - interpretation: behavior is non-monotonic for `f64` near the Q transition boundary (`5-7`), while `ggml`/`naive` show the expected transition (`fail at 5`, pass at `>=6`).
