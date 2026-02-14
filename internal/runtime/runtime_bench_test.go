@@ -490,7 +490,7 @@ func BenchmarkQKVMatVecCompare(b *testing.B) {
 				wB := linearWeight{data: matB, rows: rows, cols: cols, qtype: gguf.GGMLTypeF32}
 				wC := linearWeight{data: matC, rows: rows, cols: cols, qtype: gguf.GGMLTypeF32}
 				for i := 0; i < b.N; i++ {
-					linearApplyQKV(dstA, dstB, dstC, wA, wB, wC, vec, nil)
+					linearApplyQKV(dstA, dstB, dstC, wA, wB, wC, vec, nil, nil, nil)
 				}
 			})
 

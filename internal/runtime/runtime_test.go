@@ -155,6 +155,60 @@ func TestStrictVF32EnabledForCurrentLayer(t *testing.T) {
 	}
 }
 
+func TestStrictQF32EnabledForCurrentLayer(t *testing.T) {
+	oldStrict := debugStrictQF32
+	oldMax := strictQF32LayerMax
+	oldLayer := strictKQCurrentLayer.Load()
+	t.Cleanup(func() {
+		debugStrictQF32 = oldStrict
+		strictQF32LayerMax = oldMax
+		strictKQCurrentLayer.Store(oldLayer)
+	})
+
+	debugStrictQF32 = true
+	strictQF32LayerMax = 2
+
+	strictKQCurrentLayer.Store(2)
+	if !strictQF32EnabledForCurrentLayer() {
+		t.Fatalf("strictQF32EnabledForCurrentLayer() = false, want true for layer 2 <= 2")
+	}
+	strictKQCurrentLayer.Store(3)
+	if strictQF32EnabledForCurrentLayer() {
+		t.Fatalf("strictQF32EnabledForCurrentLayer() = true, want false for layer 3 > 2")
+	}
+	strictKQCurrentLayer.Store(-1)
+	if !strictQF32EnabledForCurrentLayer() {
+		t.Fatalf("strictQF32EnabledForCurrentLayer() = false, want true for unknown layer")
+	}
+}
+
+func TestStrictKF32EnabledForCurrentLayer(t *testing.T) {
+	oldStrict := debugStrictKF32
+	oldMax := strictKF32LayerMax
+	oldLayer := strictKQCurrentLayer.Load()
+	t.Cleanup(func() {
+		debugStrictKF32 = oldStrict
+		strictKF32LayerMax = oldMax
+		strictKQCurrentLayer.Store(oldLayer)
+	})
+
+	debugStrictKF32 = true
+	strictKF32LayerMax = 4
+
+	strictKQCurrentLayer.Store(1)
+	if !strictKF32EnabledForCurrentLayer() {
+		t.Fatalf("strictKF32EnabledForCurrentLayer() = false, want true for layer 1 <= 4")
+	}
+	strictKQCurrentLayer.Store(5)
+	if strictKF32EnabledForCurrentLayer() {
+		t.Fatalf("strictKF32EnabledForCurrentLayer() = true, want false for layer 5 > 4")
+	}
+	strictKQCurrentLayer.Store(-1)
+	if !strictKF32EnabledForCurrentLayer() {
+		t.Fatalf("strictKF32EnabledForCurrentLayer() = false, want true for unknown layer")
+	}
+}
+
 func TestParseStrictKQMode(t *testing.T) {
 	cases := []struct {
 		in   string

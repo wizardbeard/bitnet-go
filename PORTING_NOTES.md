@@ -1003,3 +1003,20 @@ Progress against Phase 3 performance tuning:
     - default (`BITNET_STRICT_V_F32=0`): `step14 token=55358 logit=7.636367`, first mismatch `step=2 token=644`.
     - f32 V override (`BITNET_STRICT_V_F32=1`, `BITNET_STRICT_V_F32_LAYER_MAX=14`): `step14 token=55358 logit=7.928564`, first mismatch shifts to `step=2 token=40` with larger error.
   - conclusion: replacing quantized `attn_v` projection with decoded f32 does not close parity and instead increases drift for this fixture, so current mismatch is unlikely to be dominated by quantized V-projection arithmetic alone.
+- update: added targeted Q/K projection f32 overrides for projection-path isolation.
+  - new envs:
+    - `BITNET_STRICT_Q_F32=1` with optional `BITNET_STRICT_Q_F32_LAYER_MAX=<n>`
+    - `BITNET_STRICT_K_F32=1` with optional `BITNET_STRICT_K_F32_LAYER_MAX=<n>`
+  - A/B/C trace at known hotspot (`step=14`, `token=55358`, `BITNET_PARITY_PROFILE=cpu_parity_v1`, non-strict parity path, `atol/rtol=6e-2`):
+    - baseline:
+      - `logit=7.636367`
+      - first mismatch: `step=2 token=644 got=8.255120 want=7.684045`
+    - Q-only f32 (`BITNET_STRICT_Q_F32=1`, `..._LAYER_MAX=14`):
+      - `logit=8.129391`
+      - drift trace run passes this tolerance envelope (`status=0`, no early mismatch line).
+    - K-only f32 (`BITNET_STRICT_K_F32=1`, `..._LAYER_MAX=14`):
+      - `logit=7.997991`
+      - mismatch worsens at same early point: `step=2 token=644 got=8.584351 want=7.684045`.
+  - interpretation:
+    - K-path f32 substitution moves away from reference in this setup.
+    - Q-path f32 substitution materially changes trajectory and may be informative for root-cause isolation, but it does not indicate a drop-in parity profile candidate (step-14 target logit shifts further from ref snapshot).
