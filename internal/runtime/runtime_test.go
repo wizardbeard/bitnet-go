@@ -182,6 +182,21 @@ func TestStrictQF32EnabledForCurrentLayer(t *testing.T) {
 	}
 }
 
+func TestParseStrictQF32Heads(t *testing.T) {
+	got := parseStrictQF32Heads("0, 2, x, -1, 3")
+	if len(got) != 3 {
+		t.Fatalf("len(parseStrictQF32Heads) = %d, want 3", len(got))
+	}
+	for _, h := range []int{0, 2, 3} {
+		if _, ok := got[h]; !ok {
+			t.Fatalf("missing head %d in parsed set", h)
+		}
+	}
+	if _, ok := got[-1]; ok {
+		t.Fatalf("unexpected negative head in parsed set")
+	}
+}
+
 func TestStrictKF32EnabledForCurrentLayer(t *testing.T) {
 	oldStrict := debugStrictKF32
 	oldMax := strictKF32LayerMax

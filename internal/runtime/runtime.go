@@ -176,6 +176,7 @@ var strictVRefLayerMax = parseEnvInt("BITNET_STRICT_V_REF_LAYER_MAX", -1)
 var debugStrictQF32 = os.Getenv("BITNET_STRICT_Q_F32") == "1"
 var strictQF32LayerMax = parseEnvInt("BITNET_STRICT_Q_F32_LAYER_MAX", -1)
 var strictQF32Head = parseEnvInt("BITNET_STRICT_Q_F32_HEAD", -1)
+var strictQF32Heads = parseStrictQF32Heads(os.Getenv("BITNET_STRICT_Q_F32_HEADS"))
 var debugStrictKF32 = os.Getenv("BITNET_STRICT_K_F32") == "1"
 var strictKF32LayerMax = parseEnvInt("BITNET_STRICT_K_F32_LAYER_MAX", -1)
 var debugStrictVF32 = os.Getenv("BITNET_STRICT_V_F32") == "1"
@@ -403,6 +404,26 @@ func strictQF32EnabledForCurrentLayer() bool {
 		return true
 	}
 	return layer <= strictQF32LayerMax
+}
+
+func parseStrictQF32Heads(v string) map[int]struct{} {
+	out := make(map[int]struct{})
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return out
+	}
+	for _, part := range strings.Split(v, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		n, err := strconv.Atoi(part)
+		if err != nil || n < 0 {
+			continue
+		}
+		out[n] = struct{}{}
+	}
+	return out
 }
 
 func strictKF32EnabledForCurrentLayer() bool {
@@ -4223,13 +4244,22 @@ func linearApplyQKV(dstQ, dstK, dstV []float32, wQ, wK, wV linearWeight, x []flo
 			transposed: wQ.transposed,
 			qtype:      gguf.GGMLTypeF32,
 		}
-		if strictQF32Head >= 0 && attnHeads > 0 && len(dstQ)%attnHeads == 0 {
+		if attnHeads > 0 && len(dstQ)%attnHeads == 0 && (strictQF32Head >= 0 || len(strictQF32Heads) > 0) {
 			// Start from the current path output and overwrite only one head from f32.
 			linearApplyIntoWeight(dstQ, wQ, x)
 			headDim := len(dstQ) / attnHeads
-			if strictQF32Head < attnHeads {
-				tmpQ := make([]float32, len(dstQ))
-				linearApplyIntoWeight(tmpQ, wQF32, x)
+			tmpQ := make([]float32, len(dstQ))
+			linearApplyIntoWeight(tmpQ, wQF32, x)
+			if len(strictQF32Heads) > 0 {
+				for h := range strictQF32Heads {
+					if h < 0 || h >= attnHeads {
+						continue
+					}
+					start := h * headDim
+					end := start + headDim
+					copy(dstQ[start:end], tmpQ[start:end])
+				}
+			} else if strictQF32Head < attnHeads {
 				start := strictQF32Head * headDim
 				end := start + headDim
 				copy(dstQ[start:end], tmpQ[start:end])

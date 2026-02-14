@@ -1163,3 +1163,15 @@ Progress against Phase 3 performance tuning:
       - `q_head2_only`
       - `q_head3_only`
   - interpretation: despite larger per-head amplification metrics on head 2 in the previous probe, the deterministic boundary failure is not caused by head 2 override alone; head interaction and/or head-0 sensitivity appears to be the practical trigger in this ablation setup.
+- update: added Q-head pair-ablation probe to test interaction effects directly.
+  - new script: `scripts/probe_qf32_kq_f64_head_pair_ablation.sh`
+  - uses:
+    - `BITNET_STRICT_Q_F32_HEADS=<csv>` (new; overrides selected Q heads as a set)
+    - `BITNET_STRICT_Q_F32_HEAD` still supported for single-head override
+  - artifacts:
+    - `.bench/qf32-kq-f64-head-pair-ablation/i2s.tsv`
+    - `.bench/qf32-kq-f64-head-pair-ablation/i2s_2b.tsv`
+  - current results (identical on `i2s` and `i2s_2b`):
+    - fail: `all_q_heads`, `q_head0_only`, `q_head0_2`, `q_head0_1`, `q_head2_3`
+    - pass: `q_head2_only`
+  - interpretation: boundary failure is driven by multi-head interaction, with head 0 sufficient but not necessary in all failing combinations (e.g., `2+3` also fails), reinforcing that cross-head coupling under `KQ=f64` is the key instability rather than a single-head-local issue.
