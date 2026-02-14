@@ -5,6 +5,7 @@ FAMILY=${1:-i2s}
 STEP=${BITNET_QF32_KQ_F64_BOUNDARY_STEP:-2}
 LAYER=${BITNET_QF32_KQ_F64_BOUNDARY_LAYER:-7}
 VALUES_N=${BITNET_QF32_KQ_F64_BOUNDARY_VALUES_N:-16}
+SOFTMAX_HEADS=${BITNET_QF32_KQ_F64_BOUNDARY_SOFTMAX_HEADS:-4}
 KQ_LAYER_MAX=${BITNET_QF32_KQ_F64_BOUNDARY_KQ_LAYER_MAX:-12}
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 OUT_DIR=${BITNET_QF32_KQ_F64_BOUNDARY_OUT_DIR:-.bench/qf32-kq-f64-boundary}
@@ -47,6 +48,7 @@ run_case() {
     BITNET_DRIFT_TRACE_TOKEN=-1 \
     BITNET_DRIFT_TRACE_LAYER="$LAYER" \
     BITNET_DRIFT_TRACE_VALUES_N="$VALUES_N" \
+    BITNET_DRIFT_TRACE_SOFTMAX_HEADS="$SOFTMAX_HEADS" \
     go test ./pkg/bitnet -run "$TEST_RE" -count=1 -v >"$log" 2>&1
   status=$?
   set -e
@@ -102,7 +104,26 @@ log7="$OUT_DIR/${FAMILY}-q7.log"
 
 {
   printf "name\tmean_abs_q6_vs_q7\tmax_abs_q6_vs_q7\n"
-  for name in attn_norm Qcur Kcur Vcur attn_softmax_h0 attn_o_out x_post_attn; do
+  for name in attn_norm Qcur Kcur Vcur; do
+    v6=$(extract_values "$log6" "$name")
+    v7=$(extract_values "$log7" "$name")
+    if [ -n "$v6" ] && [ -n "$v7" ]; then
+      stats=$(csv_diff_stats "$v6" "$v7")
+      printf "%s\t%s\n" "$name" "$stats"
+    fi
+  done
+  h=0
+  while [ "$h" -lt "$SOFTMAX_HEADS" ]; do
+    name="attn_softmax_h${h}"
+    v6=$(extract_values "$log6" "$name")
+    v7=$(extract_values "$log7" "$name")
+    if [ -n "$v6" ] && [ -n "$v7" ]; then
+      stats=$(csv_diff_stats "$v6" "$v7")
+      printf "%s\t%s\n" "$name" "$stats"
+    fi
+    h=$((h + 1))
+  done
+  for name in attn_o_out x_post_attn; do
     v6=$(extract_values "$log6" "$name")
     v7=$(extract_values "$log7" "$name")
     if [ -n "$v6" ] && [ -n "$v7" ]; then

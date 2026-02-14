@@ -226,6 +226,7 @@ var profileStep = os.Getenv("BITNET_PROFILE_STEP") == "1"
 var driftTraceStep = parseEnvInt("BITNET_DRIFT_TRACE_STEP", -1)
 var driftTraceToken = parseEnvInt("BITNET_DRIFT_TRACE_TOKEN", -1)
 var driftTraceValuesN = parseEnvInt("BITNET_DRIFT_TRACE_VALUES_N", 16)
+var driftTraceSoftmaxHeads = parseEnvInt("BITNET_DRIFT_TRACE_SOFTMAX_HEADS", 1)
 var driftTraceLayer = parseEnvInt("BITNET_DRIFT_TRACE_LAYER", -1)
 var driftRopeRefF64 = os.Getenv("BITNET_DRIFT_ROPE_REF_F64") == "1"
 var driftQKVRefF32 = os.Getenv("BITNET_DRIFT_QKV_REF_F32") == "1"
@@ -2283,8 +2284,17 @@ func runLlamaStackStepProfile(block *tensorBlock, layerStates []llamaLayerState,
 				}
 			}
 			if traceDrift && driftTraceValuesN > 0 && (driftTraceLayer < 0 || driftTraceLayer == i) {
-				if w := attnHeadWeightsFromQK(st.q, st.keys, pos+1, block.attnHeads, block.kvHeads, len(st.k), 0); len(w) > 0 {
-					fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=attn_softmax_h0 values=%s\n", i, vecValuesCSV(w, driftTraceValuesN))
+				headsToTrace := driftTraceSoftmaxHeads
+				if headsToTrace <= 0 {
+					headsToTrace = 1
+				}
+				if block.attnHeads > 0 && headsToTrace > block.attnHeads {
+					headsToTrace = block.attnHeads
+				}
+				for h := 0; h < headsToTrace; h++ {
+					if w := attnHeadWeightsFromQK(st.q, st.keys, pos+1, block.attnHeads, block.kvHeads, len(st.k), h); len(w) > 0 {
+						fmt.Fprintf(os.Stderr, "drift_trace values layer=%d name=attn_softmax_h%d values=%s\n", i, h, vecValuesCSV(w, driftTraceValuesN))
+					}
 				}
 			}
 

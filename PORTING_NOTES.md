@@ -1126,3 +1126,12 @@ Progress against Phase 3 performance tuning:
       - `attn_o_out`: mean abs `0.442413`, max abs `1.009753`
       - `x_post_attn`: mean abs `0.442413`, max abs `1.009766`
   - interpretation: the deterministic `q=6` failure localizes to a Q-only perturbation at layer 7 that propagates through softmax into a much larger attention-output/residual-state delta; K/V paths remain unchanged in this probe.
+- update: expanded boundary probe to multi-head softmax tracing.
+  - runtime trace now supports `BITNET_DRIFT_TRACE_SOFTMAX_HEADS=<n>` (default `1`) and emits `attn_softmax_h0..h(n-1)`.
+  - `scripts/probe_qf32_kq_f64_boundary.sh` now compares head slices `0..3` by default (`BITNET_QF32_KQ_F64_BOUNDARY_SOFTMAX_HEADS=4`).
+  - updated `q6 vs q7` layer-7 softmax deltas (identical on `i2s` and `i2s_2b`):
+    - `attn_softmax_h0`: mean abs `0.0006876`, max abs `0.001518`
+    - `attn_softmax_h1`: mean abs `0.0005714`, max abs `0.001521`
+    - `attn_softmax_h2`: mean abs `0.0019848`, max abs `0.005459`
+    - `attn_softmax_h3`: mean abs `8.88e-05`, max abs `1.37e-04`
+  - interpretation: the softmax perturbation is head-dependent (largest on head 2) before being amplified into large `attn_o_out/x_post_attn` deltas.
