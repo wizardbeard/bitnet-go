@@ -1194,3 +1194,19 @@ Progress against Phase 3 performance tuning:
       - `head0+1`
       - `head2+3`
   - interpretation: failure is not specific to `f64`; several head-set combinations are unstable across modes, while the `ggml` mode uniquely stabilizes some head-0-including sets (`head0_only`, `head0+2`).
+- update: added focused `ggml` pair-trace probe for unstable headsets.
+  - new script: `scripts/probe_qf32_kq_ggml_pair_trace.sh`
+  - compares `q_head0_2` (pass) vs unstable pairs (`q_head0_1`, `q_head2_3`) against `all_q_heads` baseline at `step=2`, `layer=7`.
+  - artifacts:
+    - `.bench/qf32-kq-ggml-pair-trace/i2s-meta.tsv`
+    - `.bench/qf32-kq-ggml-pair-trace/i2s-L7-S2.tsv`
+    - `.bench/qf32-kq-ggml-pair-trace/i2s_2b-meta.tsv`
+    - `.bench/qf32-kq-ggml-pair-trace/i2s_2b-L7-S2.tsv`
+  - current results (identical for `i2s` and `i2s_2b`):
+    - pass: `all_q_heads`, `q_head0_2`
+    - fail: `q_head0_1` (step 2 token 40), `q_head2_3` (step 2 token 644)
+  - key traced deltas vs `all_q_heads`:
+    - all tested pairs, including passing `q_head0_2`, show large `attn_o_out`/`x_post_attn` deviations, so magnitude alone does not predict failure.
+    - failing `q_head0_1` has strongest `attn_softmax_h1/h2` and largest `attn_out_head2_proj_l2` delta (`~10.03`).
+    - failing `q_head2_3` has strongest `attn_softmax_h0` and largest `attn_out_head0_proj_l2` delta (`~5.26`).
+  - interpretation: instability appears tied to head-specific softmax/output-routing patterns (which head gets perturbed) rather than only total perturbation magnitude.
