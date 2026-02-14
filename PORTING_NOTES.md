@@ -1024,3 +1024,16 @@ Progress against Phase 3 performance tuning:
     - K-path f32 substitution moves away from reference in this setup.
     - Q-path f32 substitution materially changes trajectory and may be informative for root-cause isolation, but it does not indicate a drop-in parity profile candidate (step-14 target logit shifts further from ref snapshot).
     - Q+K jointly does not recover parity either, suggesting remaining divergence is not a simple independent precision issue in Q/K projection arithmetic alone.
+- update: added `BITNET_STRICT_Q_F32_LAYER_MAX` sweep harness and localized transition range.
+  - new script: `scripts/sweep_qf32_layermax.sh`
+  - defaults:
+    - layer set: `0 4 8 12 14` (override via `BITNET_QF32_SWEEP_LAYERS`)
+    - profile: `BITNET_PARITY_PROFILE=cpu_parity_v1`
+    - force mode: `BITNET_PARITY_FORCE=1`, `BITNET_PARITY_STRICT=0`
+  - artifacts:
+    - `.bench/qf32-layermax-sweep-i2s.tsv`
+    - `.bench/qf32-layermax-sweep-i2s_2b.tsv`
+  - current results (identical on `i2s` and `i2s_2b` with this fixture set):
+    - fail: `qf32_l0`, `qf32_l4` (early mismatch at step 2)
+    - pass: `qf32_l8`, `qf32_l12`, `qf32_l14`, and `qf32_all_layers`
+  - interpretation: Q-path f32 sensitivity transition occurs between layers `4` and `8`; later-layer substitution can satisfy current force-mode tolerance, while very early-layer substitution increases mismatch.
